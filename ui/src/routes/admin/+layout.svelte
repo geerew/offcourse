@@ -84,7 +84,7 @@
 			class={cn(
 				'text-foreground-alt-2 hover:text-foreground hover:bg-background-alt-1 relative h-auto justify-start gap-3 px-2.5 leading-6',
 				page.url.pathname.startsWith(item.matcher) &&
-					'bg-background-alt-1 after:bg-background-primary after:absolute after:top-0 after:right-0 after:h-full after:w-1',
+					'bg-background-alt-1 after:bg-background-primary after:absolute after:right-0 after:top-0 after:h-full after:w-1',
 				mobile ? 'py-6 text-base' : 'py-3'
 			)}
 			onclick={() => {
@@ -97,7 +97,7 @@
 			<item.icon class="size-6 stroke-[1.5]" />
 			<span>{item.label}</span>
 			{#if item.label === 'Scans' && scanCount > 0}
-				<Badge class="bg-background-alt-4 text-foreground mr-2.5 ml-auto text-xs">
+				<Badge class="bg-background-alt-4 text-foreground ml-auto mr-2.5 text-xs">
 					{scanCount}
 				</Badge>
 			{/if}
@@ -108,36 +108,56 @@
 <div
 	class="flex min-h-[calc(100dvh-(var(--header-height)+1px))] flex-col pt-[calc(var(--header-height)+1)]"
 >
-	<div
-		class={cn(
-			'grid flex-1 grid-rows-1 gap-6',
-			menuPopupMode ? 'grid-cols-1' : 'grid-cols-[var(--settings-menu-width)_1fr]'
-		)}
-	>
-		{#if menuPopupMode}
-			<Dialog.Root bind:open={dialogOpen}>
-				<Dialog.Portal>
-					<Dialog.Overlay
-						class="data-[state=open]:animate-in data-[state=closed]:animate-out data-[state=closed]:fade-out-0 data-[state=open]:fade-in-0 fixed inset-0 z-40 bg-black/30"
-					/>
-
-					<Dialog.Content
-						class="border-foreground-alt-4 bg-background data-[state=open]:animate-in data-[state=closed]:animate-out data-[state=closed]:slide-out-to-left data-[state=open]:slide-in-from-left fixed top-0 left-0 z-50 h-full w-70 border-r pt-4 pl-4"
+	{#if menuPopupMode}
+		<!-- Mobile layout: flex column -->
+		<div class="flex flex-1 flex-col">
+			<!-- Popup trigger -->
+			<div class="border-background-alt-3 flex h-12 shrink-0 border-b">
+				<div class="container-pl flex h-full items-center">
+					<Button
+						variant="ghost"
+						class="text-foreground-alt-2 hover:text-foreground h-auto hover:bg-transparent"
+						onclick={() => {
+							dialogOpen = !dialogOpen;
+						}}
 					>
-						<nav class="flex h-full w-full flex-col gap-3 overflow-x-hidden overflow-y-auto">
-							<div class="flex flex-1 flex-col gap-3">
-								{@render menuContents(true)}
-							</div>
-							<AdminFooter />
-						</nav>
-					</Dialog.Content>
-				</Dialog.Portal>
-			</Dialog.Root>
-		{:else}
+						<BurgerMenuIcon class="size-6 stroke-[1.5]" />
+						<span>Menu</span>
+					</Button>
+				</div>
+			</div>
+
+			<main class="container-px flex w-full flex-1 pb-8 pt-8">
+				{@render children()}
+			</main>
+		</div>
+
+		<!-- Mobile menu dialog -->
+		<Dialog.Root bind:open={dialogOpen}>
+			<Dialog.Portal>
+				<Dialog.Overlay
+					class="data-[state=open]:animate-in data-[state=closed]:animate-out data-[state=closed]:fade-out-0 data-[state=open]:fade-in-0 fixed inset-0 z-40 bg-black/30"
+				/>
+
+				<Dialog.Content
+					class="border-foreground-alt-4 bg-background data-[state=open]:animate-in data-[state=closed]:animate-out data-[state=closed]:slide-out-to-left data-[state=open]:slide-in-from-left w-70 fixed left-0 top-0 z-50 h-full border-r pl-4 pt-4"
+				>
+					<nav class="flex h-full w-full flex-col gap-3 overflow-y-auto overflow-x-hidden">
+						<div class="flex flex-1 flex-col gap-3">
+							{@render menuContents(true)}
+						</div>
+						<AdminFooter />
+					</nav>
+				</Dialog.Content>
+			</Dialog.Portal>
+		</Dialog.Root>
+	{:else}
+		<!-- Desktop layout: grid with sidebar -->
+		<div class="grid flex-1 grid-cols-[var(--settings-menu-width)_1fr] grid-rows-1 gap-6">
 			<div class="relative row-span-full">
 				<div class="absolute inset-0">
 					<nav
-						class="container-pl border-foreground-alt-5 sticky top-[calc(var(--header-height)+1px)] left-0 flex h-[calc(100dvh-(var(--header-height)+1px))] w-[--settings-menu-width] flex-col gap-4 border-r pt-8"
+						class="container-pl border-foreground-alt-5 sticky left-0 top-[calc(var(--header-height)+1px)] flex h-[calc(100dvh-(var(--header-height)+1px))] w-[--settings-menu-width] flex-col gap-4 border-r pt-8"
 					>
 						<div class="flex flex-1 flex-col gap-4">
 							{@render menuContents(false)}
@@ -146,28 +166,10 @@
 					</nav>
 				</div>
 			</div>
-		{/if}
 
-		<!-- Popup trigger -->
-		<div
-			class={cn('border-background-alt-3 flex h-12 border-b', menuPopupMode ? 'visible' : 'hidden')}
-		>
-			<div class="container-pl flex h-full items-center">
-				<Button
-					variant="ghost"
-					class="text-foreground-alt-2 hover:text-foreground h-auto hover:bg-transparent"
-					onclick={() => {
-						dialogOpen = !dialogOpen;
-					}}
-				>
-					<BurgerMenuIcon class="size-6 stroke-[1.5]" />
-					<span>Menu</span>
-				</Button>
-			</div>
+			<main class="container-px flex w-full pb-8 pt-8">
+				{@render children()}
+			</main>
 		</div>
-
-		<main class={cn('container-px flex w-full pb-8', !menuPopupMode && 'pt-8')}>
-			{@render children()}
-		</main>
-	</div>
+	{/if}
 </div>
