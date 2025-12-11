@@ -11,19 +11,19 @@ import (
 
 const (
 	// MetadataFileName is the name of the course metadata file
-	MetadataFileName = "course.json"
+	MetadataFileName = "oc.json"
 )
 
 // ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
 
-// CourseMetadata represents the metadata stored in course.json
+// CourseMetadata represents the metadata stored in oc.json
 type CourseMetadata struct {
 	Tags []string `json:"tags,omitempty"`
 }
 
 // ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
 
-// ReadMetadata reads the course.json file from the course root directory.
+// ReadMetadata reads the oc.json file from the course root directory.
 // Returns nil metadata (not an error) if the file doesn't exist.
 func ReadMetadata(fs afero.Fs, coursePath string) (*CourseMetadata, error) {
 	metadataPath := filepath.Join(coursePath, MetadataFileName)
@@ -55,7 +55,7 @@ func ReadMetadata(fs afero.Fs, coursePath string) (*CourseMetadata, error) {
 
 // ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
 
-// WriteMetadata writes the course.json file to the course root directory.
+// WriteMetadata writes the oc.json file to the course root directory.
 // Creates the file if it doesn't exist, overwrites if it does.
 func WriteMetadata(fs afero.Fs, coursePath string, metadata *CourseMetadata) error {
 	if metadata == nil {
@@ -89,7 +89,7 @@ func WriteMetadata(fs afero.Fs, coursePath string, metadata *CourseMetadata) err
 
 // ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
 
-// DeleteMetadata deletes the course.json file from the course root directory.
+// DeleteMetadata deletes the oc.json file from the course root directory.
 // Returns nil if the file doesn't exist (not an error).
 func DeleteMetadata(fs afero.Fs, coursePath string) error {
 	metadataPath := filepath.Join(coursePath, MetadataFileName)
