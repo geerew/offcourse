@@ -123,7 +123,7 @@ func Processor(ctx context.Context, s *CourseScan, scanState *ScanState) error {
 		return fmt.Errorf("failed to access course path %s: %w", course.Path, err)
 	}
 
-	// Read course metadata (course.json) if it exists
+	// Read course metadata if it exists
 	scanState.UpdateMessage("Reading course metadata")
 	metadata, err := coursemetadata.ReadMetadata(s.appFs.Fs, course.Path)
 	if err != nil {
@@ -131,7 +131,7 @@ func Processor(ctx context.Context, s *CourseScan, scanState *ScanState) error {
 			Err(err).
 			Str("course_id", courseID).
 			Str("course_path", coursePath).
-			Msg("Failed to read course.json, continuing without metadata")
+			Msg("Failed to read oc.json, continuing without metadata")
 		metadata = nil
 	}
 
@@ -259,14 +259,14 @@ func Processor(ctx context.Context, s *CourseScan, scanState *ScanState) error {
 			updatedCourse = true
 		}
 
-		// Apply tags from course.json if metadata exists
+		// Apply tags (if metadata exists)
 		if metadata != nil && len(metadata.Tags) > 0 {
 			if err := applyTagsFromMetadata(txCtx, s, course.ID, metadata.Tags); err != nil {
 				s.logger.Warn().
 					Err(err).
 					Str("course_id", courseID).
 					Str("course_path", coursePath).
-					Msg("Failed to apply tags from course.json")
+					Msg("Failed to apply tags from oc.json")
 				// Don't fail the scan if tag application fails
 			}
 		} else if metadata != nil {
@@ -1806,7 +1806,7 @@ func (p *parsedFile) toAttachment() *models.Attachment {
 
 // ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
 
-// applyTagsFromMetadata applies tags from course.json to the database.
+// applyTagsFromMetadata applies tags from oc.json to the database.
 // Creates tags that don't exist and associates them with the course.
 // Removes tags from the course that are not in the metadata.
 func applyTagsFromMetadata(ctx context.Context, s *CourseScan, courseID string, tags []string) error {

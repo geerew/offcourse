@@ -683,7 +683,7 @@ func TestTags_DeleteTag(t *testing.T) {
 		require.Equal(t, http.StatusInternalServerError, status)
 	})
 
-	t.Run("204 (deleted with course.json update)", func(t *testing.T) {
+	t.Run("204 (deleted with oc.json update)", func(t *testing.T) {
 		router, ctx := setupAdmin(t)
 
 		// Create courses
@@ -726,7 +726,7 @@ func TestTags_DeleteTag(t *testing.T) {
 		// Wait for async file writes to complete
 		time.Sleep(200 * time.Millisecond)
 
-		// Verify course.json files were updated
+		// Verify oc.json files were updated
 		// Course 1 should only have PHP now
 		metadata1, err := coursemetadata.ReadMetadata(router.app.AppFs.Fs, course1.Path)
 		require.NoError(t, err)

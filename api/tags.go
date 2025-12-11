@@ -257,7 +257,7 @@ func (api *tagsAPI) deleteTag(c *fiber.Ctx) error {
 			remainingTags = append(remainingTags, t.Tag)
 		}
 
-		// Update course.json file with actual remaining tags
+		// Update oc.json file with actual remaining tags
 		metadata := &coursemetadata.CourseMetadata{
 			Tags: remainingTags,
 		}

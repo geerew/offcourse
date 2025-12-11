@@ -12,8 +12,8 @@ import (
 
 // ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
 
-// MetadataWriter handles concurrent writes to course.json files
-// Ensures sequential writes per course while allowing concurrent writes across courses
+// MetadataWriter handles sequential writes per course while allowing concurrent
+// writes across courses
 type MetadataWriter struct {
 	fs     afero.Fs
 	logger *logger.Logger
