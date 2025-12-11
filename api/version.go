@@ -29,13 +29,21 @@ func (r *Router) initVersionRoutes() {
 
 // getVersion returns the application version
 func (api *versionAPI) getVersion(c *fiber.Ctx) error {
-	currentVersion := version.GetVersion()
+	// If running in dev mode, always return "dev" regardless of build version
+	var currentVersion string
+	if api.r.app.Config.IsDev {
+		currentVersion = "dev"
+	} else {
+		currentVersion = version.GetVersion()
+	}
+
 	response := fiber.Map{
 		"version": currentVersion,
 	}
 
 	// Add latest release if available and different from current version
-	if cron.ReleaseChecker != nil {
+	// Only show latest release if not in dev mode
+	if !api.r.app.Config.IsDev && cron.ReleaseChecker != nil {
 		latestRelease := cron.ReleaseChecker.GetLatestRelease()
 		if latestRelease != "" && latestRelease != currentVersion {
 			response["latestRelease"] = latestRelease
