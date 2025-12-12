@@ -2,9 +2,9 @@
 	import type { APIError } from '$lib/api-error.svelte';
 	import { UpdateSelf } from '$lib/api/self-api';
 	import { auth } from '$lib/auth.svelte';
-	import { DeleteUserDialog, EditUserPasswordDialog } from '$lib/components/dialogs';
+	import { DeleteUserDialog } from '$lib/components/dialogs';
 	import { Spinner } from '$lib/components';
-	import { Button, Dialog } from '$lib/components/ui';
+	import { Button, Dialog, PasswordInput } from '$lib/components/ui';
 	import type { SelfUpdateModel } from '$lib/models/user-model';
 	import { Separator } from 'bits-ui';
 	import { toast } from 'svelte-sonner';
@@ -14,6 +14,13 @@
 	let editableRef = $state<HTMLDivElement>();
 	let isSaving = $state(false);
 	let originalValue = $state('');
+
+	let isEditingPassword = $state(false);
+	let currentPassword = $state('');
+	let newPassword = $state('');
+	let confirmPassword = $state('');
+	let isSavingPassword = $state(false);
+	let currentPasswordRef = $state<HTMLInputElement>();
 
 	// Sync contenteditable text when not editing
 	$effect(() => {
@@ -86,6 +93,50 @@
 			}
 		} finally {
 			isSaving = false;
+		}
+	}
+
+	function startEditingPassword() {
+		currentPassword = '';
+		newPassword = '';
+		confirmPassword = '';
+		isEditingPassword = true;
+		// Focus first input after a brief delay
+		setTimeout(() => {
+			currentPasswordRef?.focus();
+		}, 50);
+	}
+
+	function cancelEditingPassword() {
+		isEditingPassword = false;
+		currentPassword = '';
+		newPassword = '';
+		confirmPassword = '';
+	}
+
+	async function savePassword() {
+		if (newPassword !== confirmPassword) {
+			toast.error('Passwords do not match');
+			return;
+		}
+
+		if (!currentPassword || !newPassword || !confirmPassword) {
+			toast.error('All fields are required');
+			return;
+		}
+
+		isSavingPassword = true;
+		try {
+			await UpdateSelf({ currentPassword, password: newPassword } satisfies SelfUpdateModel);
+			isEditingPassword = false;
+			currentPassword = '';
+			newPassword = '';
+			confirmPassword = '';
+			toast.success('Password changed');
+		} catch (error) {
+			toast.error((error as APIError).message);
+		} finally {
+			isSavingPassword = false;
 		}
 	}
 </script>
@@ -180,13 +231,90 @@
 			<Separator.Root class="bg-background-alt-3 my-2 h-px w-full shrink-0" />
 
 			<!-- Password -->
-			<div class="flex flex-col gap-3">
-				<div class="text-foreground-alt-3 text-[15px] uppercase">Password</div>
-				<EditUserPasswordDialog value={auth.user}>
-					{#snippet trigger()}
-						<Dialog.Trigger>Change Password</Dialog.Trigger>
-					{/snippet}
-				</EditUserPasswordDialog>
+			<div class="flex flex-col gap-3 w-full">
+				<div class="flex flex-row items-center justify-between w-full">
+					<div class="text-foreground-alt-3 text-[15px] uppercase">Password</div>
+					{#if !isEditingPassword}
+						<button
+							type="button"
+							onclick={startEditingPassword}
+							class="text-foreground-alt-3 hover:text-foreground-alt-1 cursor-pointer bg-transparent py-0 text-sm duration-200 hover:bg-transparent"
+						>
+							Edit
+						</button>
+					{:else}
+						<button
+							type="button"
+							onclick={cancelEditingPassword}
+							class="text-foreground-alt-3 hover:text-foreground-alt-1 cursor-pointer bg-transparent py-0 text-sm duration-200 hover:bg-transparent"
+						>
+							Cancel
+						</button>
+					{/if}
+				</div>
+				{#if isEditingPassword}
+					<div class="flex flex-col gap-2">
+						<div class="flex flex-col gap-2.5">
+							<div class="text-foreground-alt-3 text-sm">Current Password:</div>
+							<PasswordInput
+								bind:ref={currentPasswordRef}
+								bind:value={currentPassword}
+								name="current password"
+								onkeydown={(e) => {
+									if (e.key === 'Escape') {
+										e.preventDefault();
+										cancelEditingPassword();
+									}
+								}}
+							/>
+						</div>
+						<div class="flex flex-col gap-2.5">
+							<div class="text-foreground-alt-3 text-sm">New Password:</div>
+							<PasswordInput
+								bind:value={newPassword}
+								name="new password"
+								onkeydown={(e) => {
+									if (e.key === 'Enter' && !e.shiftKey) {
+										e.preventDefault();
+										savePassword();
+									} else if (e.key === 'Escape') {
+										e.preventDefault();
+										cancelEditingPassword();
+									}
+								}}
+							/>
+						</div>
+						<div class="flex flex-col gap-2.5">
+							<div class="text-foreground-alt-3 text-sm">Confirm Password:</div>
+							<PasswordInput
+								bind:value={confirmPassword}
+								name="confirm password"
+								onkeydown={(e) => {
+									if (e.key === 'Enter' && !e.shiftKey) {
+										e.preventDefault();
+										savePassword();
+									} else if (e.key === 'Escape') {
+										e.preventDefault();
+										cancelEditingPassword();
+									}
+								}}
+							/>
+						</div>
+						<Button
+							type="button"
+							variant="default"
+							onclick={savePassword}
+							disabled={!currentPassword || !newPassword || !confirmPassword || isSavingPassword}
+							class="w-36"
+						>
+							{#if isSavingPassword}
+								<Spinner class="bg-background-alt-4 size-2" />
+							{:else}
+								Save
+							{/if}
+						</Button>
+					</div>
+				{/if}
 			</div>
 
 			<Separator.Root class="bg-background-alt-3 my-2 h-px w-full shrink-0" />
