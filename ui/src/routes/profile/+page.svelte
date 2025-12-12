@@ -153,8 +153,8 @@
 			<Separator.Root class="bg-background-alt-3 my-2 h-px w-full shrink-0" />
 
 			<!-- Display name -->
-			<div class="flex flex-col gap-3 w-full">
-				<div class="flex flex-row items-center justify-between w-full">
+			<div class="flex w-full flex-col gap-3">
+				<div class="flex w-full flex-row items-center justify-between">
 					<div class="text-foreground-alt-1 text-[15px] uppercase">Display Name</div>
 					{#if !isEditingDisplayName}
 						<button
@@ -179,8 +179,8 @@
 						bind:this={editableRef}
 						contenteditable={isEditingDisplayName}
 						role={isEditingDisplayName ? 'textbox' : undefined}
-						class="text-background-primary text-2xl block min-h-8 outline-none transition-all duration-200 {isEditingDisplayName
-							? 'bg-background-alt-3 focus:bg-background-alt-4 rounded-md border-0 px-2.5 py-1.5 cursor-text focus:outline-none focus:ring-0'
+						class="text-background-primary block min-h-8 text-2xl transition-all duration-200 outline-none {isEditingDisplayName
+							? 'bg-background-alt-3 focus:bg-background-alt-4 cursor-text rounded-md border-0 px-2.5 py-1.5 focus:ring-0 focus:outline-none'
 							: 'cursor-default'}"
 						oninput={handleInput}
 						onkeydown={(e) => {
@@ -207,7 +207,9 @@
 							type="button"
 							variant="default"
 							onclick={saveDisplayName}
-							disabled={!displayNameValue.trim() || displayNameValue === auth.user?.displayName || isSaving}
+							disabled={!displayNameValue.trim() ||
+								displayNameValue === auth.user?.displayName ||
+								isSaving}
 							class="w-36"
 						>
 							{#if isSaving}
@@ -231,8 +233,8 @@
 			<Separator.Root class="bg-background-alt-3 my-2 h-px w-full shrink-0" />
 
 			<!-- Password -->
-			<div class="flex flex-col gap-3 w-full">
-				<div class="flex flex-row items-center justify-between w-full">
+			<div class="flex w-full flex-col gap-3">
+				<div class="flex w-full flex-row items-center justify-between">
 					<div class="text-foreground-alt-1 text-[15px] uppercase">Password</div>
 					{#if !isEditingPassword}
 						<button
@@ -320,17 +322,17 @@
 			<Separator.Root class="bg-background-alt-3 my-2 h-px w-full shrink-0" />
 
 			<!-- Delete account -->
-			<div class="flex flex-col gap-1 w-full">
-				<div class="flex flex-row items-center justify-between w-full">
+			<div class="flex w-full flex-col gap-1">
+				<div class="flex w-full flex-row items-center justify-between">
 					<div class="text-foreground-alt-1 text-[15px] uppercase">Delete Account</div>
 					<DeleteUserDialog value={auth.user}>
 						{#snippet trigger()}
-						<Dialog.Trigger
-							type="button"
-							class="text-foreground-error w-auto hover:text-foreground-error-alt-1 cursor-pointer bg-transparent py-0 text-sm duration-200 hover:bg-transparent"
-						>
-							Delete
-						</Dialog.Trigger>
+							<Dialog.Trigger
+								type="button"
+								class="text-foreground-error hover:text-foreground-error-alt-1 w-auto cursor-pointer bg-transparent py-0 text-sm duration-200 hover:bg-transparent"
+							>
+								Delete
+							</Dialog.Trigger>
 						{/snippet}
 					</DeleteUserDialog>
 				</div>
