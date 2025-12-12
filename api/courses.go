@@ -768,7 +768,8 @@ func (api coursesAPI) createTag(c *fiber.Ctx) error {
 		}
 		allTags = append(allTags, tagRequest.Tag)
 		metadata := &coursemetadata.CourseMetadata{
-			Tags: allTags,
+			Description: "",
+			Tags:        allTags,
 		}
 		api.r.app.MetadataWriter.WriteMetadataAsync(courseId, course.Path, metadata)
 	} else {
@@ -780,7 +781,8 @@ func (api coursesAPI) createTag(c *fiber.Ctx) error {
 
 		// Queue async file write (fire and forget)
 		metadata := &coursemetadata.CourseMetadata{
-			Tags: allTags,
+			Description: "",
+			Tags:        allTags,
 		}
 		api.r.app.MetadataWriter.WriteMetadataAsync(courseId, course.Path, metadata)
 	}
@@ -861,7 +863,8 @@ func (api coursesAPI) deleteTag(c *fiber.Ctx) error {
 
 	// Queue async file write (fire and forget)
 	metadata := &coursemetadata.CourseMetadata{
-		Tags: remainingTags,
+		Description: "",
+		Tags:        remainingTags,
 	}
 	api.r.app.MetadataWriter.WriteMetadataAsync(courseId, course.Path, metadata)
 

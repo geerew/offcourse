@@ -10,6 +10,7 @@ import (
 	"github.com/Masterminds/squirrel"
 	"github.com/geerew/off-course/dao"
 	"github.com/geerew/off-course/models"
+	"github.com/geerew/off-course/utils/coursemetadata"
 	"github.com/geerew/off-course/utils/types"
 	"github.com/spf13/afero"
 	"github.com/stretchr/testify/require"
@@ -775,6 +776,84 @@ func TestScanner_Processor(t *testing.T) {
 			require.True(t, lessons[0].Assets[0].Type.IsVideo())
 			require.Equal(t, "3b857b8441d7c9e734535d6b82f69a34c6fcd63ed0ef989ff03808ecb29a2f1f", lessons[0].Assets[0].Hash)
 		}
+	})
+
+	t.Run("course description from metadata", func(t *testing.T) {
+		scanner, ctx := setup(t)
+
+		course := &models.Course{Title: "Course 1", Path: "/course-1"}
+		require.NoError(t, scanner.dao.CreateCourse(ctx, course))
+
+		scanState, err := scanner.Add(ctx, course.ID)
+		require.NoError(t, err)
+
+		scanner.appFs.Fs.Mkdir(course.Path, os.ModePerm)
+
+		// Write metadata file with description
+		metadataPath := filepath.Join(course.Path, coursemetadata.MetadataFileName)
+		metadataJSON := `{
+  "description": "A test course description",
+  "tags": ["test"]
+}`
+		require.NoError(t, afero.WriteFile(scanner.appFs.Fs, metadataPath, []byte(metadataJSON), 0644))
+
+		err = Processor(ctx, scanner, scanState)
+		require.NoError(t, err)
+
+		dbOpts := dao.NewOptions().WithWhere(squirrel.Eq{models.COURSE_TABLE_ID: course.ID})
+		record, err := scanner.dao.GetCourse(ctx, dbOpts)
+		require.NoError(t, err)
+		require.Equal(t, "A test course description", record.Description)
+	})
+
+	t.Run("course description empty when metadata missing", func(t *testing.T) {
+		scanner, ctx := setup(t)
+
+		course := &models.Course{Title: "Course 1", Path: "/course-1", Description: "Original description"}
+		require.NoError(t, scanner.dao.CreateCourse(ctx, course))
+
+		scanState, err := scanner.Add(ctx, course.ID)
+		require.NoError(t, err)
+
+		scanner.appFs.Fs.Mkdir(course.Path, os.ModePerm)
+
+		// No metadata file
+
+		err = Processor(ctx, scanner, scanState)
+		require.NoError(t, err)
+
+		dbOpts := dao.NewOptions().WithWhere(squirrel.Eq{models.COURSE_TABLE_ID: course.ID})
+		record, err := scanner.dao.GetCourse(ctx, dbOpts)
+		require.NoError(t, err)
+		require.Empty(t, record.Description)
+	})
+
+	t.Run("course description empty string in metadata", func(t *testing.T) {
+		scanner, ctx := setup(t)
+
+		course := &models.Course{Title: "Course 1", Path: "/course-1", Description: "Original description"}
+		require.NoError(t, scanner.dao.CreateCourse(ctx, course))
+
+		scanState, err := scanner.Add(ctx, course.ID)
+		require.NoError(t, err)
+
+		scanner.appFs.Fs.Mkdir(course.Path, os.ModePerm)
+
+		// Write metadata file with empty description
+		metadataPath := filepath.Join(course.Path, coursemetadata.MetadataFileName)
+		metadataJSON := `{
+  "description": "",
+  "tags": []
+}`
+		require.NoError(t, afero.WriteFile(scanner.appFs.Fs, metadataPath, []byte(metadataJSON), 0644))
+
+		err = Processor(ctx, scanner, scanState)
+		require.NoError(t, err)
+
+		dbOpts := dao.NewOptions().WithWhere(squirrel.Eq{models.COURSE_TABLE_ID: course.ID})
+		record, err := scanner.dao.GetCourse(ctx, dbOpts)
+		require.NoError(t, err)
+		require.Empty(t, record.Description)
 	})
 }
 

@@ -23,7 +23,8 @@ func TestMetadataWriter_WriteMetadataAsync(t *testing.T) {
 		require.NoError(t, fs.MkdirAll(coursePath, 0755))
 
 		metadata := &CourseMetadata{
-			Tags: []string{"go", "programming"},
+			Description: "",
+			Tags:        []string{"go", "programming"},
 		}
 
 		writer.WriteMetadataAsync("course-1", coursePath, metadata)
@@ -58,7 +59,8 @@ func TestMetadataWriter_WriteMetadataAsync(t *testing.T) {
 			go func(tagNum int) {
 				defer wg.Done()
 				metadata := &CourseMetadata{
-					Tags: []string{string(rune('a' + tagNum))},
+					Description: "",
+					Tags:        []string{string(rune('a' + tagNum))},
 				}
 				writer.WriteMetadataAsync(courseID, coursePath, metadata)
 
@@ -134,15 +136,15 @@ func TestMetadataWriter_WriteMetadataAsync(t *testing.T) {
 		courseID := "course-1"
 
 		// Write tag "a"
-		writer.WriteMetadataAsync(courseID, coursePath, &CourseMetadata{Tags: []string{"a"}})
+		writer.WriteMetadataAsync(courseID, coursePath, &CourseMetadata{Description: "", Tags: []string{"a"}})
 		time.Sleep(50 * time.Millisecond)
 
 		// Write tag "b"
-		writer.WriteMetadataAsync(courseID, coursePath, &CourseMetadata{Tags: []string{"b"}})
+		writer.WriteMetadataAsync(courseID, coursePath, &CourseMetadata{Description: "", Tags: []string{"b"}})
 		time.Sleep(50 * time.Millisecond)
 
 		// Write tag "c"
-		writer.WriteMetadataAsync(courseID, coursePath, &CourseMetadata{Tags: []string{"c"}})
+		writer.WriteMetadataAsync(courseID, coursePath, &CourseMetadata{Description: "", Tags: []string{"c"}})
 		time.Sleep(50 * time.Millisecond)
 
 		// Final state should be "c"
@@ -165,7 +167,8 @@ func TestMetadataWriter_WriteMetadataSync(t *testing.T) {
 		require.NoError(t, fs.MkdirAll(coursePath, 0755))
 
 		metadata := &CourseMetadata{
-			Tags: []string{"go", "programming"},
+			Description: "",
+			Tags:        []string{"go", "programming"},
 		}
 
 		err := writer.WriteMetadataSync("course-1", coursePath, metadata)
@@ -197,7 +200,8 @@ func TestMetadataWriter_WriteMetadataSync(t *testing.T) {
 			go func(tagNum int) {
 				defer wg.Done()
 				metadata := &CourseMetadata{
-					Tags: []string{string(rune('a' + tagNum))},
+					Description: "",
+					Tags:        []string{string(rune('a' + tagNum))},
 				}
 				errors[tagNum] = writer.WriteMetadataSync(courseID, coursePath, metadata)
 			}(i)
@@ -233,7 +237,8 @@ func TestMetadataWriter_writeMetadataAtomic(t *testing.T) {
 		tempPath := metadataPath + ".tmp"
 
 		metadata := &CourseMetadata{
-			Tags: []string{"go", "programming"},
+			Description: "",
+			Tags:        []string{"go", "programming"},
 		}
 
 		err := writer.WriteMetadataSync("course-1", coursePath, metadata)
@@ -319,19 +324,19 @@ func TestMetadataWriter_concurrentMixedOperations(t *testing.T) {
 		wg.Add(1)
 		go func() {
 			defer wg.Done()
-			writer.WriteMetadataAsync(courseID, coursePath, &CourseMetadata{Tags: []string{"async1"}})
+			writer.WriteMetadataAsync(courseID, coursePath, &CourseMetadata{Description: "", Tags: []string{"async1"}})
 		}()
 
 		wg.Add(1)
 		go func() {
 			defer wg.Done()
-			require.NoError(t, writer.WriteMetadataSync(courseID, coursePath, &CourseMetadata{Tags: []string{"sync1"}}))
+			require.NoError(t, writer.WriteMetadataSync(courseID, coursePath, &CourseMetadata{Description: "", Tags: []string{"sync1"}}))
 		}()
 
 		wg.Add(1)
 		go func() {
 			defer wg.Done()
-			writer.WriteMetadataAsync(courseID, coursePath, &CourseMetadata{Tags: []string{"async2"}})
+			writer.WriteMetadataAsync(courseID, coursePath, &CourseMetadata{Description: "", Tags: []string{"async2"}})
 		}()
 
 		wg.Wait()

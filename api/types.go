@@ -59,6 +59,7 @@ type courseResponse struct {
 	Duration    int            `json:"duration"`
 	InitialScan *bool          `json:"initialScan,omitempty"`
 	Maintenance bool           `json:"maintenance"`
+	Description string         `json:"description"`
 	CreatedAt   types.DateTime `json:"createdAt"`
 	UpdatedAt   types.DateTime `json:"updatedAt"`
 
@@ -107,6 +108,7 @@ func courseResponseHelper(courses []*models.Course, isAdmin bool) []*courseRespo
 			Available:   course.Available,
 			Duration:    course.Duration,
 			Maintenance: course.Maintenance,
+			Description: course.Description,
 			CreatedAt:   course.CreatedAt,
 			UpdatedAt:   course.UpdatedAt,
 

@@ -19,6 +19,7 @@ const (
 	COURSE_DURATION      = "duration"
 	COURSE_INITIAL_SCAN  = "initial_scan"
 	COURSE_MAINTENANCE   = "maintenance"
+	COURSE_DESCRIPTION   = "description"
 
 	COURSE_TABLE_ID            = COURSE_TABLE + "." + BASE_ID
 	COURSE_TABLE_CREATED_AT    = COURSE_TABLE + "." + BASE_CREATED_AT
@@ -32,6 +33,7 @@ const (
 	COURSE_TABLE_DURATION      = COURSE_TABLE + "." + COURSE_DURATION
 	COURSE_TABLE_INITIAL_SCAN  = COURSE_TABLE + "." + COURSE_INITIAL_SCAN
 	COURSE_TABLE_MAINTENANCE   = COURSE_TABLE + "." + COURSE_MAINTENANCE
+	COURSE_TABLE_DESCRIPTION   = COURSE_TABLE + "." + COURSE_DESCRIPTION
 )
 
 // ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
@@ -48,6 +50,7 @@ type Course struct {
 	Duration    int    `db:"duration"`      // Mutable
 	InitialScan bool   `db:"initial_scan"`  // Mutable
 	Maintenance bool   `db:"maintenance"`   // Mutable
+	Description string `db:"description"`   // Mutable
 
 	// Relation
 	Progress   *CourseProgress `db:"-"`
@@ -71,6 +74,7 @@ func CourseColumns() []string {
 		fmt.Sprintf("%s AS duration", COURSE_TABLE_DURATION),
 		fmt.Sprintf("%s AS initial_scan", COURSE_TABLE_INITIAL_SCAN),
 		fmt.Sprintf("%s AS maintenance", COURSE_TABLE_MAINTENANCE),
+		fmt.Sprintf("%s AS description", COURSE_TABLE_DESCRIPTION),
 	}
 }
 
@@ -106,6 +110,7 @@ func (r *CourseRow) ToDomain() *Course {
 		Duration:    r.Duration,
 		InitialScan: r.InitialScan,
 		Maintenance: r.Maintenance,
+		Description: r.Description,
 	}
 
 	c.Progress = r.CourseProgressRow.ToDomain()

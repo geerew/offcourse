@@ -280,6 +280,20 @@ func Processor(ctx context.Context, s *CourseScan, scanState *ScanState) error {
 			}
 		}
 
+		// Apply description from metadata
+		// If metadata exists, use its description (even if empty string)
+		// If metadata doesn't exist, set description to empty string
+		newDescription := ""
+		if metadata != nil {
+			newDescription = metadata.Description
+		}
+
+		// Only update if description changed
+		if course.Description != newDescription {
+			course.Description = newDescription
+			updatedCourse = true
+		}
+
 		if updatedCourse {
 			// Recalculate course duration from scratch to ensure accuracy, preventing accumulation errors
 			// from incremental updates

@@ -115,4 +115,3 @@ func (o *Options) WithAssetMetadata() *Options {
 	o.IncludeAssetMetadata = true
 	return o
 }
-

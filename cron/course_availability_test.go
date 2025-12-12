@@ -86,7 +86,7 @@ func TestCourseAvailability_Run(t *testing.T) {
 		app, _ := setup(t)
 
 		db := app.DbManager.DataDb
-		_, err := db.ExecContext(context.Background(), "DROP TABLE IF EXISTS " + models.COURSE_TABLE)
+		_, err := db.ExecContext(context.Background(), "DROP TABLE IF EXISTS "+models.COURSE_TABLE)
 		require.NoError(t, err)
 
 		ca := &courseAvailability{
