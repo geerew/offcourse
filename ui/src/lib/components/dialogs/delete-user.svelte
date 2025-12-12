@@ -134,7 +134,7 @@
 				{@render alertContents()}
 
 				<Dialog.Footer>
-					<Dialog.CloseButton>Close</Dialog.CloseButton>
+					<Dialog.CloseButton>Cancel</Dialog.CloseButton>
 					{@render deleteButton()}
 				</Dialog.Footer>
 			</div>
@@ -144,12 +144,12 @@
 	<Drawer.Root bind:open>
 		{@render trigger?.()}
 
-		<Drawer.Content class="bg-background-alt-2" handleClass="bg-background-alt-4">
+		<Drawer.Content class="bg-background-alt-1" handleClass="bg-background-alt-4">
 			<div class="bg-background-alt-1 overflow-hidden rounded-lg">
 				{@render alertContents()}
 
 				<Drawer.Footer>
-					<Drawer.CloseButton>Close</Drawer.CloseButton>
+					<Drawer.CloseButton>Cancel</Drawer.CloseButton>
 					{@render deleteButton()}
 				</Drawer.Footer>
 			</div>

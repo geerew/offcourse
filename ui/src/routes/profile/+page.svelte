@@ -146,7 +146,7 @@
 		<div class="mx-auto flex max-w-2xl flex-col place-content-center items-start gap-5">
 			<!-- Username -->
 			<div class="flex flex-col gap-3">
-				<div class="text-foreground-alt-3 text-[15px] uppercase">Username</div>
+				<div class="text-foreground-alt-1 text-[15px] uppercase">Username</div>
 				<span class="text-background-primary text-2xl">{auth.user.username}</span>
 			</div>
 
@@ -155,7 +155,7 @@
 			<!-- Display name -->
 			<div class="flex flex-col gap-3 w-full">
 				<div class="flex flex-row items-center justify-between w-full">
-					<div class="text-foreground-alt-3 text-[15px] uppercase">Display Name</div>
+					<div class="text-foreground-alt-1 text-[15px] uppercase">Display Name</div>
 					{#if !isEditingDisplayName}
 						<button
 							type="button"
@@ -224,7 +224,7 @@
 
 			<!-- Role -->
 			<div class="flex flex-col gap-3">
-				<div class="text-foreground-alt-3 text-[15px] uppercase">Role</div>
+				<div class="text-foreground-alt-1 text-[15px] uppercase">Role</div>
 				<span class="text-background-primary text-2xl">{auth.isAdmin ? 'Admin' : 'User'}</span>
 			</div>
 
@@ -233,7 +233,7 @@
 			<!-- Password -->
 			<div class="flex flex-col gap-3 w-full">
 				<div class="flex flex-row items-center justify-between w-full">
-					<div class="text-foreground-alt-3 text-[15px] uppercase">Password</div>
+					<div class="text-foreground-alt-1 text-[15px] uppercase">Password</div>
 					{#if !isEditingPassword}
 						<button
 							type="button"
@@ -320,17 +320,21 @@
 			<Separator.Root class="bg-background-alt-3 my-2 h-px w-full shrink-0" />
 
 			<!-- Delete account -->
-			<div class="flex flex-col gap-3">
-				<div class="text-foreground-alt-3 text-[15px] uppercase">Delete Account</div>
-				<DeleteUserDialog value={auth.user}>
-					{#snippet trigger()}
+			<div class="flex flex-col gap-1 w-full">
+				<div class="flex flex-row items-center justify-between w-full">
+					<div class="text-foreground-alt-1 text-[15px] uppercase">Delete Account</div>
+					<DeleteUserDialog value={auth.user}>
+						{#snippet trigger()}
 						<Dialog.Trigger
-							class="bg-background-error enabled:hover:bg-background-error-alt-1 text-foreground-alt-1 enabled:hover:text-foreground w-auto"
+							type="button"
+							class="text-foreground-error w-auto hover:text-foreground-error-alt-1 cursor-pointer bg-transparent py-0 text-sm duration-200 hover:bg-transparent"
 						>
-							Delete Account
+							Delete
 						</Dialog.Trigger>
-					{/snippet}
-				</DeleteUserDialog>
+						{/snippet}
+					</DeleteUserDialog>
+				</div>
+				<div class="text-foreground-alt-3 text-sm">Permanently delete your OffCourse account</div>
 			</div>
 		</div>
 	</div>
