@@ -2,6 +2,7 @@ export { default as ActionIcon } from './action.svelte';
 export { default as AddedIcon } from './added.svelte';
 export { default as ArrowBackIcon } from './arrow-back.svelte';
 export { default as ArrowLeftIcon } from './arrow-left.svelte';
+export { default as BookTextIcon } from './book-text.svelte';
 export { default as BurgerMenuIcon } from './burger-menu.svelte';
 export { default as ClearProgressIcon } from './clear-progress.svelte';
 export { default as CourseIcon } from './course.svelte';

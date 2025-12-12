@@ -15,6 +15,7 @@
 	import { ClearCourseProgressDialog, MarkCourseCompleteDialog } from '$lib/components/dialogs';
 	import {
 		AddedIcon,
+		BookTextIcon,
 		ClearProgressIcon,
 		DotIcon,
 		DotsIcon,
@@ -39,7 +40,7 @@
 	import type { AssetModel } from '$lib/models/asset-model';
 	import type { AssetProgressUpdateModel } from '$lib/models/asset-model';
 	import type { CourseModel, CourseReqParams, CourseTagsModel } from '$lib/models/course-model';
-	import type { ModulesModel } from '$lib/models/module-model';
+	import type { LessonModel, ModuleModel, ModulesModel } from '$lib/models/module-model';
 	import type { ScanCreateModel } from '$lib/models/scan-model';
 	import { scanStore } from '$lib/scanStore.svelte';
 	import { cn } from '$lib/utils';
@@ -270,7 +271,7 @@
 	// Returns all assets in a module
 	function getAllAssetsInModule(modulePrefix: number): AssetModel[] {
 		if (!modules) return [];
-		const mod = modules.modules.find((m) => m.prefix === modulePrefix);
+		const mod = modules.modules.find((m: ModuleModel) => m.prefix === modulePrefix);
 		if (!mod) return [];
 
 		const assets: AssetModel[] = [];
@@ -377,7 +378,9 @@
 					}
 
 					// Update lesson completion state
-					const completedAssets = lesson.assets.filter((a) => a.progress.completed).length;
+					const completedAssets = lesson.assets.filter(
+						(a: AssetModel) => a.progress.completed
+					).length;
 					lesson.assetsCompleted = completedAssets;
 					lesson.completed = completedAssets === lesson.assets.length;
 					lesson.started = completedAssets > 0;
@@ -439,7 +442,7 @@
 					<div class="grid w-full grid-cols-1 gap-6 lg:grid-cols-[1fr_minmax(0,23rem)] lg:gap-10">
 						<!-- Information -->
 						<div class="order-2 flex h-full w-full flex-col justify-between gap-5 lg:order-1">
-							<div class="flex h-full w-full flex-col gap-4">
+							<div class="flex h-full w-full flex-col gap-4 py-2">
 								<!-- Title -->
 								<div class="text-foreground-alt-1 text-lg font-semibold md:text-2xl">
 									{course.title}
@@ -580,8 +583,23 @@
 									</div>
 								</div>
 
+								<!-- Description -->
+								<div class="flex flex-col gap-3 text-sm">
+									<div class="flex flex-row items-center gap-2">
+										<BookTextIcon class="text-foreground-alt-3 size-4.5" />
+										<span>Description</span>
+									</div>
+									{#if !course.description}
+										<span class="text-foreground-alt-2 px-2">-</span>
+									{:else}
+										<div class="text-foreground-alt-2 pl-0.5 leading-relaxed">
+											{course.description}
+										</div>
+									{/if}
+								</div>
+
 								<!-- Tags -->
-								<div class="flex flex-col gap-4 py-2 text-sm">
+								<div class="flex flex-col gap-3 text-sm">
 									<div class="flex flex-row items-center gap-2">
 										<TagIcon class="text-foreground-alt-3 size-4.5 stroke-2" />
 										<span>Tags</span>
@@ -589,7 +607,7 @@
 									{#if tags.length === 0}
 										<span class="text-foreground-alt-2 px-2">-</span>
 									{:else}
-										<div class="flex flex-wrap gap-2 px-2">
+										<div class="flex flex-wrap gap-2 pl-0.5">
 											{#each tags as tag}
 												<Badge class="text-sm  select-none">
 													{tag.tag}
@@ -601,7 +619,7 @@
 							</div>
 
 							{#if assetCount > 0}
-								<div class="flex flex-row place-items-end gap-2.5">
+								<div class="flex flex-row place-items-end gap-2.5 pt-3">
 									<Button
 										href={`/course/${course.id}/${lessonToResume?.id}`}
 										variant="default"
@@ -882,10 +900,10 @@
 																<!-- Lesson status or checkbox -->
 																{#if isAssetEditMode}
 																	{@const allSelected = lesson.assets.every(
-																		(a) => selectedAssets[a.id]
+																		(a: AssetModel) => selectedAssets[a.id]
 																	)}
 																	{@const someSelected = lesson.assets.some(
-																		(a) => selectedAssets[a.id]
+																		(a: AssetModel) => selectedAssets[a.id]
 																	)}
 																	{@const isOngoing = lesson.started && !lesson.completed}
 																	{@const shouldBeIndeterminate =

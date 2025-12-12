@@ -52,6 +52,7 @@ export const CourseSchema = object({
 	duration: number(),
 	initialScan: optional(boolean()),
 	maintenance: boolean(),
+	description: string(),
 	scanStatus: optional(string()),
 	progress: optional(CourseProgressSchema),
 	favourited: optional(boolean())

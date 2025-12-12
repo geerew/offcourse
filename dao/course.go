@@ -53,6 +53,7 @@ func (dao *DAO) CreateCourse(ctx context.Context, course *models.Course) error {
 				models.COURSE_DURATION:      course.Duration,
 				models.COURSE_INITIAL_SCAN:  course.InitialScan,
 				models.COURSE_MAINTENANCE:   course.Maintenance,
+				models.COURSE_DESCRIPTION:   course.Description,
 				models.BASE_CREATED_AT:      course.CreatedAt,
 				models.BASE_UPDATED_AT:      course.UpdatedAt,
 			},
@@ -188,6 +189,7 @@ func (dao *DAO) UpdateCourse(ctx context.Context, course *models.Course) error {
 				models.COURSE_DURATION:      course.Duration,
 				models.COURSE_INITIAL_SCAN:  course.InitialScan,
 				models.COURSE_MAINTENANCE:   course.Maintenance,
+				models.COURSE_DESCRIPTION:   course.Description,
 				models.BASE_UPDATED_AT:      course.UpdatedAt,
 			},
 		).

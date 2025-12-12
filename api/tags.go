@@ -259,7 +259,8 @@ func (api *tagsAPI) deleteTag(c *fiber.Ctx) error {
 
 		// Update oc.json file with actual remaining tags
 		metadata := &coursemetadata.CourseMetadata{
-			Tags: remainingTags,
+			Description: "",
+			Tags:        remainingTags,
 		}
 		api.r.app.MetadataWriter.WriteMetadataAsync(courseID, coursePath, metadata)
 	}

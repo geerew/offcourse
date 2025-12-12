@@ -3,18 +3,19 @@
 -- Courses represents a collection of lessons, which in turn is a collection of 
 -- assets and attachments
 CREATE TABLE courses (
-	id           TEXT PRIMARY KEY NOT NULL,
-	title        TEXT NOT NULL,
-	path         TEXT UNIQUE NOT NULL,
-	card_path    TEXT,
-	card_hash    TEXT,
+	id            TEXT PRIMARY KEY NOT NULL,
+	title         TEXT NOT NULL,
+	path          TEXT UNIQUE NOT NULL,
+	description   TEXT NOT NULL DEFAULT '',
+	card_path     TEXT,
+	card_hash     TEXT,
 	card_mod_time TEXT,
-	available    BOOLEAN NOT NULL DEFAULT FALSE,
-	duration     INTEGER NOT NULL DEFAULT 0,
-	initial_scan BOOLEAN NOT NULL DEFAULT FALSE,
-	maintenance  BOOLEAN NOT NULL DEFAULT FALSE,
-	created_at   TEXT NOT NULL DEFAULT (STRFTIME('%Y-%m-%d %H:%M:%f', 'NOW')),
-	updated_at   TEXT NOT NULL DEFAULT (STRFTIME('%Y-%m-%d %H:%M:%f', 'NOW'))
+	available     BOOLEAN NOT NULL DEFAULT FALSE,
+	duration      INTEGER NOT NULL DEFAULT 0,
+	initial_scan  BOOLEAN NOT NULL DEFAULT FALSE,
+	maintenance   BOOLEAN NOT NULL DEFAULT FALSE,
+	created_at    TEXT NOT NULL DEFAULT (STRFTIME('%Y-%m-%d %H:%M:%f', 'NOW')),
+	updated_at    TEXT NOT NULL DEFAULT (STRFTIME('%Y-%m-%d %H:%M:%f', 'NOW'))
 );
 
 -- Course progress represents the overall progress of a course, per user

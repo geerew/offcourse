@@ -30,6 +30,52 @@ func TestReadMetadata(t *testing.T) {
 		require.NoError(t, err)
 		require.NotNil(t, metadata)
 		require.Equal(t, []string{"go", "programming"}, metadata.Tags)
+		require.Empty(t, metadata.Description)
+	})
+
+	t.Run("file exists with description", func(t *testing.T) {
+		fs := afero.NewMemMapFs()
+		coursePath := "/test-course"
+
+		// Create course directory
+		require.NoError(t, fs.MkdirAll(coursePath, 0755))
+
+		// Write metadata file with description
+		metadataPath := filepath.Join(coursePath, MetadataFileName)
+		data := `{
+  "description": "A course about Go programming",
+  "tags": ["go", "programming"]
+}`
+		require.NoError(t, afero.WriteFile(fs, metadataPath, []byte(data), 0644))
+
+		// Read metadata
+		metadata, err := ReadMetadata(fs, coursePath)
+		require.NoError(t, err)
+		require.NotNil(t, metadata)
+		require.Equal(t, []string{"go", "programming"}, metadata.Tags)
+		require.Equal(t, "A course about Go programming", metadata.Description)
+	})
+
+	t.Run("file exists with only description", func(t *testing.T) {
+		fs := afero.NewMemMapFs()
+		coursePath := "/test-course"
+
+		// Create course directory
+		require.NoError(t, fs.MkdirAll(coursePath, 0755))
+
+		// Write metadata file with only description
+		metadataPath := filepath.Join(coursePath, MetadataFileName)
+		data := `{
+  "description": "A course description"
+}`
+		require.NoError(t, afero.WriteFile(fs, metadataPath, []byte(data), 0644))
+
+		// Read metadata
+		metadata, err := ReadMetadata(fs, coursePath)
+		require.NoError(t, err)
+		require.NotNil(t, metadata)
+		require.Empty(t, metadata.Tags)
+		require.Equal(t, "A course description", metadata.Description)
 	})
 
 	t.Run("file exists with empty tags", func(t *testing.T) {
@@ -86,7 +132,8 @@ func TestWriteMetadata(t *testing.T) {
 		require.NoError(t, fs.MkdirAll(coursePath, 0755))
 
 		metadata := &CourseMetadata{
-			Tags: []string{"go", "programming"},
+			Description: "",
+			Tags:        []string{"go", "programming"},
 		}
 
 		err := WriteMetadata(fs, coursePath, metadata)
@@ -103,6 +150,35 @@ func TestWriteMetadata(t *testing.T) {
 		require.NoError(t, err)
 		require.NotNil(t, readMetadata)
 		require.Equal(t, metadata.Tags, readMetadata.Tags)
+		require.Empty(t, readMetadata.Description)
+	})
+
+	t.Run("write new file with description", func(t *testing.T) {
+		fs := afero.NewMemMapFs()
+		coursePath := "/test-course"
+
+		require.NoError(t, fs.MkdirAll(coursePath, 0755))
+
+		metadata := &CourseMetadata{
+			Description: "A course about Go programming",
+			Tags:        []string{"go", "programming"},
+		}
+
+		err := WriteMetadata(fs, coursePath, metadata)
+		require.NoError(t, err)
+
+		// Verify file was created
+		metadataPath := filepath.Join(coursePath, MetadataFileName)
+		exists, err := afero.Exists(fs, metadataPath)
+		require.NoError(t, err)
+		require.True(t, exists)
+
+		// Read back and verify
+		readMetadata, err := ReadMetadata(fs, coursePath)
+		require.NoError(t, err)
+		require.NotNil(t, readMetadata)
+		require.Equal(t, metadata.Tags, readMetadata.Tags)
+		require.Equal(t, metadata.Description, readMetadata.Description)
 	})
 
 	t.Run("overwrite existing file", func(t *testing.T) {
@@ -113,13 +189,15 @@ func TestWriteMetadata(t *testing.T) {
 
 		// Write initial metadata
 		initialMetadata := &CourseMetadata{
-			Tags: []string{"old"},
+			Description: "",
+			Tags:        []string{"old"},
 		}
 		require.NoError(t, WriteMetadata(fs, coursePath, initialMetadata))
 
 		// Overwrite with new metadata
 		newMetadata := &CourseMetadata{
-			Tags: []string{"new", "tags"},
+			Description: "",
+			Tags:        []string{"new", "tags"},
 		}
 		require.NoError(t, WriteMetadata(fs, coursePath, newMetadata))
 
@@ -137,7 +215,8 @@ func TestWriteMetadata(t *testing.T) {
 		require.NoError(t, fs.MkdirAll(coursePath, 0755))
 
 		metadata := &CourseMetadata{
-			Tags: []string{},
+			Description: "",
+			Tags:        []string{},
 		}
 
 		err := WriteMetadata(fs, coursePath, metadata)
@@ -170,7 +249,8 @@ func TestDeleteMetadata(t *testing.T) {
 		require.NoError(t, fs.MkdirAll(coursePath, 0755))
 
 		metadata := &CourseMetadata{
-			Tags: []string{"go"},
+			Description: "",
+			Tags:        []string{"go"},
 		}
 		require.NoError(t, WriteMetadata(fs, coursePath, metadata))
 

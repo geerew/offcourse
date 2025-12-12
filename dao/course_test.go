@@ -24,6 +24,21 @@ func Test_CreateCourse(t *testing.T) {
 		require.NoError(t, dao.CreateCourse(ctx, course))
 	})
 
+	t.Run("success with description", func(t *testing.T) {
+		dao, ctx := setup(t)
+		course := &models.Course{
+			Title:       "Course 1",
+			Path:        "/course-1",
+			Description: "A test course description",
+		}
+		require.NoError(t, dao.CreateCourse(ctx, course))
+
+		dbOpts := NewOptions().WithWhere(squirrel.Eq{models.COURSE_TABLE_ID: course.ID})
+		record, err := dao.GetCourse(ctx, dbOpts)
+		require.NoError(t, err)
+		require.Equal(t, "A test course description", record.Description)
+	})
+
 	t.Run("nil pointer", func(t *testing.T) {
 		dao, ctx := setup(t)
 		require.ErrorIs(t, dao.CreateCourse(ctx, nil), utils.ErrNilPtr)
@@ -491,6 +506,32 @@ func Test_UpdateCourse(t *testing.T) {
 		require.NotEqual(t, originalCourse.UpdatedAt, record.UpdatedAt)   // Changed
 	})
 
+	t.Run("success with description", func(t *testing.T) {
+		dao, ctx := setup(t)
+
+		originalCourse := &models.Course{
+			Title:       "Course 1",
+			Path:        "/course-1",
+			Description: "Original description",
+		}
+		require.NoError(t, dao.CreateCourse(ctx, originalCourse))
+
+		time.Sleep(1 * time.Millisecond)
+
+		updatedCourse := &models.Course{
+			Base:        originalCourse.Base,
+			Title:       originalCourse.Title,
+			Path:        originalCourse.Path,
+			Description: "Updated description",
+		}
+		require.NoError(t, dao.UpdateCourse(ctx, updatedCourse))
+
+		dbOpts := NewOptions().WithWhere(squirrel.Eq{models.COURSE_TABLE_ID: originalCourse.ID})
+		record, err := dao.GetCourse(ctx, dbOpts)
+		require.NoError(t, err)
+		require.Equal(t, "Updated description", record.Description)
+	})
+
 	t.Run("invalid", func(t *testing.T) {
 		dao, ctx := setup(t)
 
@@ -612,7 +653,7 @@ func Test_ClassifyCoursePaths(t *testing.T) {
 	t.Run("db error", func(t *testing.T) {
 		dao, ctx := setup(t)
 
-		_, err := dao.db.ExecContext(context.Background(), "DROP TABLE IF EXISTS " + models.COURSE_TABLE)
+		_, err := dao.db.ExecContext(context.Background(), "DROP TABLE IF EXISTS "+models.COURSE_TABLE)
 		require.Nil(t, err)
 
 		result, err := dao.ClassifyCoursePaths(ctx, []string{"/"})
