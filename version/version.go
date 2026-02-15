@@ -2,10 +2,13 @@ package version
 
 import "strings"
 
-// These variables are set via ldflags during build
+// ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
+
+// These variables are set via ldflags during the build
 var (
 	// Version is the git tag (e.g., "v0.0.1") or "dev" for dev builds
 	Version = "dev"
+
 	// Commit is the short git commit hash
 	Commit = "unknown"
 )

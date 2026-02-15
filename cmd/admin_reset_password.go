@@ -169,6 +169,7 @@ func resetPasswordViaAPI(appFs *appfs.AppFs, username, password, dataDir, httpAd
 
 // ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
 
+// init adds the admin reset password command to the admin command
 func init() {
 	adminCmd.AddCommand(adminResetPasswordCmd)
 

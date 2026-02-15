@@ -15,6 +15,7 @@ var adminCmd = &cobra.Command{
 
 // ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
 
+// init adds the admin command to the root command
 func init() {
 	rootCmd.AddCommand(adminCmd)
 }

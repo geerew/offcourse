@@ -96,6 +96,7 @@ var serveCmd = &cobra.Command{
 
 // ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
 
+// init adds the serve command to the root command
 func init() {
 	rootCmd.AddCommand(serveCmd)
 	serveCmd.Flags().BoolP("dev", "d", false, "Run in development mode")

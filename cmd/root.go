@@ -1,7 +1,6 @@
 package cmd
 
 import (
-	"bufio"
 	"os"
 	"strings"
 
@@ -12,7 +11,7 @@ import (
 
 // ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
 
-// rootCmd represents the base command when called without any subcommands
+// rootCmd groups all offcourse cli commands
 var rootCmd = &cobra.Command{
 	Use:   "offcourse",
 	Short: "OffCourse",
@@ -30,20 +29,6 @@ func Execute() {
 
 // ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
 
-// questionPlain asks a question, waits for plain text input and returns the answer
-func questionPlain(question string) string {
-	c := color.New(color.Bold, color.FgGreen)
-	c.Printf(">> %s: ", question)
-
-	reader := bufio.NewReader(os.Stdin)
-	answer, _ := reader.ReadString('\n')
-	answer = strings.TrimSpace(answer)
-
-	return answer
-}
-
-// ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
-
 // questionPassword asks a question, waits for hidden text input and returns the answer
 func questionPassword(question string) string {
 	c := color.New(color.Bold, color.FgGreen)
@@ -55,28 +40,6 @@ func questionPassword(question string) string {
 
 	c.Println()
 
-	return answer
-}
-
-// ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
-
-// questionPlainWithDefault asks a question showing a default value, and returns the answer
-func questionPlainWithDefault(question, def string) string {
-	c := color.New(color.Bold, color.FgGreen)
-
-	if def != "" {
-		c.Printf(">> %s [%s]: ", question, def)
-	} else {
-		c.Printf(">> %s: ", question)
-	}
-
-	reader := bufio.NewReader(os.Stdin)
-	answer, _ := reader.ReadString('\n')
-	answer = strings.TrimSpace(answer)
-
-	if answer == "" {
-		return def
-	}
 	return answer
 }
 
