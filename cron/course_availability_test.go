@@ -18,9 +18,9 @@ import (
 
 func TestCourseAvailability_Run(t *testing.T) {
 	t.Run("update", func(t *testing.T) {
-		app, ctx := setup(t)
+		testApp, ctx := setup(t)
 
-		appDao := dao.New(app.DbManager.DataDb)
+		appDao := dao.New(testApp.DbManager.DataDb)
 
 		courses := []*models.Course{}
 		for i := range 3 {
@@ -30,10 +30,10 @@ func TestCourseAvailability_Run(t *testing.T) {
 		}
 
 		ca := &courseAvailability{
-			db:        app.DbManager.DataDb,
+			db:        testApp.DbManager.DataDb,
 			dao:       appDao,
-			appFs:     app.AppFs,
-			logger:    app.Logger.WithCron(),
+			appFs:     testApp.AppFs,
+			logger:    testApp.Logger.WithCron(),
 			batchSize: 2,
 		}
 
@@ -41,7 +41,7 @@ func TestCourseAvailability_Run(t *testing.T) {
 		require.NoError(t, err)
 
 		for _, course := range courses {
-			require.Nil(t, app.AppFs.Fs.MkdirAll(course.Path, 0755))
+			require.Nil(t, testApp.AppFs.Fs.MkdirAll(course.Path, 0755))
 		}
 
 		err = ca.run()
@@ -56,9 +56,9 @@ func TestCourseAvailability_Run(t *testing.T) {
 	})
 
 	t.Run("stat error", func(t *testing.T) {
-		app, ctx := setup(t)
+		testApp, ctx := setup(t)
 
-		appDao := dao.New(app.DbManager.DataDb)
+		appDao := dao.New(testApp.DbManager.DataDb)
 
 		course := &models.Course{Title: "course 1", Path: "/course-1", Available: false}
 		require.NoError(t, appDao.CreateCourse(ctx, course))
@@ -69,10 +69,10 @@ func TestCourseAvailability_Run(t *testing.T) {
 		}
 
 		ca := &courseAvailability{
-			db:        app.DbManager.DataDb,
+			db:        testApp.DbManager.DataDb,
 			dao:       appDao,
 			appFs:     appfs.New(fsWithError),
-			logger:    app.Logger.WithCron(),
+			logger:    testApp.Logger.WithCron(),
 			batchSize: 1,
 		}
 
@@ -83,17 +83,17 @@ func TestCourseAvailability_Run(t *testing.T) {
 	})
 
 	t.Run("db error", func(t *testing.T) {
-		app, _ := setup(t)
+		testApp, _ := setup(t)
 
-		db := app.DbManager.DataDb
+		db := testApp.DbManager.DataDb
 		_, err := db.ExecContext(context.Background(), "DROP TABLE IF EXISTS "+models.COURSE_TABLE)
 		require.NoError(t, err)
 
 		ca := &courseAvailability{
 			db:        db,
 			dao:       dao.New(db),
-			appFs:     app.AppFs,
-			logger:    app.Logger.WithCron(),
+			appFs:     testApp.AppFs,
+			logger:    testApp.Logger.WithCron(),
 			batchSize: 1,
 		}
 

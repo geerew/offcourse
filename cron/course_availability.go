@@ -13,6 +13,11 @@ import (
 	"github.com/geerew/off-course/utils/types"
 )
 
+// ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
+
+// courseAvailability represents course availability
+//
+// Once created, call ca.run() to update the availability of courses
 type courseAvailability struct {
 	db        database.Database
 	dao       *dao.DAO
@@ -23,6 +28,7 @@ type courseAvailability struct {
 
 // ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
 
+// run updates the availability of courses
 func (ca *courseAvailability) run() error {
 	perPage := 100
 	page := 1
@@ -128,8 +134,9 @@ func (ca *courseAvailability) run() error {
 
 // ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
 
+// writeAll is a helper function that updates the availability of courses
+// in a transaction
 func (ca *courseAvailability) writeAll(ctx context.Context, courses []*models.Course) error {
-	// Update the courses in a transaction
 	err := ca.db.RunInTransaction(ctx, func(txCtx context.Context) error {
 		for _, course := range courses {
 			if err := ca.dao.UpdateCourse(txCtx, course); err != nil {

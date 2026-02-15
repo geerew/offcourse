@@ -2,23 +2,33 @@ package app
 
 import (
 	"context"
+	"fmt"
+	"sync"
+	"sync/atomic"
+	"testing"
 	"time"
 
+	"github.com/Masterminds/squirrel"
+	"github.com/geerew/off-course/cron"
 	"github.com/geerew/off-course/dao"
 	"github.com/geerew/off-course/database"
+	"github.com/geerew/off-course/models"
 	"github.com/geerew/off-course/utils/appfs"
+	"github.com/geerew/off-course/utils/auth"
 	"github.com/geerew/off-course/utils/cardcache"
 	"github.com/geerew/off-course/utils/coursemetadata"
 	"github.com/geerew/off-course/utils/coursescan"
 	"github.com/geerew/off-course/utils/logger"
 	"github.com/geerew/off-course/utils/media"
 	"github.com/geerew/off-course/utils/media/hls"
+	"github.com/geerew/off-course/utils/types"
 	"github.com/spf13/afero"
+	"github.com/stretchr/testify/require"
 )
 
 // ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
 
-// App represents the application and contains all dependencies
+// App represents the application with dependencies
 type App struct {
 	// Core dependencies
 	Logger    *logger.Logger
@@ -31,13 +41,41 @@ type App struct {
 	Transcoder     *hls.Transcoder
 	CardCache      *cardcache.CardCache
 	MetadataWriter *coursemetadata.MetadataWriter
+	Cron           *cron.Cron
 
 	// Configuration
 	Config *Config
 
 	// Internal
-	dbWriter *logger.DbWriter
+	dbLogger     *logger.DbWriter
+	bootstrapped atomic.Int32
 }
+
+// ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
+
+// Mode represents the application mode
+type AppMode int
+
+// ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
+
+// AppMode constants
+//  1. Production
+//  2. Development
+//  3. Test
+const (
+	AppModeProd AppMode = iota
+	AppModeDev
+	AppModeTest
+)
+
+// ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
+
+var (
+	// ffmpegOnce caches the FFmpeg lookup
+	ffmpegOnce sync.Once
+	// cachedFFmpeg is the cached FFmpeg lookup result
+	cachedFFmpeg *media.FFmpeg
+)
 
 // ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
 
@@ -45,119 +83,152 @@ type App struct {
 type Config struct {
 	HttpAddr     string
 	DataDir      string
-	IsDev        bool
 	EnableSignup bool
-	IsDebug      bool
+	Debug        bool
+	AppMode      AppMode
 }
 
 // ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
 
 // New creates a new App instance with all dependencies initialized
-func New(ctx context.Context, config *Config) (*App, error) {
-	// Determine log level
+func NewApp(ctx context.Context, config *Config) (*App, error) {
 	logLevel := logger.LevelInfo
-	if config.IsDebug {
+	if config.Debug {
 		logLevel = logger.LevelDebug
 	}
 
 	// AppFS (filesystem)
-	appFs := appfs.New(afero.NewOsFs())
+	var appFs *appfs.AppFs
+	if config.AppMode == AppModeTest {
+		appFs = appfs.New(afero.NewMemMapFs())
+	} else {
+		appFs = appfs.New(afero.NewOsFs())
+	}
 
 	// FFmpeg
-	ffmpeg, err := media.NewFFmpeg()
-	if err != nil {
-		return nil, &InitializationError{Message: "Failed to initialize FFmpeg", Err: err}
+	var ffmpeg *media.FFmpeg
+	if config.AppMode == AppModeTest {
+		ffmpeg = getCachedFFmpegOrPanic()
+	} else {
+		var err error
+		ffmpeg, err = media.NewFFmpeg()
+		if err != nil {
+			return nil, fmt.Errorf("failed to initialize FFmpeg: %w", err)
+		}
 	}
 
 	// Database manager
-	dbManager, err := database.NewSQLiteManager(&database.DatabaseManagerConfig{
+	dbManagerConfig := &database.DatabaseManagerConfig{
 		DataDir: config.DataDir,
 		AppFs:   appFs,
-	})
+		Testing: config.AppMode == AppModeTest,
+	}
 
+	dbManager, err := database.NewSQLiteManager(dbManagerConfig)
 	if err != nil {
-		return nil, &InitializationError{Message: "Failed to create database manager", Err: err}
+		return nil, fmt.Errorf("failed to create database manager: %w", err)
 	}
 
-	// Create DAO for database logging
-	logDao := dao.New(dbManager.LogsDb)
+	// Create logger
+	var appLogger *logger.Logger
+	var dbLogger *logger.DbWriter
 
-	// Create database log writer with batching
-	dbWriter := logger.CreateDbWriter(logDao, &logger.DbWriterConfig{
-		BatchSize:     100,
-		FlushInterval: 5 * time.Second,
-	})
+	if config.AppMode == AppModeTest {
+		appLogger = logger.NilLogger()
+	} else {
+		logDao := dao.New(dbManager.LogsDb)
 
-	// Create logger with database writer
-	appLogger := logger.New(&logger.Config{
-		Level:         logLevel,
-		ConsoleOutput: true,
-		DbWriter:      dbWriter,
-	})
+		// Create a db logger
+		dbLoggerConfig := &logger.DbWriterConfig{
+			BatchSize:     100,
+			FlushInterval: 5 * time.Second,
+		}
 
-	if appLogger == nil {
-		dbWriter.Close()
-		return nil, &InitializationError{Message: "Failed to initialize logger"}
-	}
+		dbLogger = logger.NewDbWriter(logDao.CreateLogsBatch, dbLoggerConfig)
 
-	// Create app instance first (needed for service initialization)
-	app := &App{
-		Logger:    appLogger,
-		AppFs:     appFs,
-		FFmpeg:    ffmpeg,
-		DbManager: dbManager,
-		Config:    config,
-		dbWriter:  dbWriter,
+		// Create the app logger
+		appLogger = logger.New(&logger.Config{
+			Level:         logLevel,
+			ConsoleOutput: true,
+			DbWriter:      dbLogger,
+		})
+
+		if appLogger == nil {
+			dbLogger.Close()
+			return nil, fmt.Errorf("failed to initialize logger")
+		}
 	}
 
 	// HLS Transcoder
-	transcoder, err := hls.NewTranscoder(&hls.TranscoderConfig{
-		CachePath: app.Config.DataDir,
-		HwAccel:   hls.DetectHardwareAccel(app.Logger.WithHLS()),
-		AppFs:     app.AppFs,
-		Logger:    app.Logger.WithHLS(),
-		Dao:       dao.New(app.DbManager.DataDb),
-	})
-
-	if err != nil {
-		return nil, &InitializationError{Message: "Failed to create HLS transcoder", Err: err}
+	transcoderConfig := &hls.TranscoderConfig{
+		CachePath: config.DataDir,
+		HwAccel:   hls.DetectHardwareAccel(appLogger.WithHLS()),
+		AppFs:     appFs,
+		Logger:    appLogger.WithHLS(),
+		Dao:       dao.New(dbManager.DataDb),
 	}
 
-	app.Transcoder = transcoder
+	transcoder, err := hls.NewTranscoder(transcoderConfig)
+	if err != nil {
+		return nil, fmt.Errorf("failed to create HLS transcoder: %w", err)
+	}
 
 	// Card Cache
-	cardCache, err := cardcache.NewCardCache(&cardcache.CardCacheConfig{
-		CachePath: app.Config.DataDir,
-		AppFs:     app.AppFs,
-		Logger:    app.Logger.WithCardCache(),
-		FFmpeg:    app.FFmpeg,
-	})
 
-	if err != nil {
-		return nil, &InitializationError{Message: "Failed to create card cache", Err: err}
+	cardCacheConfig := &cardcache.CardCacheConfig{
+		CachePath: config.DataDir,
+		AppFs:     appFs,
+		Logger:    appLogger.WithCardCache(),
+		FFmpeg:    ffmpeg,
 	}
 
-	app.CardCache = cardCache
+	cardCache, err := cardcache.NewCardCache(cardCacheConfig)
+	if err != nil {
+		return nil, fmt.Errorf("failed to create card cache: %w", err)
+	}
 
 	// Course scanner
-	app.CourseScan = coursescan.New(&coursescan.CourseScanConfig{
-		Db:        app.DbManager.DataDb,
-		AppFs:     app.AppFs,
-		Logger:    app.Logger.WithCourseScan(),
-		FFmpeg:    app.FFmpeg,
+	courseScan := coursescan.New(&coursescan.CourseScanConfig{
+		Db:        dbManager.DataDb,
+		AppFs:     appFs,
+		Logger:    appLogger.WithCourseScan(),
+		FFmpeg:    ffmpeg,
 		CardCache: cardCache,
 	})
 
-	// Metadata writer for oc.json files
-	app.MetadataWriter = coursemetadata.NewMetadataWriter(app.AppFs.Fs, app.Logger.WithCourseMetadata())
+	// Metadata writer (for oc.json files)
+	metadataWriter := coursemetadata.NewMetadataWriter(appFs.Fs, appLogger.WithCourseMetadata())
 
 	// Ensure fallback card exists
 	fallbackPath := cardCache.GetFallbackPath()
 	if err := cardCache.EnsureFallbackCard(fallbackPath); err != nil {
-		return nil, &InitializationError{
-			Message: "Failed to ensure fallback card exists",
-			Err:     err,
-		}
+		return nil, fmt.Errorf("failed to ensure fallback card exists: %w", err)
+	}
+
+	// Cron scheduler
+	cronScheduler := cron.NewCronScheduler(&cron.CronConfig{
+		DbManager: dbManager,
+		AppFs:     appFs,
+		Logger:    appLogger,
+	})
+
+	app := &App{
+		Logger:         appLogger,
+		AppFs:          appFs,
+		FFmpeg:         ffmpeg,
+		DbManager:      dbManager,
+		Config:         config,
+		Transcoder:     transcoder,
+		CardCache:      cardCache,
+		CourseScan:     courseScan,
+		MetadataWriter: metadataWriter,
+		dbLogger:       dbLogger,
+		Cron:           cronScheduler,
+	}
+
+	// Bootstrap
+	if err := app.bootstrap(); err != nil {
+		return nil, fmt.Errorf("failed to bootstrap: %w", err)
 	}
 
 	return app, nil
@@ -165,35 +236,107 @@ func New(ctx context.Context, config *Config) (*App, error) {
 
 // ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
 
-// Close closes all resources that need cleanup (e.g., database log writer)
+// NewTestApp creates an app instance that is suitable for running testcases
+func NewTestApp(t *testing.T) *App {
+	t.Helper()
+
+	app, err := NewApp(context.Background(), &Config{
+		HttpAddr:     "127.0.0.1:9081",
+		DataDir:      "./oc_data",
+		AppMode:      AppModeTest,
+		EnableSignup: true,
+		Debug:        false,
+	})
+
+	require.NoError(t, err)
+	require.NotNil(t, app)
+
+	return app
+}
+
+// ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
+
+// Close closes all resources that need cleanup
 func (a *App) Close() error {
-	if a.dbWriter != nil {
-		return a.dbWriter.Close()
+	if a.dbLogger != nil {
+		return a.dbLogger.Close()
 	}
+
 	return nil
 }
 
 // ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
 
-// InitializationError represents an error during app initialization
-type InitializationError struct {
-	Message string
-	Err     error
+// IsBootstrapped checks if the application has been bootstrapped
+func (a *App) IsBootstrapped() bool {
+	return a.bootstrapped.Load() == 1
 }
 
 // ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
 
-// Error returns the error message
-func (e *InitializationError) Error() string {
-	if e.Err != nil {
-		return e.Message + ": " + e.Err.Error()
+// SetBootstrapped sets the application as bootstrapped
+func (a *App) SetBootstrapped() {
+	a.bootstrapped.Store(1)
+}
+
+// ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
+
+// bootstrap checks if the app is bootstrapped and generates a bootstrap token if not,
+// enabled the user to create the first admin user
+func (a *App) bootstrap() error {
+	appDao := dao.New(a.DbManager.DataDb)
+	count, err := appDao.CountUsers(
+		context.Background(),
+		dao.NewOptions().WithWhere(squirrel.Eq{models.USER_TABLE_ROLE: types.UserRoleAdmin}),
+	)
+
+	if err != nil {
+		return fmt.Errorf("failed to count admin users: %w", err)
 	}
-	return e.Message
+
+	if count == 0 {
+		a.bootstrapped.Store(0)
+
+		bootstrapToken, err := auth.GenerateBootstrapToken(a.Config.DataDir, a.AppFs.Fs)
+		if err != nil {
+			return fmt.Errorf("failed to generate bootstrap token: %w", err)
+		}
+
+		bootstrapURL := fmt.Sprintf("http://%s/auth/bootstrap/%s", a.Config.HttpAddr, bootstrapToken.Token)
+		a.Logger.WithApp().Info().
+			Str("bootstrap_url", bootstrapURL).
+			Str("expires_in", "5 minutes").
+			Msg("Bootstrap required")
+	} else {
+		a.bootstrapped.Store(1)
+
+		// Clean up any existing bootstrap tokens
+		if err := auth.DeleteBootstrapToken(a.Config.DataDir, a.AppFs.Fs); err != nil {
+			a.Logger.WithApp().Warn().Err(err).Msg("Failed to delete bootstrap token")
+		}
+
+		a.Logger.WithApp().Info().Msg("Application bootstrapped")
+	}
+
+	return nil
 }
 
 // ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
 
-// Unwrap returns the wrapped error
-func (e *InitializationError) Unwrap() error {
-	return e.Err
+// getCachedFFmpegOrPanic will look call NewFFmpeg once then cache the result. This is
+// useful for test cases where we don't want to look up the FFmpeg executable
+// repeatedly
+//
+// Panics when NewFFmpeg errors
+func getCachedFFmpegOrPanic() *media.FFmpeg {
+	ffmpegOnce.Do(func() {
+		ff, err := media.NewFFmpeg()
+		if err != nil {
+			panic(err)
+		}
+
+		cachedFFmpeg = ff
+	})
+
+	return cachedFFmpeg
 }

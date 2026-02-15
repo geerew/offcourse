@@ -50,7 +50,7 @@ func (api authAPI) signupStatus(c *fiber.Ctx) error {
 // ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
 
 func (api authAPI) register(c *fiber.Ctx) error {
-	if api.r.IsBootstrapped() && !api.r.app.Config.EnableSignup {
+	if api.r.app.IsBootstrapped() && !api.r.app.Config.EnableSignup {
 		return errorResponse(c, fiber.StatusForbidden, "Sign-up is disabled", nil)
 	}
 
@@ -75,7 +75,7 @@ func (api authAPI) register(c *fiber.Ctx) error {
 	}
 
 	// The first user will always be an admin
-	if !api.r.IsBootstrapped() {
+	if !api.r.app.IsBootstrapped() {
 		user.Role = types.UserRoleAdmin
 	} else {
 		user.Role = types.UserRoleUser
@@ -106,7 +106,7 @@ func (api authAPI) bootstrap(c *fiber.Ctx) error {
 	}
 
 	// Check if already bootstrapped first
-	if api.r.IsBootstrapped() {
+	if api.r.app.IsBootstrapped() {
 		return errorResponse(c, fiber.StatusForbidden, "Application is already bootstrapped", nil)
 	}
 
@@ -119,7 +119,7 @@ func (api authAPI) bootstrap(c *fiber.Ctx) error {
 	// Create admin user using existing register logic
 	err = api.register(c)
 	if err == nil {
-		api.r.setBootstrapped()
+		api.r.app.SetBootstrapped()
 		auth.DeleteBootstrapToken(api.r.app.Config.DataDir, api.r.app.AppFs.Fs)
 	}
 

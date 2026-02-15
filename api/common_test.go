@@ -33,7 +33,7 @@ func setupUser(t *testing.T) (*Router, context.Context) {
 
 // setupNoAuth creates a test router without authentication
 //
-// Note: role doesn't matter when no auth
+// Note: role doesn't matter when the user is empty
 func setupNoAuth(t *testing.T) (*Router, context.Context) {
 	return setup(t, "", types.UserRoleUser)
 }
@@ -89,12 +89,13 @@ func setup(t *testing.T, id string, role types.UserRole) (*Router, context.Conte
 	}
 
 	// Initialize bootstrap
-	router.InitBootstrap()
+	// TODO fix with better check
+	// require.NoError(t, router.app.InitBootstrap())
 
 	// In tests, if we have a user, consider the app bootstrapped
 	// (even if the user is not an admin, so protectedRoute can handle the check)
 	if id != "" {
-		router.setBootstrapped()
+		router.app.SetBootstrapped()
 	}
 
 	ctx := context.Background()

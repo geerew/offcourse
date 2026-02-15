@@ -4,47 +4,71 @@ import (
 	"net/http"
 	"time"
 
-	"github.com/geerew/off-course/app"
 	"github.com/geerew/off-course/dao"
+	"github.com/geerew/off-course/database"
+	"github.com/geerew/off-course/utils/appfs"
+	"github.com/geerew/off-course/utils/logger"
 	"github.com/robfig/cron/v3"
 )
 
 // ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
 
-// Global release checker instance (exported so API can access it)
-var ReleaseChecker *releaseChecker
+// CronConfig holds the configuration needed to create a Cron scheduler
+type CronConfig struct {
+	DbManager *database.DatabaseManager
+	AppFs     *appfs.AppFs
+	Logger    *logger.Logger
+}
 
 // ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
 
-// StartCron initializes the cron jobs
-func StartCron(app *app.App) {
-	c := cron.New()
+// Cron manages cron jobs
+//
+// When created, call c.Start() to start the scheduler
+type Cron struct {
+	// Services
+	CourseAvailability *courseAvailability
+	ReleaseChecker     *releaseChecker
+
+	// Cron scheduler
+	cron *cron.Cron
+}
+
+// ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
+
+// NewCronScheduler creates a new Cron scheduler
+func NewCronScheduler(config *CronConfig) *Cron {
+	c := &Cron{cron: cron.New()}
 
 	// Course availability
-	ca := &courseAvailability{
-		db:        app.DbManager.DataDb,
-		dao:       dao.New(app.DbManager.DataDb),
-		appFs:     app.AppFs,
-		logger:    app.Logger.WithCron(),
+	c.CourseAvailability = &courseAvailability{
+		db:        config.DbManager.DataDb,
+		dao:       dao.New(config.DbManager.DataDb),
+		appFs:     config.AppFs,
+		logger:    config.Logger.WithCron(),
 		batchSize: 200,
 	}
 
-	// When cron is started, run the course availability job immediately
-	go func() { ca.run() }()
-
-	c.AddFunc("@every 5m", func() { ca.run() })
+	c.cron.AddFunc("@every 5m", func() { c.CourseAvailability.run() })
 
 	// Release checker
-	ReleaseChecker = &releaseChecker{
-		logger:     app.Logger.WithCron(),
+	c.ReleaseChecker = &releaseChecker{
+		logger:     config.Logger.WithCron(),
 		httpClient: &http.Client{Timeout: 10 * time.Second},
 	}
 
-	// Run release check immediately on startup
-	go func() { ReleaseChecker.run() }()
+	c.cron.AddFunc("@every 5m", func() { c.ReleaseChecker.run() })
 
-	// Check for new releases every 5 minutes
-	c.AddFunc("@every 5m", func() { ReleaseChecker.run() })
+	return c
+}
 
-	c.Start()
+// ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
+
+// Start starts the cron scheduler
+func (c *Cron) Start() {
+	// Run some jobs immediately
+	go func() { c.CourseAvailability.run() }()
+	go func() { c.ReleaseChecker.run() }()
+
+	c.cron.Start()
 }

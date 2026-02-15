@@ -16,7 +16,8 @@ type FFmpeg struct {
 
 // ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
 
-// NewFFmpeg creates a new FFmpeg instance by resolving the paths to ffmpeg and ffprobe
+// NewFFmpeg creates a new FFmpeg instance by resolving the paths to ffmpeg and
+// ffprobe
 //
 // Errors when either executable is not found on the system PATH
 func NewFFmpeg() (*FFmpeg, error) {

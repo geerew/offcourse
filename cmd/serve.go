@@ -2,7 +2,6 @@ package cmd
 
 import (
 	"context"
-	"fmt"
 	"os"
 	"os/signal"
 	"strings"
@@ -11,8 +10,6 @@ import (
 
 	"github.com/geerew/off-course/api"
 	"github.com/geerew/off-course/app"
-	"github.com/geerew/off-course/cron"
-	"github.com/geerew/off-course/utils/auth"
 	"github.com/geerew/off-course/utils/coursescan"
 	"github.com/geerew/off-course/version"
 	"github.com/spf13/cobra"
@@ -21,6 +18,7 @@ import (
 
 // ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
 
+// serveCmd starts the application
 var serveCmd = &cobra.Command{
 	Use:   "serve",
 	Short: "Serve the application",
@@ -28,20 +26,25 @@ var serveCmd = &cobra.Command{
 		ctx := context.Background()
 
 		httpAddr := viper.GetString("http")
-		isDev := viper.GetBool("dev")
 		dataDir := viper.GetString("data-dir")
 		enableSignup := viper.GetBool("enable-signup")
-		isDebug := viper.GetBool("debug")
+		isDev := viper.GetBool("dev")
+		debug := viper.GetBool("debug")
 
-		// Create app with all dependencies
-		application, err := app.New(ctx, &app.Config{
+		appMode := app.AppModeProd
+		if isDev {
+			appMode = app.AppModeDev
+		}
+
+		appConfig := &app.Config{
 			HttpAddr:     httpAddr,
 			DataDir:      dataDir,
-			IsDev:        isDev,
+			AppMode:      appMode,
 			EnableSignup: enableSignup,
-			IsDebug:      isDebug,
-		})
+			Debug:        debug,
+		}
 
+		application, err := app.NewApp(ctx, appConfig)
 		if err != nil {
 			os.Stderr.WriteString("Failed to initialize app: " + err.Error() + "\n")
 			os.Exit(1)
@@ -49,39 +52,17 @@ var serveCmd = &cobra.Command{
 
 		appLogger := application.Logger.WithApp()
 
-		// Log version information
 		appLogger.Info().
 			Str("version", version.GetVersion()).
 			Str("commit", version.GetCommit()).
 			Msg("Starting OffCourse")
 
-		// Start the course scan worker
 		go application.CourseScan.Worker(ctx, coursescan.Processor)
 
-		// Start cron
-		cron.StartCron(application)
+		application.Cron.Start()
 
 		// Router
 		router := api.NewRouter(application)
-
-		// Check bootstrap status and generate token if needed
-		router.InitBootstrap()
-		if !router.IsBootstrapped() {
-			bootstrapToken, err := auth.GenerateBootstrapToken(dataDir, application.AppFs.Fs)
-			if err != nil {
-				appLogger.Error().Err(err).Msg("Failed to generate bootstrap token")
-				os.Exit(1)
-			}
-
-			bootstrapURL := fmt.Sprintf("http://%s/auth/bootstrap/%s", httpAddr, bootstrapToken.Token)
-			appLogger.Info().
-				Str("bootstrap_url", bootstrapURL).
-				Str("expires_in", "5 minutes").
-				Msg("Bootstrap required")
-		} else {
-			auth.DeleteBootstrapToken(dataDir, application.AppFs.Fs)
-			appLogger.Info().Msg("Application bootstrapped")
-		}
 
 		var wg sync.WaitGroup
 		wg.Add(1)
@@ -94,7 +75,6 @@ var serveCmd = &cobra.Command{
 			<-quit
 		}()
 
-		// Serve the UI/API
 		go func() {
 			defer wg.Done()
 			if err := router.Serve(); err != nil {

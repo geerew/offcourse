@@ -3,7 +3,6 @@ package database
 import (
 	"context"
 	"database/sql"
-	"log/slog"
 
 	"github.com/geerew/off-course/utils/appfs"
 	"github.com/jmoiron/sqlx"
@@ -66,9 +65,6 @@ type DatabaseManagerConfig struct {
 
 	// Whether to use an in-memory database (this is only used for testing)
 	Testing bool
-
-	// The logger to use for the database
-	Logger *slog.Logger
 }
 
 // ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~

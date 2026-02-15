@@ -16,7 +16,7 @@ import (
 
 // DbWriter implements io.Writer for writing logs to the database with batching
 type DbWriter struct {
-	createLogsBatchFn func(context.Context, []*models.Log) error
+	createLogsBatchFn DbWriterBatchFunc
 	ctx               context.Context
 
 	// Batching configuration
@@ -47,7 +47,7 @@ type DbWriterConfig struct {
 // ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
 
 // NewDbWriter creates a new DbWriter with batching support
-func NewDbWriter(createLogsBatchFn func(context.Context, []*models.Log) error, config *DbWriterConfig) *DbWriter {
+func NewDbWriter(createLogsBatchFn DbWriterBatchFunc, config *DbWriterConfig) *DbWriter {
 	if config == nil {
 		config = &DbWriterConfig{
 			BatchSize:     100,
@@ -229,14 +229,6 @@ func (w *DbWriter) Close() error {
 
 // ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
 
-// DbWriterFunc is a function type for creating log entries in the database
+// DbWriterBatchFunc is a function type for creating log entries in the database
 type DbWriterBatchFunc func(context.Context, []*models.Log) error
 
-// ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
-
-// CreateDbWriter creates a DbWriter using the provided DAO with batch insert support
-func CreateDbWriter(dao interface {
-	CreateLogsBatch(context.Context, []*models.Log) error
-}, config *DbWriterConfig) *DbWriter {
-	return NewDbWriter(dao.CreateLogsBatch, config)
-}

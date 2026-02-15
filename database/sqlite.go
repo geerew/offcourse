@@ -4,7 +4,6 @@ import (
 	"context"
 	"database/sql"
 	"fmt"
-	"log/slog"
 	"os"
 	"path/filepath"
 	"strings"
@@ -33,7 +32,7 @@ const (
 // ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
 
 var (
-	gooseSetupOnce sync.Once
+	gooseOnce sync.Once
 )
 
 // ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
@@ -51,9 +50,6 @@ type sqliteConfig struct {
 
 	// The application file system
 	AppFs *appfs.AppFs
-
-	// The logger to use for the database
-	Logger *slog.Logger
 
 	// The database mode (ie read-only or read-write)
 	Mode string
@@ -76,7 +72,6 @@ func NewSQLiteManager(config *DatabaseManagerConfig) (*DatabaseManager, error) {
 		MigrateDir: migrateDirData,
 		AppFs:      config.AppFs,
 		Testing:    config.Testing,
-		Logger:     config.Logger,
 		Mode:       modeReadWrite,
 	}
 
@@ -93,7 +88,6 @@ func NewSQLiteManager(config *DatabaseManagerConfig) (*DatabaseManager, error) {
 		MigrateDir: "",
 		AppFs:      config.AppFs,
 		Testing:    config.Testing,
-		Logger:     config.Logger,
 		Mode:       modeReadOnly,
 	}
 
@@ -117,7 +111,6 @@ func NewSQLiteManager(config *DatabaseManagerConfig) (*DatabaseManager, error) {
 		MigrateDir: migrateDirLogs,
 		AppFs:      config.AppFs,
 		Testing:    config.Testing,
-		Logger:     nil,
 		Mode:       modeReadWrite,
 	}
 
@@ -137,7 +130,7 @@ func NewSQLiteManager(config *DatabaseManagerConfig) (*DatabaseManager, error) {
 // sqliteCompositeDb - Read/write pools
 // ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
 
-// sqliteCompositeDb is a composite database that uses two sqlite databases for read and write
+// sqliteCompositeDb represents a reader and writer db
 type sqliteCompositeDb struct {
 	read  *sqliteDb
 	write *sqliteDb
@@ -145,18 +138,18 @@ type sqliteCompositeDb struct {
 
 // ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
 
-// QueryContext executes a query that returns rows, typically a SELECT statement (read pool)
+// QueryContext executes a query that returns sql.Rows
 //
-// It implements the Database interface
+// It implements the `Database` interface
 func (c *sqliteCompositeDb) QueryContext(ctx context.Context, query string, args ...any) (*sql.Rows, error) {
 	return c.read.QueryContext(ctx, query, args...)
 }
 
 // ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
 
-// QueryRowContext executes a query that is expected to return at most one row (read pool)
+// QueryRowContext executes a query that returns a sql.Row
 //
-// It implements the Database interface
+// It implements the `Database` interface
 func (c *sqliteCompositeDb) QueryRowContext(ctx context.Context, query string, args ...any) *sql.Row {
 	return c.read.QueryRowContext(ctx, query, args...)
 }
@@ -521,7 +514,7 @@ func (db *sqliteDb) migrate() error {
 		return nil
 	}
 
-	gooseSetupOnce.Do(func() {
+	gooseOnce.Do(func() {
 		goose.SetLogger(goose.NopLogger())
 		goose.SetBaseFS(migrations.EmbedMigrations)
 		if err := goose.SetDialect("sqlite3"); err != nil {
@@ -592,6 +585,10 @@ func getRetryInterval(attempt int) time.Duration {
 
 // ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
 
+// getDSNName returns the name of the database file
+//
+// When testing is true, the database file name will be suffixed with a random string
+// to avoid conflicts with other test cases
 func getDSNName(baseName string, testing bool) string {
 	if testing {
 		return fmt.Sprintf("%s_memdb_%s", strings.TrimSuffix(baseName, ".db"), security.PseudorandomString(8))
@@ -601,6 +598,7 @@ func getDSNName(baseName string, testing bool) string {
 
 // ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
 
+// configureConnectionPool configures the connection pool for the sqlite database
 func configureConnectionPool(db *sqliteDb, maxOpen, maxIdle int) {
 	db.DB().SetMaxOpenConns(maxOpen)
 	db.DB().SetMaxIdleConns(maxIdle)

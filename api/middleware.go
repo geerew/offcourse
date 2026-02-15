@@ -10,6 +10,7 @@ import (
 	"strings"
 	"time"
 
+	"github.com/geerew/off-course/app"
 	"github.com/geerew/off-course/utils/logger"
 	"github.com/geerew/off-course/utils/types"
 	"github.com/gofiber/fiber/v2"
@@ -105,7 +106,7 @@ func bootstrapMiddleware(r *Router) fiber.Handler {
 
 		// If not bootstrapped, force everything through /auth/bootstrap or
 		// /api/auth/bootstrap
-		if !r.IsBootstrapped() {
+		if !r.app.IsBootstrapped() {
 			if r.isDevUIPath(path) || r.isProdUIPath(path) || r.isStaticPath(path) {
 				return c.Next()
 			}
@@ -236,7 +237,7 @@ func authMiddleware(r *Router) fiber.Handler {
 
 // isProdUIPath checks if the request is for a sveltekit asset when running in production mode
 func (r *Router) isProdUIPath(path string) bool {
-	if !r.app.Config.IsDev && strings.HasPrefix(path, "/_app/") {
+	if r.app.Config.AppMode != app.AppModeDev && strings.HasPrefix(path, "/_app/") {
 		return true
 	}
 
@@ -247,7 +248,7 @@ func (r *Router) isProdUIPath(path string) bool {
 
 // isDevUIPath checks if the request is for a sveltekit path when running in dev mode
 func (r *Router) isDevUIPath(path string) bool {
-	if r.app.Config.IsDev &&
+	if r.app.Config.AppMode == app.AppModeDev &&
 		(strings.HasPrefix(path, "/node_modules/") ||
 			strings.HasPrefix(path, "/.svelte-kit/") ||
 			strings.HasPrefix(path, "/src/") ||

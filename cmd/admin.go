@@ -6,7 +6,7 @@ import (
 
 // ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
 
-// adminCmd represents the admin command
+// adminCmd groups admin related cli commands together
 var adminCmd = &cobra.Command{
 	Use:   "admin",
 	Short: "Admin management commands",

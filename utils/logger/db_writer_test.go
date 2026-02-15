@@ -396,10 +396,10 @@ func Test_DbWriter_Concurrency(t *testing.T) {
 
 // ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
 
-func Test_CreateDbWriter(t *testing.T) {
+func Test_NewDbWriter_WithDAO(t *testing.T) {
 	t.Run("success", func(t *testing.T) {
 		mock := mocks.NewMockBatchWriter()
-		writer := CreateDbWriter(mock, &DbWriterConfig{
+		writer := NewDbWriter(mock.CreateLogsBatch, &DbWriterConfig{
 			BatchSize:     10,
 			FlushInterval: 1 * time.Second,
 		})
