@@ -1,5 +1,6 @@
 -- +goose Up
 
+-- Logs represents log entries
 CREATE TABLE logs (
 	id           TEXT PRIMARY KEY NOT NULL,
 	level        TEXT DEFAULT 0 NOT NULL,
