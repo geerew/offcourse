@@ -281,7 +281,7 @@ func (db *SqliteDB) RunInTransaction(ctx context.Context, fn func(context.Contex
 			break
 		}
 
-		txCtx := withTx(ctx, sqlxTx)
+		txCtx := context.WithValue(ctx, txKey{}, sqlxTx)
 		err = fn(txCtx)
 
 		if err == nil {

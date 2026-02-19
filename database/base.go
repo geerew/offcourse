@@ -44,13 +44,6 @@ func txFromContext(ctx context.Context) *sqlx.Tx {
 
 // ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
 
-// withTx returns a context that carries for a transaction
-func withTx(ctx context.Context, tx *sqlx.Tx) context.Context {
-	return context.WithValue(ctx, txKey{}, tx)
-}
-
-// ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
-
 // DatabaseManagerConfig represents the settings needed to create a DatabaseManager
 type DatabaseManagerConfig struct {
 	// Where to write data.db & logs.db
