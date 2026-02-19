@@ -41,8 +41,7 @@ func createGeneric(ctx context.Context, dao *DAO, builderOpts builderOptions) er
 		return err
 	}
 
-	q := database.QuerierFromContext(ctx, dao.db)
-	_, err = q.ExecContext(ctx, sqlStr, args...)
+	_, err = dao.db.ExecContext(ctx, sqlStr, args...)
 	return err
 }
 
@@ -50,15 +49,13 @@ func createGeneric(ctx context.Context, dao *DAO, builderOpts builderOptions) er
 
 // Count is a generic function to count the number of rows in a table as determined by the model
 func countGeneric(ctx context.Context, dao *DAO, builderOpts builderOptions) (int, error) {
-	q := database.QuerierFromContext(ctx, dao.db)
-
 	sqlStr, args, err := countBuilder(builderOpts)
 	if err != nil {
 		return -1, err
 	}
 
 	var count int
-	err = q.GetContext(ctx, &count, sqlStr, args...)
+	err = dao.db.GetContext(ctx, &count, sqlStr, args...)
 	if err != nil {
 		if errors.Is(err, sql.ErrNoRows) {
 			count = 0
@@ -79,10 +76,8 @@ func getGeneric[T any](ctx context.Context, dao *DAO, builderOpts builderOptions
 		return nil, err
 	}
 
-	q := database.QuerierFromContext(ctx, dao.db)
-
 	record := new(T)
-	err = q.GetContext(ctx, record, sqlStr, args...)
+	err = dao.db.GetContext(ctx, record, sqlStr, args...)
 	if err != nil {
 		if errors.Is(err, sql.ErrNoRows) {
 			return nil, nil
@@ -98,8 +93,6 @@ func getGeneric[T any](ctx context.Context, dao *DAO, builderOpts builderOptions
 
 // listGeneric is a generic function to get records from the database
 func listGeneric[T any](ctx context.Context, dao *DAO, builderOpts builderOptions) ([]*T, error) {
-	q := database.QuerierFromContext(ctx, dao.db)
-
 	if builderOpts.DbOpts != nil && builderOpts.DbOpts.Pagination != nil {
 		count, err := countGeneric(ctx, dao, builderOpts)
 		if err != nil {
@@ -115,7 +108,7 @@ func listGeneric[T any](ctx context.Context, dao *DAO, builderOpts builderOption
 	}
 
 	records := new([]*T)
-	err = q.SelectContext(ctx, records, sqlStr, args...)
+	err = dao.db.SelectContext(ctx, records, sqlStr, args...)
 	if err != nil {
 		return nil, err
 	}
@@ -132,8 +125,7 @@ func updateGeneric(ctx context.Context, dao *DAO, builderOpts builderOptions) (b
 		return false, err
 	}
 
-	q := database.QuerierFromContext(ctx, dao.db)
-	res, err := q.ExecContext(ctx, sqlStr, args...)
+	res, err := dao.db.ExecContext(ctx, sqlStr, args...)
 	if err != nil {
 		return false, err
 	}
@@ -158,10 +150,8 @@ func pluck[T any](ctx context.Context, dao *DAO, builderOpts builderOptions) ([]
 		return nil, err
 	}
 
-	q := database.QuerierFromContext(ctx, dao.db)
-
 	var out []T
-	if err := q.SelectContext(ctx, &out, sqlStr, args...); err != nil {
+	if err := dao.db.SelectContext(ctx, &out, sqlStr, args...); err != nil {
 		return nil, err
 	}
 

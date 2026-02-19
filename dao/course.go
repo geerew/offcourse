@@ -7,7 +7,6 @@ import (
 	"strings"
 
 	"github.com/Masterminds/squirrel"
-	"github.com/geerew/off-course/database"
 	"github.com/geerew/off-course/models"
 	"github.com/geerew/off-course/utils"
 	"github.com/geerew/off-course/utils/types"
@@ -212,8 +211,7 @@ func (dao *DAO) DeleteCourses(ctx context.Context, dbOpts *Options) error {
 	builderOpts := newBuilderOptions(models.COURSE_TABLE).SetDbOpts(dbOpts)
 	sqlStr, args, _ := deleteBuilder(*builderOpts)
 
-	q := database.QuerierFromContext(ctx, dao.db)
-	_, err := q.ExecContext(ctx, sqlStr, args...)
+	_, err := dao.db.ExecContext(ctx, sqlStr, args...)
 	return err
 }
 
@@ -253,8 +251,7 @@ func (dao *DAO) ClassifyCoursePaths(ctx context.Context, paths []string) (map[st
 		Where(squirrel.Or(whereClause)).
 		ToSql()
 
-	q := database.QuerierFromContext(ctx, dao.db)
-	rows, err := q.QueryContext(ctx, query, args...)
+	rows, err := dao.db.QueryContext(ctx, query, args...)
 	if err != nil {
 		return nil, err
 	}

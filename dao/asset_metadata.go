@@ -5,7 +5,6 @@ import (
 	"fmt"
 
 	"github.com/Masterminds/squirrel"
-	"github.com/geerew/off-course/database"
 	"github.com/geerew/off-course/models"
 	"github.com/geerew/off-course/utils"
 )
@@ -256,22 +255,19 @@ func (dao *DAO) DeleteAssetMetadataByAssetIDs(ctx context.Context, assetIDs ...s
 	}
 
 	return dao.db.RunInTransaction(ctx, func(txCtx context.Context) error {
-		q := database.QuerierFromContext(txCtx, dao.db)
-
 		dbOpts := NewOptions().WithWhere(squirrel.Eq{models.META_ASSET_ID: ids})
 
 		// Audio metadata
 		builder := newBuilderOptions(models.MEDIA_AUDIO_TABLE).SetDbOpts(dbOpts)
 		sqlStr, args, _ := deleteBuilder(*builder)
-		if _, err := q.ExecContext(txCtx, sqlStr, args...); err != nil {
+		if _, err := dao.db.ExecContext(txCtx, sqlStr, args...); err != nil {
 			return err
 		}
 
 		// Video metadata
-
 		builder = newBuilderOptions(models.MEDIA_VIDEO_TABLE).SetDbOpts(dbOpts)
 		sqlStr, args, _ = deleteBuilder(*builder)
-		if _, err := q.ExecContext(txCtx, sqlStr, args...); err != nil {
+		if _, err := dao.db.ExecContext(txCtx, sqlStr, args...); err != nil {
 			return err
 		}
 

@@ -4,7 +4,6 @@ import (
 	"context"
 
 	"github.com/Masterminds/squirrel"
-	"github.com/geerew/off-course/database"
 	"github.com/geerew/off-course/models"
 	"github.com/geerew/off-course/utils"
 )
@@ -124,7 +123,6 @@ func (dao *DAO) CreateLogsBatch(ctx context.Context, logs []*models.Log) error {
 		return err
 	}
 
-	q := database.QuerierFromContext(ctx, dao.db)
-	_, err = q.ExecContext(ctx, sqlStr, args...)
+	_, err = dao.db.ExecContext(ctx, sqlStr, args...)
 	return err
 }

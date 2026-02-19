@@ -5,7 +5,6 @@ import (
 	"fmt"
 
 	"github.com/Masterminds/squirrel"
-	"github.com/geerew/off-course/database"
 	"github.com/geerew/off-course/models"
 	"github.com/geerew/off-course/utils"
 )
@@ -70,8 +69,7 @@ func (dao *DAO) GetAssetKeyframes(ctx context.Context, assetID string) (*models.
 		return nil, fmt.Errorf("failed to build query: %w", err)
 	}
 
-	querier := database.QuerierFromContext(ctx, dao.db)
-	row := querier.QueryRowContext(ctx, sql, args...)
+	row := dao.db.QueryRowContext(ctx, sql, args...)
 
 	var keyframes models.AssetKeyframes
 	err = row.Scan(
@@ -151,8 +149,7 @@ func (dao *DAO) DeleteAssetKeyframes(ctx context.Context, assetID string) error 
 		return err
 	}
 
-	q := database.QuerierFromContext(ctx, dao.db)
-	_, err = q.ExecContext(ctx, sqlStr, args...)
+	_, err = dao.db.ExecContext(ctx, sqlStr, args...)
 	return err
 }
 
@@ -172,8 +169,7 @@ func (dao *DAO) DeleteAssetKeyframesById(ctx context.Context, id string) error {
 		return err
 	}
 
-	q := database.QuerierFromContext(ctx, dao.db)
-	_, err = q.ExecContext(ctx, sqlStr, args...)
+	_, err = dao.db.ExecContext(ctx, sqlStr, args...)
 	return err
 }
 
@@ -206,8 +202,7 @@ func (dao *DAO) ListAssetKeyframes(ctx context.Context, opts *Options) ([]*model
 		return nil, fmt.Errorf("failed to build query: %w", err)
 	}
 
-	querier := database.QuerierFromContext(ctx, dao.db)
-	rows, err := querier.QueryContext(ctx, sql, args...)
+	rows, err := dao.db.QueryContext(ctx, sql, args...)
 	if err != nil {
 		return nil, fmt.Errorf("failed to execute query: %w", err)
 	}
@@ -260,9 +255,8 @@ func (dao *DAO) ExistsAssetKeyframes(ctx context.Context, assetID string) (bool,
 		return false, fmt.Errorf("failed to build query: %w", err)
 	}
 
-	querier := database.QuerierFromContext(ctx, dao.db)
 	var count int
-	err = querier.QueryRowContext(ctx, sql, args...).Scan(&count)
+	err = dao.db.QueryRowContext(ctx, sql, args...).Scan(&count)
 	if err != nil {
 		return false, fmt.Errorf("failed to count keyframes: %w", err)
 	}
@@ -286,9 +280,8 @@ func (dao *DAO) GetAssetKeyframesCount(ctx context.Context, opts *Options) (int,
 		return 0, fmt.Errorf("failed to build query: %w", err)
 	}
 
-	querier := database.QuerierFromContext(ctx, dao.db)
 	var count int
-	err = querier.QueryRowContext(ctx, sql, args...).Scan(&count)
+	err = dao.db.QueryRowContext(ctx, sql, args...).Scan(&count)
 	if err != nil {
 		return 0, fmt.Errorf("failed to count keyframes: %w", err)
 	}

@@ -281,6 +281,13 @@ func (a *App) SetBootstrapped() {
 
 // ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
 
+// UnsetBootstrapped sets the application as not bootstrapped
+func (a *App) UnsetBootstrapped() {
+	a.bootstrapped.Store(0)
+}
+
+// ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
+
 // bootstrap checks if the app is bootstrapped and generates a bootstrap token if not,
 // enabled the user to create the first admin user
 func (a *App) bootstrap() error {

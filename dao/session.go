@@ -6,7 +6,6 @@ import (
 	"encoding/gob"
 
 	"github.com/Masterminds/squirrel"
-	"github.com/geerew/off-course/database"
 	"github.com/geerew/off-course/models"
 	"github.com/geerew/off-course/utils"
 	"github.com/geerew/off-course/utils/types"
@@ -152,8 +151,7 @@ func (dao *DAO) DeleteSessions(ctx context.Context, dbOpts *Options) error {
 	builderOpts := newBuilderOptions(models.SESSION_TABLE).SetDbOpts(dbOpts)
 	sqlStr, args, _ := deleteBuilder(*builderOpts)
 
-	q := database.QuerierFromContext(ctx, dao.db)
-	_, err := q.ExecContext(ctx, sqlStr, args...)
+	_, err := dao.db.ExecContext(ctx, sqlStr, args...)
 	return err
 }
 
@@ -162,7 +160,6 @@ func (dao *DAO) DeleteAllSessions(ctx context.Context) error {
 	builderOpts := newBuilderOptions(models.SESSION_TABLE)
 	sqlStr, args, _ := deleteBuilder(*builderOpts)
 
-	q := database.QuerierFromContext(ctx, dao.db)
-	_, err := q.ExecContext(ctx, sqlStr, args...)
+	_, err := dao.db.ExecContext(ctx, sqlStr, args...)
 	return err
 }

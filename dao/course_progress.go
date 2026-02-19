@@ -4,7 +4,6 @@ import (
 	"context"
 	"fmt"
 
-	"github.com/geerew/off-course/database"
 	"github.com/geerew/off-course/models"
 	"github.com/geerew/off-course/utils"
 	"github.com/geerew/off-course/utils/security"
@@ -34,8 +33,7 @@ func (dao *DAO) SyncCourseProgress(ctx context.Context, assetId string) error {
 		userID,
 	}
 
-	q := database.QuerierFromContext(ctx, dao.db)
-	_, err = q.ExecContext(ctx, sqlSync, args...)
+	_, err = dao.db.ExecContext(ctx, sqlSync, args...)
 	return err
 }
 
@@ -77,8 +75,7 @@ func (dao *DAO) DeleteCourseProgress(ctx context.Context, dbOpts *Options) error
 	builderOpts := newBuilderOptions(models.COURSE_PROGRESS_TABLE).SetDbOpts(dbOpts)
 	sqlStr, args, _ := deleteBuilder(*builderOpts)
 
-	q := database.QuerierFromContext(ctx, dao.db)
-	_, err := q.ExecContext(ctx, sqlStr, args...)
+	_, err := dao.db.ExecContext(ctx, sqlStr, args...)
 	return err
 }
 

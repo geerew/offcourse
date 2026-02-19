@@ -123,7 +123,6 @@ func TestAuth_Register(t *testing.T) {
 // ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
 
 func TestAuth_Bootstrap(t *testing.T) {
-
 	// Test successfully bootstrapping the application
 	t.Run("201 (created)", func(t *testing.T) {
 		router, ctx := setupAdmin(t)
@@ -133,8 +132,7 @@ func TestAuth_Bootstrap(t *testing.T) {
 		err := router.appDao.DeleteUsers(ctx, dbOpts)
 		require.NoError(t, err)
 
-		// TODO fix with better check
-		// require.NoError(t, router.app.InitBootstrap())
+		router.app.UnsetBootstrapped()
 
 		// Generate a bootstrap token using the app's data directory and filesystem
 		bootstrapToken, err := auth.GenerateBootstrapToken(router.app.Config.DataDir, router.app.AppFs.Fs)
@@ -164,8 +162,7 @@ func TestAuth_Bootstrap(t *testing.T) {
 		err := router.appDao.DeleteUsers(context.Background(), dbOpts)
 		require.NoError(t, err)
 
-		// TODO fix with better check
-		// require.NoError(t, router.app.InitBootstrap())
+		router.app.UnsetBootstrapped()
 
 		req := httptest.NewRequest(http.MethodPost, "/api/auth/bootstrap/invalid-token", strings.NewReader(`{"username": "test", "password": "abcd1234" }`))
 		req.Header.Set(fiber.HeaderContentType, fiber.MIMEApplicationJSON)

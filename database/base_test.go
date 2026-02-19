@@ -11,6 +11,7 @@ import (
 // ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
 
 func Test_NewSQLiteManager(t *testing.T) {
+	// Test successfully creating a new SQLiteManager
 	t.Run("success", func(t *testing.T) {
 		appFs := appfs.New(afero.NewMemMapFs())
 
@@ -25,6 +26,7 @@ func Test_NewSQLiteManager(t *testing.T) {
 
 	})
 
+	// Test error due to being unable to create data.db
 	t.Run("error creating data.db", func(t *testing.T) {
 		appFs := appfs.New(afero.NewReadOnlyFs(afero.NewMemMapFs()))
 
