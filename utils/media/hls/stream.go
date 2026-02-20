@@ -665,8 +665,8 @@ func getKeyframes(wrapper *StreamWrapper) []float64 {
 		return []float64{}
 	}
 
-	if assetKeyframes != nil && len(assetKeyframes.Keyframes) > 0 {
-		return assetKeyframes.Keyframes
+	if assetKeyframes != nil && len(assetKeyframes.KeyframesSlice) > 0 {
+		return assetKeyframes.KeyframesSlice
 	}
 
 	return []float64{}

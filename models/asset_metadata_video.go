@@ -1,0 +1,76 @@
+package models
+
+import "fmt"
+
+// ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
+
+const (
+	ASSET_METADATA_VIDEO_TABLE = "asset_metadata_video"
+
+	ASSET_METADATA_VIDEO_ASSET_ID    = "asset_id"
+	ASSET_METADATA_VIDEO_DURATION    = "duration_sec"
+	ASSET_METADATA_VIDEO_CONTAINER   = "container"
+	ASSET_METADATA_VIDEO_MIME_TYPE   = "mime_type"
+	ASSET_METADATA_VIDEO_SIZE_BYTES  = "size_bytes"
+	ASSET_METADATA_VIDEO_OVERALL_BPS = "overall_bps"
+	ASSET_METADATA_VIDEO_CODEC       = "video_codec"
+	ASSET_METADATA_VIDEO_WIDTH       = "width"
+	ASSET_METADATA_VIDEO_HEIGHT      = "height"
+	ASSET_METADATA_VIDEO_FPS_NUM     = "fps_num"
+	ASSET_METADATA_VIDEO_FPS_DEN     = "fps_den"
+
+	ASSET_METADATA_VIDEO_TABLE_ID          = ASSET_METADATA_VIDEO_TABLE + "." + BASE_ID
+	ASSET_METADATA_VIDEO_TABLE_CREATED_AT  = ASSET_METADATA_VIDEO_TABLE + "." + BASE_CREATED_AT
+	ASSET_METADATA_VIDEO_TABLE_UPDATED_AT  = ASSET_METADATA_VIDEO_TABLE + "." + BASE_UPDATED_AT
+	ASSET_METADATA_VIDEO_TABLE_ASSET_ID    = ASSET_METADATA_VIDEO_TABLE + "." + ASSET_METADATA_VIDEO_ASSET_ID
+	ASSET_METADATA_VIDEO_TABLE_DURATION    = ASSET_METADATA_VIDEO_TABLE + "." + ASSET_METADATA_VIDEO_DURATION
+	ASSET_METADATA_VIDEO_TABLE_CONTAINER   = ASSET_METADATA_VIDEO_TABLE + "." + ASSET_METADATA_VIDEO_CONTAINER
+	ASSET_METADATA_VIDEO_TABLE_MIME_TYPE   = ASSET_METADATA_VIDEO_TABLE + "." + ASSET_METADATA_VIDEO_MIME_TYPE
+	ASSET_METADATA_VIDEO_TABLE_SIZE_BYTES  = ASSET_METADATA_VIDEO_TABLE + "." + ASSET_METADATA_VIDEO_SIZE_BYTES
+	ASSET_METADATA_VIDEO_TABLE_OVERALL_BPS = ASSET_METADATA_VIDEO_TABLE + "." + ASSET_METADATA_VIDEO_OVERALL_BPS
+	ASSET_METADATA_VIDEO_TABLE_CODEC       = ASSET_METADATA_VIDEO_TABLE + "." + ASSET_METADATA_VIDEO_CODEC
+	ASSET_METADATA_VIDEO_TABLE_WIDTH       = ASSET_METADATA_VIDEO_TABLE + "." + ASSET_METADATA_VIDEO_WIDTH
+	ASSET_METADATA_VIDEO_TABLE_HEIGHT      = ASSET_METADATA_VIDEO_TABLE + "." + ASSET_METADATA_VIDEO_HEIGHT
+	ASSET_METADATA_VIDEO_TABLE_FPS_NUM     = ASSET_METADATA_VIDEO_TABLE + "." + ASSET_METADATA_VIDEO_FPS_NUM
+	ASSET_METADATA_VIDEO_TABLE_FPS_DEN     = ASSET_METADATA_VIDEO_TABLE + "." + ASSET_METADATA_VIDEO_FPS_DEN
+)
+
+// ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
+
+// VideoMetadata defines video metadata for an asset
+type VideoMetadata struct {
+	Base
+	AssetID     string `db:"asset_id"`     // Immutable
+	DurationSec int    `db:"duration_sec"` // Mutable
+	Container   string `db:"container"`    // Mutable
+	MIMEType    string `db:"mime_type"`    // Mutable
+	SizeBytes   int64  `db:"size_bytes"`   // Mutable
+	OverallBPS  int    `db:"overall_bps"`  // Mutable
+	VideoCodec  string `db:"video_codec"`  // Mutable
+	Width       int    `db:"width"`        // Mutable
+	Height      int    `db:"height"`       // Mutable
+	FPSNum      int    `db:"fps_num"`      // Mutable
+	FPSDen      int    `db:"fps_den"`      // Mutable
+}
+
+// ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
+
+// VideoMetadataColumns returns the columns for use in a SELECT query
+func VideoMetadataColumns() []string {
+	return []string{
+		fmt.Sprintf("%s AS %s", ASSET_METADATA_VIDEO_TABLE_ID, BASE_ID),
+		fmt.Sprintf("%s AS %s", ASSET_METADATA_VIDEO_TABLE_CREATED_AT, BASE_CREATED_AT),
+		fmt.Sprintf("%s AS %s", ASSET_METADATA_VIDEO_TABLE_UPDATED_AT, BASE_UPDATED_AT),
+		fmt.Sprintf("%s AS %s", ASSET_METADATA_VIDEO_TABLE_ASSET_ID, ASSET_METADATA_VIDEO_ASSET_ID),
+		fmt.Sprintf("%s AS %s", ASSET_METADATA_VIDEO_TABLE_DURATION, ASSET_METADATA_VIDEO_DURATION),
+		fmt.Sprintf("%s AS %s", ASSET_METADATA_VIDEO_TABLE_CONTAINER, ASSET_METADATA_VIDEO_CONTAINER),
+		fmt.Sprintf("%s AS %s", ASSET_METADATA_VIDEO_TABLE_MIME_TYPE, ASSET_METADATA_VIDEO_MIME_TYPE),
+		fmt.Sprintf("%s AS %s", ASSET_METADATA_VIDEO_TABLE_SIZE_BYTES, ASSET_METADATA_VIDEO_SIZE_BYTES),
+		fmt.Sprintf("%s AS %s", ASSET_METADATA_VIDEO_TABLE_OVERALL_BPS, ASSET_METADATA_VIDEO_OVERALL_BPS),
+		fmt.Sprintf("%s AS %s", ASSET_METADATA_VIDEO_TABLE_CODEC, ASSET_METADATA_VIDEO_CODEC),
+		fmt.Sprintf("%s AS %s", ASSET_METADATA_VIDEO_TABLE_WIDTH, ASSET_METADATA_VIDEO_WIDTH),
+		fmt.Sprintf("%s AS %s", ASSET_METADATA_VIDEO_TABLE_HEIGHT, ASSET_METADATA_VIDEO_HEIGHT),
+		fmt.Sprintf("%s AS %s", ASSET_METADATA_VIDEO_TABLE_FPS_NUM, ASSET_METADATA_VIDEO_FPS_NUM),
+		fmt.Sprintf("%s AS %s", ASSET_METADATA_VIDEO_TABLE_FPS_DEN, ASSET_METADATA_VIDEO_FPS_DEN),
+	}
+}

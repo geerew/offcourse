@@ -41,12 +41,12 @@ func (dao *DAO) CreateAssetKeyframes(ctx context.Context, keyframes *models.Asse
 	builderOpts := newBuilderOptions(models.ASSET_KEYFRAMES_TABLE).
 		WithData(
 			map[string]interface{}{
-				models.BASE_ID:               keyframes.ID,
-				models.KEYFRAMES_ASSET_ID:    keyframes.AssetID,
-				models.KEYFRAMES_DATA:        keyframes.KeyframesJSON,
-				models.KEYFRAMES_IS_COMPLETE: keyframes.IsComplete,
-				models.BASE_CREATED_AT:       keyframes.CreatedAt,
-				models.BASE_UPDATED_AT:       keyframes.UpdatedAt,
+				models.BASE_ID:                     keyframes.ID,
+				models.ASSET_KEYFRAMES_ASSET_ID:    keyframes.AssetID,
+				models.ASSET_KEYFRAMES_KEYFRAMES:   keyframes.Keyframes,
+				models.ASSET_KEYFRAMES_IS_COMPLETE: keyframes.IsComplete,
+				models.BASE_CREATED_AT:             keyframes.CreatedAt,
+				models.BASE_UPDATED_AT:             keyframes.UpdatedAt,
 			})
 
 	return createGeneric(ctx, dao, *builderOpts)
@@ -62,7 +62,7 @@ func (dao *DAO) GetAssetKeyframes(ctx context.Context, assetID string) (*models.
 
 	query := squirrel.Select(models.AssetKeyframesColumns()...).
 		From(models.ASSET_KEYFRAMES_TABLE).
-		Where(squirrel.Eq{models.KEYFRAMES_ASSET_ID: assetID})
+		Where(squirrel.Eq{models.ASSET_KEYFRAMES_ASSET_ID: assetID})
 
 	sql, args, err := query.ToSql()
 	if err != nil {
@@ -77,7 +77,7 @@ func (dao *DAO) GetAssetKeyframes(ctx context.Context, assetID string) (*models.
 		&keyframes.CreatedAt,
 		&keyframes.UpdatedAt,
 		&keyframes.AssetID,
-		&keyframes.KeyframesJSON,
+		&keyframes.Keyframes,
 		&keyframes.IsComplete,
 	)
 	if err != nil {
@@ -90,87 +90,6 @@ func (dao *DAO) GetAssetKeyframes(ctx context.Context, assetID string) (*models.
 	}
 
 	return &keyframes, nil
-}
-
-// ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
-
-// UpdateAssetKeyframes updates an existing asset keyframes record
-func (dao *DAO) UpdateAssetKeyframes(ctx context.Context, keyframes *models.AssetKeyframes) error {
-	if keyframes == nil {
-		return utils.ErrNilPtr
-	}
-
-	if keyframes.ID == "" {
-		return utils.ErrId
-	}
-
-	if keyframes.AssetID == "" {
-		return utils.ErrAssetId
-	}
-
-	// Marshal keyframes to JSON before updating
-	if err := keyframes.MarshalKeyframes(); err != nil {
-		return fmt.Errorf("failed to marshal keyframes: %w", err)
-	}
-
-	// Validate keyframes before storing
-	if err := keyframes.ValidateKeyframes(); err != nil {
-		return fmt.Errorf("invalid keyframes: %w", err)
-	}
-
-	keyframes.RefreshUpdatedAt()
-
-	builderOpts := newBuilderOptions(models.ASSET_KEYFRAMES_TABLE).
-		WithData(
-			map[string]interface{}{
-				models.KEYFRAMES_DATA:        keyframes.KeyframesJSON,
-				models.KEYFRAMES_IS_COMPLETE: keyframes.IsComplete,
-				models.BASE_UPDATED_AT:       keyframes.UpdatedAt,
-			}).
-		SetDbOpts(NewOptions().WithWhere(squirrel.Eq{models.BASE_ID: keyframes.ID}))
-
-	_, err := updateGeneric(ctx, dao, *builderOpts)
-	return err
-}
-
-// ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
-
-// DeleteAssetKeyframes deletes asset keyframes by asset ID
-func (dao *DAO) DeleteAssetKeyframes(ctx context.Context, assetID string) error {
-	if assetID == "" {
-		return utils.ErrAssetId
-	}
-
-	builderOpts := newBuilderOptions(models.ASSET_KEYFRAMES_TABLE).
-		SetDbOpts(NewOptions().WithWhere(squirrel.Eq{models.KEYFRAMES_ASSET_ID: assetID}))
-
-	sqlStr, args, err := deleteBuilder(*builderOpts)
-	if err != nil {
-		return err
-	}
-
-	_, err = dao.db.ExecContext(ctx, sqlStr, args...)
-	return err
-}
-
-// ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
-
-// DeleteAssetKeyframesById deletes asset keyframes by ID
-func (dao *DAO) DeleteAssetKeyframesById(ctx context.Context, id string) error {
-	if id == "" {
-		return utils.ErrId
-	}
-
-	builderOpts := newBuilderOptions(models.ASSET_KEYFRAMES_TABLE).
-		SetDbOpts(NewOptions().WithWhere(squirrel.Eq{models.BASE_ID: id}))
-
-	sqlStr, args, err := deleteBuilder(*builderOpts)
-	if err != nil {
-		return err
-	}
-
-	_, err = dao.db.ExecContext(ctx, sqlStr, args...)
-	return err
 }
 
 // ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
@@ -216,7 +135,7 @@ func (dao *DAO) ListAssetKeyframes(ctx context.Context, opts *Options) ([]*model
 			&keyframes.CreatedAt,
 			&keyframes.UpdatedAt,
 			&keyframes.AssetID,
-			&keyframes.KeyframesJSON,
+			&keyframes.Keyframes,
 			&keyframes.IsComplete,
 		)
 		if err != nil {
@@ -240,6 +159,87 @@ func (dao *DAO) ListAssetKeyframes(ctx context.Context, opts *Options) ([]*model
 
 // ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
 
+// UpdateAssetKeyframes updates an existing asset keyframes record
+func (dao *DAO) UpdateAssetKeyframes(ctx context.Context, keyframes *models.AssetKeyframes) error {
+	if keyframes == nil {
+		return utils.ErrNilPtr
+	}
+
+	if keyframes.ID == "" {
+		return utils.ErrId
+	}
+
+	if keyframes.AssetID == "" {
+		return utils.ErrAssetId
+	}
+
+	// Marshal keyframes to JSON before updating
+	if err := keyframes.MarshalKeyframes(); err != nil {
+		return fmt.Errorf("failed to marshal keyframes: %w", err)
+	}
+
+	// Validate keyframes before storing
+	if err := keyframes.ValidateKeyframes(); err != nil {
+		return fmt.Errorf("invalid keyframes: %w", err)
+	}
+
+	keyframes.RefreshUpdatedAt()
+
+	builderOpts := newBuilderOptions(models.ASSET_KEYFRAMES_TABLE).
+		WithData(
+			map[string]interface{}{
+				models.ASSET_KEYFRAMES_KEYFRAMES:   keyframes.Keyframes,
+				models.ASSET_KEYFRAMES_IS_COMPLETE: keyframes.IsComplete,
+				models.BASE_UPDATED_AT:             keyframes.UpdatedAt,
+			}).
+		SetDbOpts(NewOptions().WithWhere(squirrel.Eq{models.BASE_ID: keyframes.ID}))
+
+	_, err := updateGeneric(ctx, dao, *builderOpts)
+	return err
+}
+
+// ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
+
+// DeleteAssetKeyframes deletes asset keyframes by asset ID
+func (dao *DAO) DeleteAssetKeyframes(ctx context.Context, assetID string) error {
+	if assetID == "" {
+		return utils.ErrAssetId
+	}
+
+	builderOpts := newBuilderOptions(models.ASSET_KEYFRAMES_TABLE).
+		SetDbOpts(NewOptions().WithWhere(squirrel.Eq{models.ASSET_KEYFRAMES_ASSET_ID: assetID}))
+
+	sqlStr, args, err := deleteBuilder(*builderOpts)
+	if err != nil {
+		return err
+	}
+
+	_, err = dao.db.ExecContext(ctx, sqlStr, args...)
+	return err
+}
+
+// ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
+
+// DeleteAssetKeyframesById deletes asset keyframes by ID
+func (dao *DAO) DeleteAssetKeyframesById(ctx context.Context, id string) error {
+	if id == "" {
+		return utils.ErrId
+	}
+
+	builderOpts := newBuilderOptions(models.ASSET_KEYFRAMES_TABLE).
+		SetDbOpts(NewOptions().WithWhere(squirrel.Eq{models.BASE_ID: id}))
+
+	sqlStr, args, err := deleteBuilder(*builderOpts)
+	if err != nil {
+		return err
+	}
+
+	_, err = dao.db.ExecContext(ctx, sqlStr, args...)
+	return err
+}
+
+// ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
+
 // ExistsAssetKeyframes checks if keyframes exist for the given asset ID
 func (dao *DAO) ExistsAssetKeyframes(ctx context.Context, assetID string) (bool, error) {
 	if assetID == "" {
@@ -248,7 +248,7 @@ func (dao *DAO) ExistsAssetKeyframes(ctx context.Context, assetID string) (bool,
 
 	query := squirrel.Select("COUNT(*)").
 		From(models.ASSET_KEYFRAMES_TABLE).
-		Where(squirrel.Eq{models.KEYFRAMES_ASSET_ID: assetID})
+		Where(squirrel.Eq{models.ASSET_KEYFRAMES_ASSET_ID: assetID})
 
 	sql, args, err := query.ToSql()
 	if err != nil {

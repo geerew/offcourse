@@ -378,7 +378,7 @@ func Test_ListAssetMetadata(t *testing.T) {
 
 		// Video created_at ascending
 		opts := NewOptions().
-			WithOrderBy(models.MEDIA_VIDEO_TABLE_CREATED_AT + " ASC")
+			WithOrderBy(models.ASSET_METADATA_VIDEO_TABLE_CREATED_AT + " ASC")
 
 		records, err := dao.ListAssetMetadata(ctx, opts)
 		require.NoError(t, err)
@@ -391,7 +391,7 @@ func Test_ListAssetMetadata(t *testing.T) {
 
 		// Video created_at DESC
 		opts = NewOptions().
-			WithOrderBy(models.MEDIA_VIDEO_TABLE_CREATED_AT + " DESC")
+			WithOrderBy(models.ASSET_METADATA_VIDEO_TABLE_CREATED_AT + " DESC")
 
 		records, err = dao.ListAssetMetadata(ctx, opts)
 		require.NoError(t, err)

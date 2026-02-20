@@ -29,9 +29,9 @@ func TestDAO_CreateAssetKeyframes(t *testing.T) {
 
 	t.Run("success", func(t *testing.T) {
 		keyframes := &models.AssetKeyframes{
-			AssetID:    asset.ID,
-			Keyframes:  []float64{0.0, 2.5, 5.0, 7.5, 10.0},
-			IsComplete: true,
+			AssetID:        asset.ID,
+			KeyframesSlice: []float64{0.0, 2.5, 5.0, 7.5, 10.0},
+			IsComplete:     true,
 		}
 
 		err := dao.CreateAssetKeyframes(ctx, keyframes)
@@ -59,8 +59,8 @@ func TestDAO_CreateAssetKeyframes(t *testing.T) {
 
 	t.Run("invalid keyframes", func(t *testing.T) {
 		keyframes := &models.AssetKeyframes{
-			AssetID:   "test-asset-2",
-			Keyframes: []float64{5.0, 2.5, 10.0}, // Not ascending
+			AssetID:        "test-asset-2",
+			KeyframesSlice: []float64{5.0, 2.5, 10.0}, // Not ascending
 		}
 
 		err := dao.CreateAssetKeyframes(ctx, keyframes)
@@ -74,9 +74,9 @@ func TestDAO_CreateAssetKeyframes(t *testing.T) {
 
 		// First create
 		keyframes1 := &models.AssetKeyframes{
-			AssetID:    asset.ID,
-			Keyframes:  []float64{0.0, 2.5},
-			IsComplete: false,
+			AssetID:        asset.ID,
+			KeyframesSlice: []float64{0.0, 2.5},
+			IsComplete:     false,
 		}
 
 		err := dao.CreateAssetKeyframes(ctx, keyframes1)
@@ -84,9 +84,9 @@ func TestDAO_CreateAssetKeyframes(t *testing.T) {
 
 		// Try to create duplicate
 		keyframes2 := &models.AssetKeyframes{
-			AssetID:    asset.ID,
-			Keyframes:  []float64{0.0, 2.5, 5.0},
-			IsComplete: true,
+			AssetID:        asset.ID,
+			KeyframesSlice: []float64{0.0, 2.5, 5.0},
+			IsComplete:     true,
 		}
 
 		err = dao.CreateAssetKeyframes(ctx, keyframes2)
@@ -108,9 +108,9 @@ func TestDAO_GetAssetKeyframes(t *testing.T) {
 
 	// Setup test data
 	keyframes := &models.AssetKeyframes{
-		AssetID:    asset.ID,
-		Keyframes:  []float64{0.0, 2.5, 5.0, 7.5, 10.0},
-		IsComplete: true,
+		AssetID:        asset.ID,
+		KeyframesSlice: []float64{0.0, 2.5, 5.0, 7.5, 10.0},
+		IsComplete:     true,
 	}
 
 	err := dao.CreateAssetKeyframes(ctx, keyframes)
@@ -123,7 +123,7 @@ func TestDAO_GetAssetKeyframes(t *testing.T) {
 
 		assert.Equal(t, keyframes.ID, retrieved.ID)
 		assert.Equal(t, asset.ID, retrieved.AssetID)
-		assert.Equal(t, []float64{0.0, 2.5, 5.0, 7.5, 10.0}, retrieved.Keyframes)
+		assert.Equal(t, []float64{0.0, 2.5, 5.0, 7.5, 10.0}, retrieved.KeyframesSlice)
 		assert.True(t, retrieved.IsComplete)
 		assert.NotEmpty(t, retrieved.CreatedAt)
 		assert.NotEmpty(t, retrieved.UpdatedAt)
@@ -156,16 +156,16 @@ func TestDAO_UpdateAssetKeyframes(t *testing.T) {
 
 	// Setup test data
 	keyframes := &models.AssetKeyframes{
-		AssetID:    asset.ID,
-		Keyframes:  []float64{0.0, 2.5},
-		IsComplete: false,
+		AssetID:        asset.ID,
+		KeyframesSlice: []float64{0.0, 2.5},
+		IsComplete:     false,
 	}
 
 	err := dao.CreateAssetKeyframes(ctx, keyframes)
 	require.NoError(t, err)
 
 	t.Run("success", func(t *testing.T) {
-		keyframes.Keyframes = []float64{0.0, 2.5, 5.0, 7.5, 10.0}
+		keyframes.KeyframesSlice = []float64{0.0, 2.5, 5.0, 7.5, 10.0}
 		keyframes.IsComplete = true
 
 		err := dao.UpdateAssetKeyframes(ctx, keyframes)
@@ -174,7 +174,7 @@ func TestDAO_UpdateAssetKeyframes(t *testing.T) {
 		// Verify update
 		retrieved, err := dao.GetAssetKeyframes(ctx, asset.ID)
 		require.NoError(t, err)
-		assert.Equal(t, []float64{0.0, 2.5, 5.0, 7.5, 10.0}, retrieved.Keyframes)
+		assert.Equal(t, []float64{0.0, 2.5, 5.0, 7.5, 10.0}, retrieved.KeyframesSlice)
 		assert.True(t, retrieved.IsComplete)
 	})
 
@@ -196,8 +196,8 @@ func TestDAO_UpdateAssetKeyframes(t *testing.T) {
 
 	t.Run("invalid keyframes", func(t *testing.T) {
 		keyframes := &models.AssetKeyframes{
-			AssetID:   "test-asset-7",
-			Keyframes: []float64{5.0, 2.5, 10.0}, // Not ascending
+			AssetID:        "test-asset-7",
+			KeyframesSlice: []float64{5.0, 2.5, 10.0}, // Not ascending
 		}
 		keyframes.RefreshId()
 
@@ -220,9 +220,9 @@ func TestDAO_DeleteAssetKeyframes(t *testing.T) {
 
 	// Setup test data
 	keyframes := &models.AssetKeyframes{
-		AssetID:    asset.ID,
-		Keyframes:  []float64{0.0, 2.5, 5.0},
-		IsComplete: true,
+		AssetID:        asset.ID,
+		KeyframesSlice: []float64{0.0, 2.5, 5.0},
+		IsComplete:     true,
 	}
 
 	err := dao.CreateAssetKeyframes(ctx, keyframes)
@@ -263,9 +263,9 @@ func TestDAO_DeleteAssetKeyframesById(t *testing.T) {
 
 	// Setup test data
 	keyframes := &models.AssetKeyframes{
-		AssetID:    asset.ID,
-		Keyframes:  []float64{0.0, 2.5, 5.0},
-		IsComplete: true,
+		AssetID:        asset.ID,
+		KeyframesSlice: []float64{0.0, 2.5, 5.0},
+		IsComplete:     true,
 	}
 
 	err := dao.CreateAssetKeyframes(ctx, keyframes)
@@ -302,15 +302,15 @@ func TestDAO_ListAssetKeyframes(t *testing.T) {
 
 	// Setup test data
 	keyframes1 := &models.AssetKeyframes{
-		AssetID:    asset1.ID,
-		Keyframes:  []float64{0.0, 2.5},
-		IsComplete: false,
+		AssetID:        asset1.ID,
+		KeyframesSlice: []float64{0.0, 2.5},
+		IsComplete:     false,
 	}
 
 	keyframes2 := &models.AssetKeyframes{
-		AssetID:    asset2.ID,
-		Keyframes:  []float64{0.0, 2.5, 5.0, 7.5},
-		IsComplete: true,
+		AssetID:        asset2.ID,
+		KeyframesSlice: []float64{0.0, 2.5, 5.0, 7.5},
+		IsComplete:     true,
 	}
 
 	err := dao.CreateAssetKeyframes(ctx, keyframes1)
@@ -327,7 +327,7 @@ func TestDAO_ListAssetKeyframes(t *testing.T) {
 
 	t.Run("with where clause", func(t *testing.T) {
 		opts := &Options{
-			Where: squirrel.Eq{models.KEYFRAMES_IS_COMPLETE: true},
+			Where: squirrel.Eq{models.ASSET_KEYFRAMES_IS_COMPLETE: true},
 		}
 
 		list, err := dao.ListAssetKeyframes(ctx, opts)
@@ -361,9 +361,9 @@ func TestDAO_ExistsAssetKeyframes(t *testing.T) {
 
 	// Setup test data
 	keyframes := &models.AssetKeyframes{
-		AssetID:    asset.ID,
-		Keyframes:  []float64{0.0, 2.5, 5.0},
-		IsComplete: true,
+		AssetID:        asset.ID,
+		KeyframesSlice: []float64{0.0, 2.5, 5.0},
+		IsComplete:     true,
 	}
 
 	err := dao.CreateAssetKeyframes(ctx, keyframes)
@@ -409,15 +409,15 @@ func TestDAO_GetAssetKeyframesCount(t *testing.T) {
 
 	// Setup test data
 	keyframes1 := &models.AssetKeyframes{
-		AssetID:    asset1.ID,
-		Keyframes:  []float64{0.0, 2.5},
-		IsComplete: false,
+		AssetID:        asset1.ID,
+		KeyframesSlice: []float64{0.0, 2.5},
+		IsComplete:     false,
 	}
 
 	keyframes2 := &models.AssetKeyframes{
-		AssetID:    asset2.ID,
-		Keyframes:  []float64{0.0, 2.5, 5.0},
-		IsComplete: true,
+		AssetID:        asset2.ID,
+		KeyframesSlice: []float64{0.0, 2.5, 5.0},
+		IsComplete:     true,
 	}
 
 	err := dao.CreateAssetKeyframes(ctx, keyframes1)
@@ -434,7 +434,7 @@ func TestDAO_GetAssetKeyframesCount(t *testing.T) {
 
 	t.Run("filtered count", func(t *testing.T) {
 		opts := &Options{
-			Where: squirrel.Eq{models.KEYFRAMES_IS_COMPLETE: true},
+			Where: squirrel.Eq{models.ASSET_KEYFRAMES_IS_COMPLETE: true},
 		}
 
 		count, err := dao.GetAssetKeyframesCount(ctx, opts)
@@ -456,9 +456,9 @@ func TestDAO_UpsertAssetKeyframes(t *testing.T) {
 		asset := createTestAsset(t, ctx, dao, "test-asset-15")
 
 		keyframes := &models.AssetKeyframes{
-			AssetID:    asset.ID,
-			Keyframes:  []float64{0.0, 2.5, 5.0},
-			IsComplete: true,
+			AssetID:        asset.ID,
+			KeyframesSlice: []float64{0.0, 2.5, 5.0},
+			IsComplete:     true,
 		}
 
 		err := dao.UpsertAssetKeyframes(ctx, keyframes)
@@ -468,7 +468,7 @@ func TestDAO_UpsertAssetKeyframes(t *testing.T) {
 		// Verify creation
 		retrieved, err := dao.GetAssetKeyframes(ctx, asset.ID)
 		require.NoError(t, err)
-		assert.Equal(t, []float64{0.0, 2.5, 5.0}, retrieved.Keyframes)
+		assert.Equal(t, []float64{0.0, 2.5, 5.0}, retrieved.KeyframesSlice)
 		assert.True(t, retrieved.IsComplete)
 	})
 
@@ -478,9 +478,9 @@ func TestDAO_UpsertAssetKeyframes(t *testing.T) {
 
 		// First create
 		keyframes := &models.AssetKeyframes{
-			AssetID:    asset.ID,
-			Keyframes:  []float64{0.0, 2.5},
-			IsComplete: false,
+			AssetID:        asset.ID,
+			KeyframesSlice: []float64{0.0, 2.5},
+			IsComplete:     false,
 		}
 
 		err := dao.UpsertAssetKeyframes(ctx, keyframes)
@@ -488,7 +488,7 @@ func TestDAO_UpsertAssetKeyframes(t *testing.T) {
 		originalID := keyframes.ID
 
 		// Now update
-		keyframes.Keyframes = []float64{0.0, 2.5, 5.0, 7.5}
+		keyframes.KeyframesSlice = []float64{0.0, 2.5, 5.0, 7.5}
 		keyframes.IsComplete = true
 
 		err = dao.UpsertAssetKeyframes(ctx, keyframes)
@@ -498,7 +498,7 @@ func TestDAO_UpsertAssetKeyframes(t *testing.T) {
 		// Verify update
 		retrieved, err := dao.GetAssetKeyframes(ctx, asset.ID)
 		require.NoError(t, err)
-		assert.Equal(t, []float64{0.0, 2.5, 5.0, 7.5}, retrieved.Keyframes)
+		assert.Equal(t, []float64{0.0, 2.5, 5.0, 7.5}, retrieved.KeyframesSlice)
 		assert.True(t, retrieved.IsComplete)
 	})
 

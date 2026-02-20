@@ -45,18 +45,18 @@ type CourseProgress struct {
 
 // ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
 
-// CourseTagRowColumns returns the list of columns to use when populating `CourseTag`
+// CourseProgressColumns returns the columns for use in a SELECT query
 func CourseProgressColumns() []string {
 	return []string{
-		fmt.Sprintf("%s AS id", COURSE_PROGRESS_TABLE_ID),
-		fmt.Sprintf("%s AS created_at", COURSE_PROGRESS_TABLE_CREATED_AT),
-		fmt.Sprintf("%s AS updated_at", COURSE_PROGRESS_TABLE_UPDATED_AT),
-		fmt.Sprintf("%s AS course_id", COURSE_PROGRESS_TABLE_COURSE_ID),
-		fmt.Sprintf("%s AS user_id", COURSE_PROGRESS_TABLE_USER_ID),
-		fmt.Sprintf("%s AS started", COURSE_PROGRESS_TABLE_STARTED),
-		fmt.Sprintf("%s AS started_at", COURSE_PROGRESS_TABLE_STARTED_AT),
-		fmt.Sprintf("%s AS percent", COURSE_PROGRESS_TABLE_PERCENT),
-		fmt.Sprintf("%s AS completed_at", COURSE_PROGRESS_TABLE_COMPLETED_AT),
+		fmt.Sprintf("%s AS %s", COURSE_PROGRESS_TABLE_ID, BASE_ID),
+		fmt.Sprintf("%s AS %s", COURSE_PROGRESS_TABLE_CREATED_AT, BASE_CREATED_AT),
+		fmt.Sprintf("%s AS %s", COURSE_PROGRESS_TABLE_UPDATED_AT, BASE_UPDATED_AT),
+		fmt.Sprintf("%s AS %s", COURSE_PROGRESS_TABLE_COURSE_ID, COURSE_PROGRESS_COURSE_ID),
+		fmt.Sprintf("%s AS %s", COURSE_PROGRESS_TABLE_USER_ID, COURSE_PROGRESS_USER_ID),
+		fmt.Sprintf("%s AS %s", COURSE_PROGRESS_TABLE_STARTED, COURSE_PROGRESS_STARTED),
+		fmt.Sprintf("%s AS %s", COURSE_PROGRESS_TABLE_STARTED_AT, COURSE_PROGRESS_STARTED_AT),
+		fmt.Sprintf("%s AS %s", COURSE_PROGRESS_TABLE_PERCENT, COURSE_PROGRESS_PERCENT),
+		fmt.Sprintf("%s AS %s", COURSE_PROGRESS_TABLE_COMPLETED_AT, COURSE_PROGRESS_COMPLETED_AT),
 	}
 }
 

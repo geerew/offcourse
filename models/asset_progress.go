@@ -45,18 +45,18 @@ type AssetProgress struct {
 
 // ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
 
-// AssetProgressColumns returns the list of columns in the asset progress table
+// AssetProgressColumns returns the columns for use in a SELECT query
 func AssetProgressColumns() []string {
 	return []string{
-		fmt.Sprintf("%s AS id", ASSET_PROGRESS_TABLE_ID),
-		fmt.Sprintf("%s AS created_at", ASSET_PROGRESS_TABLE_CREATED_AT),
-		fmt.Sprintf("%s AS updated_at", ASSET_PROGRESS_TABLE_UPDATED_AT),
-		fmt.Sprintf("%s AS asset_id", ASSET_PROGRESS_TABLE_ASSET_ID),
-		fmt.Sprintf("%s AS user_id", ASSET_PROGRESS_TABLE_USER_ID),
-		fmt.Sprintf("%s AS position", ASSET_PROGRESS_TABLE_POSITION),
-		fmt.Sprintf("%s AS progress_frac", ASSET_PROGRESS_TABLE_PROGRESS_FRAC),
-		fmt.Sprintf("%s AS completed", ASSET_PROGRESS_TABLE_COMPLETED),
-		fmt.Sprintf("%s AS completed_at", ASSET_PROGRESS_TABLE_COMPLETED_AT),
+		fmt.Sprintf("%s AS %s", ASSET_PROGRESS_TABLE_ID, BASE_ID),
+		fmt.Sprintf("%s AS %s", ASSET_PROGRESS_TABLE_CREATED_AT, BASE_CREATED_AT),
+		fmt.Sprintf("%s AS %s", ASSET_PROGRESS_TABLE_UPDATED_AT, BASE_UPDATED_AT),
+		fmt.Sprintf("%s AS %s", ASSET_PROGRESS_TABLE_ASSET_ID, ASSET_PROGRESS_ASSET_ID),
+		fmt.Sprintf("%s AS %s", ASSET_PROGRESS_TABLE_USER_ID, ASSET_PROGRESS_USER_ID),
+		fmt.Sprintf("%s AS %s", ASSET_PROGRESS_TABLE_POSITION, ASSET_PROGRESS_POSITION),
+		fmt.Sprintf("%s AS %s", ASSET_PROGRESS_TABLE_PROGRESS_FRAC, ASSET_PROGRESS_PROGRESS_FRAC),
+		fmt.Sprintf("%s AS %s", ASSET_PROGRESS_TABLE_COMPLETED, ASSET_PROGRESS_COMPLETED),
+		fmt.Sprintf("%s AS %s", ASSET_PROGRESS_TABLE_COMPLETED_AT, ASSET_PROGRESS_COMPLETED_AT),
 	}
 }
 

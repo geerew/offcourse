@@ -100,15 +100,7 @@ func (dao *DAO) GetAsset(ctx context.Context, dbOpts *Options) (*models.Asset, e
 				),
 			)
 	}
-	// Add the asset metadata columns and join
-	if includeMetadata {
-		builderOpts = builderOpts.
-			WithColumns(models.AssetMetadataRowColumns()...).
-			WithLeftJoin(models.MEDIA_VIDEO_TABLE,
-				fmt.Sprintf("%s = %s", models.MEDIA_VIDEO_TABLE_ASSET_ID, models.ASSET_TABLE_ID)).
-			WithLeftJoin(models.MEDIA_AUDIO_TABLE,
-				fmt.Sprintf("%s = %s", models.MEDIA_AUDIO_TABLE_ASSET_ID, models.ASSET_TABLE_ID))
-	}
+	// Metadata is fetched separately via GetAssetMetadata when includeMetadata is true
 
 	// Add lesson and course joins if enabled
 	if dbOpts != nil {
@@ -135,8 +127,15 @@ func (dao *DAO) GetAsset(ctx context.Context, dbOpts *Options) (*models.Asset, e
 		return nil, nil
 	}
 
-	// Map to domain
-	return row.ToDomain(includeProgress, includeMetadata), nil
+	a := row.ToDomain(includeProgress, includeMetadata)
+	if includeMetadata && a != nil {
+		meta, err := dao.GetAssetMetadata(ctx, a.ID)
+		if err != nil {
+			return nil, err
+		}
+		a.AssetMetadata = meta
+	}
+	return a, nil
 }
 
 // ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
@@ -181,15 +180,7 @@ func (dao *DAO) ListAssets(ctx context.Context, dbOpts *Options) ([]*models.Asse
 			)
 	}
 
-	// Metadata joins
-	if includeMetadata {
-		builderOpts = builderOpts.
-			WithColumns(models.AssetMetadataRowColumns()...).
-			WithLeftJoin(models.MEDIA_VIDEO_TABLE,
-				fmt.Sprintf("%s = %s", models.MEDIA_VIDEO_TABLE_ASSET_ID, models.ASSET_TABLE_ID)).
-			WithLeftJoin(models.MEDIA_AUDIO_TABLE,
-				fmt.Sprintf("%s = %s", models.MEDIA_AUDIO_TABLE_ASSET_ID, models.ASSET_TABLE_ID))
-	}
+	// Metadata is fetched separately via GetAssetMetadataByAssetIDs when includeMetadata is true
 
 	// Add lesson and course joins if enabled
 	if dbOpts != nil {
@@ -219,6 +210,20 @@ func (dao *DAO) ListAssets(ctx context.Context, dbOpts *Options) ([]*models.Asse
 	records := make([]*models.Asset, 0, len(rows))
 	for i := range rows {
 		records = append(records, rows[i].ToDomain(includeProgress, includeMetadata))
+	}
+
+	if includeMetadata && len(records) > 0 {
+		assetIDs := make([]string, len(records))
+		for i, a := range records {
+			assetIDs[i] = a.ID
+		}
+		metaMap, err := dao.GetAssetMetadataByAssetIDs(ctx, assetIDs)
+		if err != nil {
+			return nil, err
+		}
+		for _, a := range records {
+			a.AssetMetadata = metaMap[a.ID]
+		}
 	}
 
 	return records, nil

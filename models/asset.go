@@ -63,25 +63,46 @@ type Asset struct {
 	FileSize  int64           `db:"file_size"`  // Mutable
 	ModTime   string          `db:"mod_time"`   // Mutable
 	Hash      string          `db:"hash"`       // Mutable
-	Weight    int             `db:"weight"`
+	Weight    int             `db:"weight"`     // Mutable
 
-	// Relations
+	// Relations (populated manually)
 	AssetMetadata *AssetMetadata `db:"-"`
 	Progress      *AssetProgress `db:"-"`
 }
 
 // ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
 
-// AssetRow is for use in scanning a full asset with optional relations
+// AssetColumns returns the columns for use in a SELECT query
+func AssetColumns() []string {
+	return []string{
+		fmt.Sprintf("%s AS %s", ASSET_TABLE_ID, BASE_ID),
+		fmt.Sprintf("%s AS %s", ASSET_TABLE_CREATED_AT, BASE_CREATED_AT),
+		fmt.Sprintf("%s AS %s", ASSET_TABLE_UPDATED_AT, BASE_UPDATED_AT),
+		fmt.Sprintf("%s AS %s", ASSET_TABLE_COURSE_ID, ASSET_COURSE_ID),
+		fmt.Sprintf("%s AS %s", ASSET_TABLE_LESSON_ID, ASSET_LESSON_ID),
+		fmt.Sprintf("%s AS %s", ASSET_TABLE_TITLE, ASSET_TITLE),
+		fmt.Sprintf("%s AS %s", ASSET_TABLE_PREFIX, ASSET_PREFIX),
+		fmt.Sprintf("%s AS %s", ASSET_TABLE_SUB_PREFIX, ASSET_SUB_PREFIX),
+		fmt.Sprintf("%s AS %s", ASSET_TABLE_SUB_TITLE, ASSET_SUB_TITLE),
+		fmt.Sprintf("%s AS %s", ASSET_TABLE_MODULE, ASSET_MODULE),
+		fmt.Sprintf("%s AS %s", ASSET_TABLE_TYPE, ASSET_TYPE),
+		fmt.Sprintf("%s AS %s", ASSET_TABLE_PATH, ASSET_PATH),
+		fmt.Sprintf("%s AS %s", ASSET_TABLE_FILE_SIZE, ASSET_FILE_SIZE),
+		fmt.Sprintf("%s AS %s", ASSET_TABLE_MOD_TIME, ASSET_MOD_TIME),
+		fmt.Sprintf("%s AS %s", ASSET_TABLE_HASH, ASSET_HASH),
+		fmt.Sprintf("%s AS %s", ASSET_TABLE_WEIGHT, ASSET_WEIGHT),
+	}
+}
+
+// ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
+
+// AssetRow is for use in scanning a full asset with optional progress
 type AssetRow struct {
 	// Base asset columns (match assets.*)
 	Asset
 
 	// Optional progress columns
 	AssetProgressRow
-
-	// Optional metadata columns
-	AssetMetadataRow
 }
 
 // ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
@@ -115,34 +136,7 @@ func (r *AssetRow) ToDomain(includeProgress, includeMetadata bool) *Asset {
 		a.Progress = r.AssetProgressRow.ToDomain()
 	}
 
-	// Attach metadata if requested
-	if includeMetadata {
-		a.AssetMetadata = r.AssetMetadataRow.ToDomain()
-	}
+	// Metadata is attached by the DAO when includeMetadata is true (fetched separately)
 
 	return a
-}
-
-// ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
-
-// AssetColumns returns the list of columns to use when populating `Asset`
-func AssetColumns() []string {
-	return []string{
-		fmt.Sprintf("%s AS id", ASSET_TABLE_ID),
-		fmt.Sprintf("%s AS created_at", ASSET_TABLE_CREATED_AT),
-		fmt.Sprintf("%s AS updated_at", ASSET_TABLE_UPDATED_AT),
-		fmt.Sprintf("%s AS course_id", ASSET_TABLE_COURSE_ID),
-		fmt.Sprintf("%s AS lesson_id", ASSET_TABLE_LESSON_ID),
-		fmt.Sprintf("%s AS title", ASSET_TABLE_TITLE),
-		fmt.Sprintf("%s AS prefix", ASSET_TABLE_PREFIX),
-		fmt.Sprintf("%s AS sub_prefix", ASSET_TABLE_SUB_PREFIX),
-		fmt.Sprintf("%s AS sub_title", ASSET_TABLE_SUB_TITLE),
-		fmt.Sprintf("%s AS module", ASSET_TABLE_MODULE),
-		fmt.Sprintf("%s AS type", ASSET_TABLE_TYPE),
-		fmt.Sprintf("%s AS path", ASSET_TABLE_PATH),
-		fmt.Sprintf("%s AS file_size", ASSET_TABLE_FILE_SIZE),
-		fmt.Sprintf("%s AS mod_time", ASSET_TABLE_MOD_TIME),
-		fmt.Sprintf("%s AS hash", ASSET_TABLE_HASH),
-		fmt.Sprintf("%s AS weight", ASSET_TABLE_WEIGHT),
-	}
 }

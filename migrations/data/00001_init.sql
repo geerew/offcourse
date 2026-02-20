@@ -120,8 +120,8 @@ CREATE TABLE assets_progress (
 	UNIQUE(asset_id, user_id)
 );
 
--- Asset media video represents the video metadata for video assets
-CREATE TABLE asset_media_video (
+-- Asset metadata video represents the video metadata for video assets
+CREATE TABLE asset_metadata_video (
   id            TEXT PRIMARY KEY NOT NULL,
   asset_id      TEXT NOT NULL UNIQUE,
   duration_sec  INTEGER NOT NULL DEFAULT 0,
@@ -140,8 +140,8 @@ CREATE TABLE asset_media_video (
   FOREIGN KEY (asset_id) REFERENCES assets(id) ON DELETE CASCADE
 );
 
--- Asset media audio represents the audio metadata for audio assets
-CREATE TABLE asset_media_audio (
+-- Asset metadata audio represents the audio metadata for audio assets
+CREATE TABLE asset_metadata_audio (
   id              TEXT PRIMARY KEY NOT NULL,
   asset_id        TEXT NOT NULL UNIQUE,
   language        TEXT NOT NULL DEFAULT '',    -- "eng", "und"

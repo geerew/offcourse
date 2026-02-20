@@ -59,22 +59,22 @@ type Course struct {
 
 // ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
 
-// CourseColumns returns the list of columns to use when populating `Course`
+// CourseColumns returns the columns for use in a SELECT query
 func CourseColumns() []string {
 	return []string{
-		fmt.Sprintf("%s AS id", COURSE_TABLE_ID),
-		fmt.Sprintf("%s AS created_at", COURSE_TABLE_CREATED_AT),
-		fmt.Sprintf("%s AS updated_at", COURSE_TABLE_UPDATED_AT),
-		fmt.Sprintf("%s AS title", COURSE_TABLE_TITLE),
-		fmt.Sprintf("%s AS path", COURSE_TABLE_PATH),
-		fmt.Sprintf("%s AS card_path", COURSE_TABLE_CARD_PATH),
-		fmt.Sprintf("%s AS card_hash", COURSE_TABLE_CARD_HASH),
-		fmt.Sprintf("%s AS card_mod_time", COURSE_TABLE_CARD_MOD_TIME),
-		fmt.Sprintf("%s AS available", COURSE_TABLE_AVAILABLE),
-		fmt.Sprintf("%s AS duration", COURSE_TABLE_DURATION),
-		fmt.Sprintf("%s AS initial_scan", COURSE_TABLE_INITIAL_SCAN),
-		fmt.Sprintf("%s AS maintenance", COURSE_TABLE_MAINTENANCE),
-		fmt.Sprintf("%s AS description", COURSE_TABLE_DESCRIPTION),
+		fmt.Sprintf("%s AS %s", COURSE_TABLE_ID, BASE_ID),
+		fmt.Sprintf("%s AS %s", COURSE_TABLE_CREATED_AT, BASE_CREATED_AT),
+		fmt.Sprintf("%s AS %s", COURSE_TABLE_UPDATED_AT, BASE_UPDATED_AT),
+		fmt.Sprintf("%s AS %s", COURSE_TABLE_TITLE, COURSE_TITLE),
+		fmt.Sprintf("%s AS %s", COURSE_TABLE_PATH, COURSE_PATH),
+		fmt.Sprintf("%s AS %s", COURSE_TABLE_CARD_PATH, COURSE_CARD_PATH),
+		fmt.Sprintf("%s AS %s", COURSE_TABLE_CARD_HASH, COURSE_CARD_HASH),
+		fmt.Sprintf("%s AS %s", COURSE_TABLE_CARD_MOD_TIME, COURSE_CARD_MOD_TIME),
+		fmt.Sprintf("%s AS %s", COURSE_TABLE_AVAILABLE, COURSE_AVAILABLE),
+		fmt.Sprintf("%s AS %s", COURSE_TABLE_DURATION, COURSE_DURATION),
+		fmt.Sprintf("%s AS %s", COURSE_TABLE_INITIAL_SCAN, COURSE_INITIAL_SCAN),
+		fmt.Sprintf("%s AS %s", COURSE_TABLE_MAINTENANCE, COURSE_MAINTENANCE),
+		fmt.Sprintf("%s AS %s", COURSE_TABLE_DESCRIPTION, COURSE_DESCRIPTION),
 	}
 }
 
