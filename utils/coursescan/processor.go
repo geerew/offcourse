@@ -1017,8 +1017,9 @@ func applyLessonCreateUpdateOps(
 				asset.LessonID = v.New.ID
 			}
 
-			for _, attachments := range v.New.Attachments {
-				attachments.LessonID = v.New.ID
+			for _, att := range v.New.Attachments {
+				att.CourseID = v.New.CourseID
+				att.LessonID = v.New.ID
 			}
 
 		case NoLessonOp:
@@ -1029,8 +1030,9 @@ func applyLessonCreateUpdateOps(
 				asset.LessonID = v.Existing.ID
 			}
 
-			for _, attachments := range v.New.Attachments {
-				attachments.LessonID = v.Existing.ID
+			for _, att := range v.New.Attachments {
+				att.CourseID = v.Existing.CourseID
+				att.LessonID = v.Existing.ID
 			}
 
 		case UpdateLessonOp:
@@ -1046,8 +1048,9 @@ func applyLessonCreateUpdateOps(
 				asset.LessonID = v.New.ID
 			}
 
-			for _, attachments := range v.New.Attachments {
-				attachments.LessonID = v.New.ID
+			for _, att := range v.New.Attachments {
+				att.CourseID = v.New.CourseID
+				att.LessonID = v.New.ID
 			}
 		}
 	}

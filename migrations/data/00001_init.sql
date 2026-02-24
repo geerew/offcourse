@@ -69,12 +69,14 @@ CREATE TABLE lessons (
 -- Attachments represents supplementary material for a lesson
 CREATE TABLE attachments (
 	id         TEXT PRIMARY KEY NOT NULL,
+	course_id  TEXT NOT NULL,
 	lesson_id  TEXT NOT NULL,
 	title      TEXT NOT NULL,
 	path       TEXT UNIQUE NOT NULL,
 	created_at TEXT NOT NULL DEFAULT (STRFTIME('%Y-%m-%d %H:%M:%f', 'NOW')),
 	updated_at TEXT NOT NULL DEFAULT (STRFTIME('%Y-%m-%d %H:%M:%f', 'NOW')),
 	--
+	FOREIGN KEY (course_id) REFERENCES courses (id) ON DELETE CASCADE,
 	FOREIGN KEY (lesson_id) REFERENCES lessons (id) ON DELETE CASCADE
 );
 
@@ -233,6 +235,9 @@ CREATE INDEX idx_lesson_prefix_sub ON assets(lesson_id, prefix, sub_prefix);
 
 -- Attachments: WHERE lesson_id = ? ORDER BY title
 CREATE INDEX idx_attachments_lesson_title ON attachments(lesson_id, title);
+
+-- Filter attachments by course quickly
+CREATE INDEX idx_attachments_course ON attachments(course_id);
 
 -- Filter assets by course quickly
 CREATE INDEX idx_assets_course ON assets(course_id);

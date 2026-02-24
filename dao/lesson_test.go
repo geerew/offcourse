@@ -64,6 +64,7 @@ func helper_createLessons(t *testing.T, ctx context.Context, dao *DAO, numCourse
 			// Create 2 attachments, reversed: 2,1
 			for _, n := range []int{2, 1} {
 				attachment := &models.Attachment{
+					CourseID: course.ID,
 					LessonID: lesson.ID,
 					Title:    fmt.Sprintf("%s Attachment %d", lessonPrefix, n),
 					Path:     fmt.Sprintf("%s/%s attachment %d.pdf", course.Path, lessonPrefix, n),

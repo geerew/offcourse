@@ -2,7 +2,6 @@ package dao
 
 import (
 	"context"
-	"fmt"
 	"slices"
 	"strings"
 
@@ -66,7 +65,7 @@ func (dao *DAO) CreateCourse(ctx context.Context, course *models.Course) error {
 // GetCourse gets a record from the courses table based upon the where clause in the options. If
 // there is no where clause, it will return the first record in the table
 //
-// By default, progress is not included. Use `WithUserProgress()` on the options to include it
+// Course progress is not included by default. It can be enabled by calling `WithUserProgress()` on the options
 func (dao *DAO) GetCourse(ctx context.Context, dbOpts *Options) (*models.Course, error) {
 	builderOpts := newBuilderOptions(models.COURSE_TABLE).
 		WithColumns(models.CourseColumns()...).
@@ -80,28 +79,27 @@ func (dao *DAO) GetCourse(ctx context.Context, dbOpts *Options) (*models.Course,
 		return getGeneric[models.Course](ctx, dao, *builderOpts)
 	}
 
-	// Include progress in the query
+	// Validate principal early
 	principal, err := principalFromCtx(ctx)
 	if err != nil {
 		return nil, err
 	}
 
-	builderOpts = builderOpts.
-		WithColumns(models.CourseProgressRowColumns()...).
-		WithColumns(fmt.Sprintf("%s AS favourite_id", models.COURSE_FAVOURITE_TABLE_ID)).
-		WithLeftJoin(models.COURSE_PROGRESS_TABLE, fmt.Sprintf("%s = %s AND %s = '%s'", models.COURSE_PROGRESS_TABLE_COURSE_ID, models.COURSE_TABLE_ID, models.COURSE_PROGRESS_TABLE_USER_ID, principal.UserID)).
-		WithLeftJoin(models.COURSE_FAVOURITE_TABLE, fmt.Sprintf("%s = %s AND %s = '%s'", models.COURSE_FAVOURITE_TABLE_COURSE_ID, models.COURSE_TABLE_ID, models.COURSE_FAVOURITE_TABLE_USER_ID, principal.UserID))
-
-	row, err := getGeneric[models.CourseRow](ctx, dao, *builderOpts)
+	course, err := getGeneric[models.Course](ctx, dao, *builderOpts)
 	if err != nil {
 		return nil, err
 	}
 
-	if row == nil {
+	if course == nil {
 		return nil, nil
 	}
 
-	return row.ToDomain(), nil
+	// Load progress and favourite separately
+	if err := attachCourseProgressAndFavourite(ctx, dao, principal.UserID, []*models.Course{course}); err != nil {
+		return nil, err
+	}
+
+	return course, nil
 }
 
 // ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
@@ -109,7 +107,7 @@ func (dao *DAO) GetCourse(ctx context.Context, dbOpts *Options) (*models.Course,
 // ListCourses gets all records from the courses table based upon the where clause and pagination
 // in the options
 //
-// By default, progress is not included. Use `WithUserProgress()` on the options to include it
+// Course progress and favourite status are not included by default. They can be enabled by calling `WithUserProgress()` on the options
 func (dao *DAO) ListCourses(ctx context.Context, dbOpts *Options) ([]*models.Course, error) {
 	builderOpts := newBuilderOptions(models.COURSE_TABLE).
 		WithColumns(models.CourseColumns()...).
@@ -122,34 +120,81 @@ func (dao *DAO) ListCourses(ctx context.Context, dbOpts *Options) ([]*models.Cou
 		return listGeneric[models.Course](ctx, dao, *builderOpts)
 	}
 
-	// Include progress in the query
+	// Validate principal early
 	principal, err := principalFromCtx(ctx)
 	if err != nil {
 		return nil, err
 	}
 
-	builderOpts = builderOpts.
-		WithColumns(models.CourseProgressRowColumns()...).
-		WithColumns(fmt.Sprintf("%s AS favourite_id", models.COURSE_FAVOURITE_TABLE_ID)).
-		WithLeftJoin(models.COURSE_PROGRESS_TABLE, fmt.Sprintf("%s = %s AND %s = '%s'", models.COURSE_PROGRESS_TABLE_COURSE_ID, models.COURSE_TABLE_ID, models.COURSE_PROGRESS_TABLE_USER_ID, principal.UserID)).
-		WithLeftJoin(models.COURSE_FAVOURITE_TABLE, fmt.Sprintf("%s = %s AND %s = '%s'", models.COURSE_FAVOURITE_TABLE_COURSE_ID, models.COURSE_TABLE_ID, models.COURSE_FAVOURITE_TABLE_USER_ID, principal.UserID))
-
-	rows, err := listGeneric[models.CourseRow](ctx, dao, *builderOpts)
+	courses, err := listGeneric[models.Course](ctx, dao, *builderOpts)
 	if err != nil {
 		return nil, err
 	}
 
-	if len(rows) == 0 {
+	if len(courses) == 0 {
 		return nil, nil
 	}
 
-	records := make([]*models.Course, 0, len(rows))
-	for i := range rows {
-		r := rows[i]
-		records = append(records, r.ToDomain())
+	// Load progress and favourite separately
+	if err := attachCourseProgressAndFavourite(ctx, dao, principal.UserID, courses); err != nil {
+		return nil, err
 	}
 
-	return records, nil
+	return courses, nil
+}
+
+// attachCourseProgressAndFavourite fetches progress and favourites for the given courses and attaches
+// them. This centralizes the logic so adding new relations (e.g. favourites) only requires updating
+// this helper.
+func attachCourseProgressAndFavourite(ctx context.Context, dao *DAO, userID string, courses []*models.Course) error {
+	if len(courses) == 0 {
+		return nil
+	}
+
+	courseIDs := make([]string, len(courses))
+	for i, c := range courses {
+		courseIDs[i] = c.ID
+	}
+
+	// Batch fetch progress
+	progressOpts := NewOptions().WithWhere(squirrel.And{
+		squirrel.Eq{models.COURSE_PROGRESS_USER_ID: userID},
+		squirrel.Eq{models.COURSE_PROGRESS_COURSE_ID: courseIDs},
+	})
+	progressList, err := dao.ListCourseProgress(ctx, progressOpts)
+	if err != nil {
+		return err
+	}
+	progressMap := make(map[string]*models.CourseProgress)
+	for _, p := range progressList {
+		progressMap[p.CourseID] = p
+	}
+
+	// Batch fetch favourites
+	favouriteOpts := NewOptions().WithWhere(squirrel.And{
+		squirrel.Eq{models.COURSE_FAVOURITE_USER_ID: userID},
+		squirrel.Eq{models.COURSE_FAVOURITE_COURSE_ID: courseIDs},
+	})
+	favouritesList, err := dao.ListCourseFavourites(ctx, favouriteOpts)
+	if err != nil {
+		return err
+	}
+	favouritedSet := make(map[string]bool)
+	for _, f := range favouritesList {
+		favouritedSet[f.CourseID] = true
+	}
+
+	// Attach to each course
+	for _, c := range courses {
+		if p, ok := progressMap[c.ID]; ok {
+			c.Progress = p
+		} else {
+			c.Progress = &models.CourseProgress{CourseID: c.ID, UserID: userID}
+		}
+		c.Favourited = favouritedSet[c.ID]
+	}
+
+	return nil
 }
 
 // ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~

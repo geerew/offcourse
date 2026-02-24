@@ -31,6 +31,7 @@ func Test_CreateAttachments(t *testing.T) {
 		require.NoError(t, dao.CreateLesson(ctx, lesson))
 
 		attachment := &models.Attachment{
+			CourseID: course.ID,
 			LessonID: lesson.ID,
 			Title:    "Attachment 1",
 			Path:     "/course-1/attachment-1",
@@ -60,6 +61,7 @@ func Test_CreateAttachments(t *testing.T) {
 
 		// Empty title
 		attachment := &models.Attachment{
+			CourseID: course.ID,
 			LessonID: lesson.ID,
 			Path:     "/course-1/attachment-1",
 		}
@@ -67,6 +69,7 @@ func Test_CreateAttachments(t *testing.T) {
 
 		// Empty path
 		attachment = &models.Attachment{
+			CourseID: course.ID,
 			LessonID: lesson.ID,
 			Title:    "Attachment 1",
 		}
@@ -74,7 +77,17 @@ func Test_CreateAttachments(t *testing.T) {
 
 		// Invalid lesson ID
 		attachment = &models.Attachment{
+			CourseID: course.ID,
 			LessonID: "invalid",
+			Title:    "Attachment 1",
+			Path:     "/course-1/attachment-1",
+		}
+		require.ErrorContains(t, dao.CreateAttachment(ctx, attachment), "FOREIGN KEY constraint failed")
+
+		// Invalid course ID
+		attachment = &models.Attachment{
+			CourseID: "invalid",
+			LessonID: lesson.ID,
 			Title:    "Attachment 1",
 			Path:     "/course-1/attachment-1",
 		}
@@ -100,6 +113,7 @@ func Test_GetAttachment(t *testing.T) {
 		require.NoError(t, dao.CreateLesson(ctx, lesson))
 
 		attachment := &models.Attachment{
+			CourseID: course.ID,
 			LessonID: lesson.ID,
 			Title:    "Attachment 1",
 			Path:     "/course-1/attachment-1",
@@ -141,6 +155,7 @@ func Test_ListAttachments(t *testing.T) {
 		attachments := []*models.Attachment{}
 		for i := range 3 {
 			attachment := &models.Attachment{
+				CourseID: course.ID,
 				LessonID: lesson.ID,
 				Title:    fmt.Sprintf("Attachment %d", i),
 				Path:     fmt.Sprintf("/course-1/attachment-%d", i),
@@ -184,6 +199,7 @@ func Test_ListAttachments(t *testing.T) {
 		attachments := []*models.Attachment{}
 		for i := range 3 {
 			attachment := &models.Attachment{
+				CourseID: course.ID,
 				LessonID: lesson.ID,
 				Title:    fmt.Sprintf("Attachment %d", i),
 				Path:     fmt.Sprintf("/course-1/attachment-%d", i),
@@ -231,6 +247,7 @@ func Test_ListAttachments(t *testing.T) {
 		require.NoError(t, dao.CreateLesson(ctx, lesson))
 
 		attachment := &models.Attachment{
+			CourseID: course.ID,
 			LessonID: lesson.ID,
 			Title:    "Attachment 1",
 			Path:     "/course-1/attachment-1",
@@ -261,6 +278,7 @@ func Test_ListAttachments(t *testing.T) {
 		attachments := []*models.Attachment{}
 		for i := range 17 {
 			attachment := &models.Attachment{
+				CourseID: course.ID,
 				LessonID: lesson.ID,
 				Title:    fmt.Sprintf("Attachment %d", i),
 				Path:     fmt.Sprintf("/course-1/attachment-%d", i),
@@ -306,6 +324,7 @@ func Test_UpdateAttachment(t *testing.T) {
 		require.NoError(t, dao.CreateLesson(ctx, lesson))
 
 		originalAttachment := &models.Attachment{
+			CourseID: course.ID,
 			LessonID: lesson.ID,
 			Title:    "Attachment 1",
 			Path:     "/course-1/attachment-1",
@@ -348,6 +367,7 @@ func Test_UpdateAttachment(t *testing.T) {
 		require.NoError(t, dao.CreateLesson(ctx, lesson))
 
 		attachment := &models.Attachment{
+			CourseID: course.ID,
 			LessonID: lesson.ID,
 			Title:    "Attachment 1",
 			Path:     "/course-1/attachment-1",
@@ -389,6 +409,7 @@ func Test_DeleteAttachments(t *testing.T) {
 		require.NoError(t, dao.CreateLesson(ctx, lesson))
 
 		attachment := &models.Attachment{
+			CourseID: course.ID,
 			LessonID: lesson.ID,
 			Title:    "Attachment 1",
 			Path:     "/course-1/attachment-1",
@@ -418,6 +439,7 @@ func Test_DeleteAttachments(t *testing.T) {
 		require.NoError(t, dao.CreateLesson(ctx, lesson))
 
 		attachment := &models.Attachment{
+			CourseID: course.ID,
 			LessonID: lesson.ID,
 			Title:    "Attachment 1",
 			Path:     "/course-1/attachment-1",
@@ -448,6 +470,7 @@ func Test_DeleteAttachments(t *testing.T) {
 		require.NoError(t, dao.CreateLesson(ctx, lesson))
 
 		attachment := &models.Attachment{
+			CourseID: course.ID,
 			LessonID: lesson.ID,
 			Title:    "Attachment 1",
 			Path:     "/course-1/attachment-1",
@@ -477,6 +500,7 @@ func Test_DeleteAttachments(t *testing.T) {
 		require.NoError(t, dao.CreateLesson(ctx, lesson))
 
 		attachment := &models.Attachment{
+			CourseID: course.ID,
 			LessonID: lesson.ID,
 			Title:    "Attachment 1",
 			Path:     "/course-1/attachment-1",
@@ -507,6 +531,7 @@ func Test_DeleteAttachments(t *testing.T) {
 		require.NoError(t, dao.CreateLesson(ctx, lesson))
 
 		attachment := &models.Attachment{
+			CourseID: course.ID,
 			LessonID: lesson.ID,
 			Title:    "Attachment 1",
 			Path:     "/course-1/attachment-1",

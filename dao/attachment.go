@@ -20,6 +20,14 @@ func (dao *DAO) CreateAttachment(ctx context.Context, attachment *models.Attachm
 		attachment.RefreshId()
 	}
 
+	if attachment.CourseID == "" {
+		return utils.ErrCourseId
+	}
+
+	if attachment.LessonID == "" {
+		return utils.ErrLessonId
+	}
+
 	if attachment.Title == "" {
 		return utils.ErrTitle
 	}
@@ -34,12 +42,13 @@ func (dao *DAO) CreateAttachment(ctx context.Context, attachment *models.Attachm
 	builderOpts := newBuilderOptions(models.ATTACHMENT_TABLE).
 		WithData(
 			map[string]interface{}{
-				models.BASE_ID:              attachment.ID,
-				models.ATTACHMENT_LESSON_ID: attachment.LessonID,
-				models.ATTACHMENT_TITLE:     attachment.Title,
-				models.ATTACHMENT_PATH:      attachment.Path,
-				models.BASE_CREATED_AT:      attachment.CreatedAt,
-				models.BASE_UPDATED_AT:      attachment.UpdatedAt,
+				models.BASE_ID:               attachment.ID,
+				models.ATTACHMENT_COURSE_ID:  attachment.CourseID,
+				models.ATTACHMENT_LESSON_ID:  attachment.LessonID,
+				models.ATTACHMENT_TITLE:      attachment.Title,
+				models.ATTACHMENT_PATH:       attachment.Path,
+				models.BASE_CREATED_AT:       attachment.CreatedAt,
+				models.BASE_UPDATED_AT:       attachment.UpdatedAt,
 			},
 		)
 
@@ -56,20 +65,6 @@ func (dao *DAO) GetAttachment(ctx context.Context, dbOpts *Options) (*models.Att
 		SetDbOpts(dbOpts).
 		WithLimit(1)
 
-	// Add lesson and course joins if enabled
-	if dbOpts != nil {
-		if dbOpts.IncludeLesson {
-			builderOpts = builderOpts.
-				WithJoin(models.LESSON_TABLE, models.ATTACHMENT_TABLE_LESSON_ID+" = "+models.LESSON_TABLE_ID)
-
-			// If course is also enabled, join course through lesson
-			if dbOpts.IncludeCourse {
-				builderOpts = builderOpts.
-					WithJoin(models.COURSE_TABLE, models.LESSON_TABLE_COURSE_ID+" = "+models.COURSE_TABLE_ID)
-			}
-		}
-	}
-
 	return getGeneric[models.Attachment](ctx, dao, *builderOpts)
 }
 
@@ -81,20 +76,6 @@ func (dao *DAO) ListAttachments(ctx context.Context, dbOpts *Options) ([]*models
 	builderOpts := newBuilderOptions(models.ATTACHMENT_TABLE).
 		WithColumns(models.AttachmentColumns()...).
 		SetDbOpts(dbOpts)
-
-	// Add lesson and course joins if enabled
-	if dbOpts != nil {
-		if dbOpts.IncludeLesson {
-			builderOpts = builderOpts.
-				WithJoin(models.LESSON_TABLE, models.ATTACHMENT_TABLE_LESSON_ID+" = "+models.LESSON_TABLE_ID)
-
-			// If course is also enabled, join course through lesson
-			if dbOpts.IncludeCourse {
-				builderOpts = builderOpts.
-					WithJoin(models.COURSE_TABLE, models.LESSON_TABLE_COURSE_ID+" = "+models.COURSE_TABLE_ID)
-			}
-		}
-	}
 
 	return listGeneric[models.Attachment](ctx, dao, *builderOpts)
 }

@@ -40,12 +40,6 @@ type Options struct {
 	// when performing a query
 	IncludeAssetMetadata bool
 
-	// IncludeCourse indicates whether to include course table join
-	IncludeCourse bool
-
-	// IncludeLesson indicates whether to include lesson table join
-	IncludeLesson bool
-
 	// Used to paginate the results
 	Pagination *pagination.Pagination
 }
@@ -79,18 +73,6 @@ func (o *Options) WithOrderByClause(clause squirrel.Sqlizer) *Options {
 // WithWhere sets the WHERE clause using a squirrel.Sqlizer
 func (o *Options) WithWhere(pred squirrel.Sqlizer) *Options {
 	o.Where = pred
-	return o
-}
-
-// WithCourse enables course table join
-func (o *Options) WithCourse() *Options {
-	o.IncludeCourse = true
-	return o
-}
-
-// WithLesson enables lesson table join
-func (o *Options) WithLesson() *Options {
-	o.IncludeLesson = true
 	return o
 }
 

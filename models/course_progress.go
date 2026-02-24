@@ -1,7 +1,6 @@
 package models
 
 import (
-	"database/sql"
 	"fmt"
 
 	"github.com/geerew/off-course/utils/types"
@@ -60,37 +59,3 @@ func CourseProgressColumns() []string {
 	}
 }
 
-// ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
-
-// CourseProgressRow is used to scan joined course progress rows. The values will zero
-// out if no progress exists
-type CourseProgressRow struct {
-	Started     sql.NullBool   `db:"progress_started"`
-	StartedAt   types.DateTime `db:"progress_started_at"`
-	Percent     sql.NullInt64  `db:"progress_percent"`
-	CompletedAt types.DateTime `db:"progress_completed_at"`
-}
-
-// ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
-
-// ToDomain converts CourseProgressRow CourseProgress
-func (r CourseProgressRow) ToDomain() *CourseProgress {
-	return &CourseProgress{
-		Started:     r.Started.Bool,
-		StartedAt:   r.StartedAt,
-		Percent:     int(r.Percent.Int64),
-		CompletedAt: r.CompletedAt,
-	}
-}
-
-// ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
-
-// CourseProgressRowColumns returns the list of columns to use when populating `CourseProgressRow`
-func CourseProgressRowColumns() []string {
-	return []string{
-		fmt.Sprintf("%s AS progress_started", COURSE_PROGRESS_TABLE_STARTED),
-		fmt.Sprintf("%s AS progress_started_at", COURSE_PROGRESS_TABLE_STARTED_AT),
-		fmt.Sprintf("%s AS progress_percent", COURSE_PROGRESS_TABLE_PERCENT),
-		fmt.Sprintf("%s AS progress_completed_at", COURSE_PROGRESS_TABLE_COMPLETED_AT),
-	}
-}

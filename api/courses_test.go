@@ -704,6 +704,7 @@ func TestCourses_GetLessons(t *testing.T) {
 				lessons = append(lessons, lesson)
 
 				attachment := &models.Attachment{
+					CourseID: c.ID,
 					LessonID: lesson.ID,
 					Title:    fmt.Sprintf("attachment %d", j+1),
 					Path:     fmt.Sprintf("/%s/attachment %d", security.RandomString(4), j+1),
@@ -790,6 +791,7 @@ func TestCourses_GetLessons(t *testing.T) {
 				lessons = append(lessons, lesson)
 
 				attachment := &models.Attachment{
+					CourseID: c.ID,
 					LessonID: lesson.ID,
 					Title:    fmt.Sprintf("attachment %d", j+1),
 					Path:     fmt.Sprintf("/%s/attachment %d", security.RandomString(4), j+1),
@@ -998,6 +1000,7 @@ func TestCourses_GetLesson(t *testing.T) {
 			// Two assets and attachments per lesson
 			for j := range 2 {
 				attachment := &models.Attachment{
+					CourseID: course.ID,
 					LessonID: ag.ID,
 					Title:    fmt.Sprintf("attachment %d", j+1),
 					Path:     fmt.Sprintf("/%s/attachment %d", security.RandomString(4), j+1),
@@ -1065,6 +1068,7 @@ func TestCourses_GetLesson(t *testing.T) {
 
 			for j := range 2 {
 				attachment := &models.Attachment{
+					CourseID: course.ID,
 					LessonID: ag.ID,
 					Title:    fmt.Sprintf("attachment %d", j+1),
 					Path:     fmt.Sprintf("/%s/attachment %d", security.RandomString(4), j+1),
@@ -1248,6 +1252,7 @@ func TestCourses_GetModules(t *testing.T) {
 				lessons = append(lessons, lesson)
 
 				attachment := &models.Attachment{
+					CourseID: c.ID,
 					LessonID: lesson.ID,
 					Title:    fmt.Sprintf("attachment %d", j+1),
 					Path:     fmt.Sprintf("%s/attachment %d", c.Path, j+1),
@@ -1328,6 +1333,7 @@ func TestCourses_GetModules(t *testing.T) {
 				lessons = append(lessons, lesson)
 
 				attachment := &models.Attachment{
+					CourseID: c.ID,
 					LessonID: lesson.ID,
 					Title:    fmt.Sprintf("attachment %d", j+1),
 					Path:     fmt.Sprintf("%s/attachment %d", c.Path, j+1),
@@ -1441,6 +1447,7 @@ func TestCourses_GetAttachments(t *testing.T) {
 		attachments := []*models.Attachment{}
 		for i := range 2 {
 			attachment := &models.Attachment{
+				CourseID: course.ID,
 				LessonID: lesson.ID,
 				Title:    fmt.Sprintf("attachment %d", i+1),
 				Path:     fmt.Sprintf("/%s/attachment %d", security.RandomString(4), i+1),
@@ -1478,6 +1485,7 @@ func TestCourses_GetAttachments(t *testing.T) {
 		attachments := []*models.Attachment{}
 		for i := range 2 {
 			attachment := &models.Attachment{
+				CourseID: course.ID,
 				LessonID: lesson.ID,
 				Title:    fmt.Sprintf("attachment %d", i+1),
 				Path:     fmt.Sprintf("/%s/attachment %d", security.RandomString(4), i+1),
@@ -1530,6 +1538,7 @@ func TestCourses_GetAttachments(t *testing.T) {
 		attachments := []*models.Attachment{}
 		for i := range 17 {
 			attachment := &models.Attachment{
+				CourseID: course.ID,
 				LessonID: lesson.ID,
 				Title:    fmt.Sprintf("attachment %d", i+1),
 				Path:     fmt.Sprintf("/%s/attachment %d", security.RandomString(4), i+1),
@@ -1638,6 +1647,7 @@ func TestCourses_GetAttachment(t *testing.T) {
 		require.NoError(t, router.appDao.CreateLesson(ctx, lesson))
 
 		attachment := &models.Attachment{
+			CourseID: course.ID,
 			LessonID: lesson.ID,
 			Title:    "attachment 1",
 			Path:     fmt.Sprintf("/%s/attachment 1", security.RandomString(4)),
@@ -1702,6 +1712,7 @@ func TestCourses_GetAttachment(t *testing.T) {
 		require.NoError(t, router.appDao.CreateLesson(ctx, lesson2))
 
 		attachment := &models.Attachment{
+			CourseID: course.ID,
 			LessonID: lesson1.ID,
 			Title:    "attachment 1",
 			Path:     fmt.Sprintf("/%s/attachment 1", security.RandomString(4)),
@@ -1777,6 +1788,7 @@ func TestCourses_ServeAttachment(t *testing.T) {
 		require.NoError(t, router.appDao.CreateLesson(ctx, lesson))
 
 		attachment := &models.Attachment{
+			CourseID: course.ID,
 			LessonID: lesson.ID,
 			Title:    "attachment 1",
 			Path:     fmt.Sprintf("/%s/attachment 1", security.RandomString(4)),
@@ -1808,6 +1820,7 @@ func TestCourses_ServeAttachment(t *testing.T) {
 		require.NoError(t, router.appDao.CreateLesson(ctx, lesson))
 
 		attachment := &models.Attachment{
+			CourseID: course.ID,
 			LessonID: lesson.ID,
 			Title:    "attachment 1",
 			Path:     fmt.Sprintf("/%s/attachment 1", security.RandomString(4)),
@@ -1864,6 +1877,7 @@ func TestCourses_ServeAttachment(t *testing.T) {
 		}
 
 		attachment := &models.Attachment{
+			CourseID: course.ID,
 			LessonID: lessons[0].ID,
 			Title:    "attachment 1",
 			Path:     fmt.Sprintf("/%s/attachment 1", security.RandomString(4)),

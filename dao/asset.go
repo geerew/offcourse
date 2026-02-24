@@ -2,11 +2,11 @@ package dao
 
 import (
 	"context"
-	"fmt"
 
 	"github.com/Masterminds/squirrel"
 	"github.com/geerew/off-course/models"
 	"github.com/geerew/off-course/utils"
+	"github.com/geerew/off-course/utils/types"
 )
 
 // ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
@@ -62,8 +62,8 @@ func (dao *DAO) CountAssets(ctx context.Context, dbOpts *Options) (int, error) {
 // GetAsset gets a record from the assets table based upon the where clause in the options. If
 // there is no where clause, it will return the first record in the table
 //
-// By default, progress is not included. Use `WithUserProgress()` on the options to include it
-// By default, video metadata is not included. Use `WithAssetVideoMetadata()` on the options to include it
+// Asset progress is not included by default. It can be enabled by calling `WithUserProgress()` on the options
+// Asset metadata is not included by default. It can be enabled by calling `WithAssetMetadata()` on the options
 func (dao *DAO) GetAsset(ctx context.Context, dbOpts *Options) (*models.Asset, error) {
 	builderOpts := newBuilderOptions(models.ASSET_TABLE).
 		WithColumns(models.AssetColumns()...).
@@ -72,70 +72,60 @@ func (dao *DAO) GetAsset(ctx context.Context, dbOpts *Options) (*models.Asset, e
 
 	includeProgress := dbOpts != nil && dbOpts.IncludeUserProgress
 	includeMetadata := dbOpts != nil && dbOpts.IncludeAssetMetadata
-	includeCourse := dbOpts != nil && dbOpts.IncludeCourse
-	includeLesson := dbOpts != nil && dbOpts.IncludeLesson
 
 	// When no relations are included, use a simpler query
-	if !includeProgress && !includeMetadata && !includeCourse && !includeLesson {
+	if !includeProgress && !includeMetadata {
 		return getGeneric[models.Asset](ctx, dao, *builderOpts)
 	}
 
-	// Add the progress columns and join
+	// When progress is requested, validate the principal before fetching
+	// the asset
+	var principal types.Principal
 	if includeProgress {
-		principal, err := principalFromCtx(ctx)
+		var err error
+		principal, err = principalFromCtx(ctx)
 		if err != nil {
 			return nil, err
 		}
-
-		builderOpts = builderOpts.
-			WithColumns(models.AssetProgressRowColumns()...).
-			WithLeftJoin(
-				models.ASSET_PROGRESS_TABLE,
-				fmt.Sprintf(
-					"%s = %s AND %s = '%s'",
-					models.ASSET_PROGRESS_TABLE_ASSET_ID,
-					models.ASSET_TABLE_ID,
-					models.ASSET_PROGRESS_TABLE_USER_ID,
-					principal.UserID,
-				),
-			)
-	}
-	// Metadata is fetched separately via GetAssetMetadata when includeMetadata is true
-
-	// Add lesson and course joins if enabled
-	if dbOpts != nil {
-		// If both course and lesson are requested, join lesson first, then course through lesson
-		if dbOpts.IncludeCourse && dbOpts.IncludeLesson {
-			builderOpts = builderOpts.
-				WithJoin(models.LESSON_TABLE, models.ASSET_TABLE_LESSON_ID+" = "+models.LESSON_TABLE_ID).
-				WithJoin(models.COURSE_TABLE, models.LESSON_TABLE_COURSE_ID+" = "+models.COURSE_TABLE_ID)
-		} else if dbOpts.IncludeLesson {
-			// Only lesson join
-			builderOpts = builderOpts.WithJoin(models.LESSON_TABLE, models.ASSET_TABLE_LESSON_ID+" = "+models.LESSON_TABLE_ID)
-		} else if dbOpts.IncludeCourse {
-			// Only course join
-			builderOpts = builderOpts.WithJoin(models.COURSE_TABLE, models.ASSET_TABLE_COURSE_ID+" = "+models.COURSE_TABLE_ID)
-		}
 	}
 
-	row, err := getGeneric[models.AssetRow](ctx, dao, *builderOpts)
+	asset, err := getGeneric[models.Asset](ctx, dao, *builderOpts)
 	if err != nil {
 		return nil, err
 	}
 
-	if row == nil {
+	if asset == nil {
 		return nil, nil
 	}
 
-	a := row.ToDomain(includeProgress, includeMetadata)
-	if includeMetadata && a != nil {
-		meta, err := dao.GetAssetMetadata(ctx, a.ID)
+	if includeProgress {
+		dbOpts := NewOptions().WithWhere(squirrel.And{
+			squirrel.Eq{models.ASSET_PROGRESS_ASSET_ID: asset.ID},
+			squirrel.Eq{models.ASSET_PROGRESS_USER_ID: principal.UserID},
+		})
+
+		assetProgress, err := dao.GetAssetProgress(ctx, dbOpts)
 		if err != nil {
 			return nil, err
 		}
-		a.AssetMetadata = meta
+
+		if assetProgress != nil {
+			asset.Progress = assetProgress
+		} else {
+			asset.Progress = &models.AssetProgress{AssetID: asset.ID, UserID: principal.UserID}
+		}
 	}
-	return a, nil
+
+	if includeMetadata {
+		assetMetadata, err := dao.GetAssetMetadata(ctx, asset.ID)
+		if err != nil {
+			return nil, err
+		}
+
+		asset.AssetMetadata = assetMetadata
+	}
+
+	return asset, nil
 }
 
 // ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
@@ -143,8 +133,8 @@ func (dao *DAO) GetAsset(ctx context.Context, dbOpts *Options) (*models.Asset, e
 // ListAssets gets all records from the assets table based upon the where clause and pagination
 // in the options
 //
-// By default, progress is not included. Use `WithUserProgress()` on the options to include it
-// By default, video metadata is not included. Use `WithAssetVideoMetadata()` on the options to include it
+// Asset progress is not included by default. It can be enabled by calling `WithUserProgress()` on the options
+// Asset metadata is not included by default. It can be enabled by calling `WithAssetMetadata()` on the options
 func (dao *DAO) ListAssets(ctx context.Context, dbOpts *Options) ([]*models.Asset, error) {
 	builderOpts := newBuilderOptions(models.ASSET_TABLE).
 		WithColumns(models.AssetColumns()...).
@@ -152,75 +142,75 @@ func (dao *DAO) ListAssets(ctx context.Context, dbOpts *Options) ([]*models.Asse
 
 	includeProgress := dbOpts != nil && dbOpts.IncludeUserProgress
 	includeMetadata := dbOpts != nil && dbOpts.IncludeAssetMetadata
-	includeCourse := dbOpts != nil && dbOpts.IncludeCourse
-	includeLesson := dbOpts != nil && dbOpts.IncludeLesson
 
-	// When no relations are included, use a simpler query
-	if !includeProgress && !includeMetadata && !includeCourse && !includeLesson {
-		return listGeneric[models.Asset](ctx, dao, *builderOpts)
-	}
-
-	// Progress join
+	// Validate principal early when progress is requested
+	var principal types.Principal
 	if includeProgress {
-		principal, err := principalFromCtx(ctx)
+		var err error
+		principal, err = principalFromCtx(ctx)
 		if err != nil {
 			return nil, err
 		}
-		builderOpts = builderOpts.
-			WithColumns(models.AssetProgressRowColumns()...).
-			WithLeftJoin(
-				models.ASSET_PROGRESS_TABLE,
-				fmt.Sprintf(
-					"%s = %s AND %s = '%s'",
-					models.ASSET_PROGRESS_TABLE_ASSET_ID,
-					models.ASSET_TABLE_ID,
-					models.ASSET_PROGRESS_TABLE_USER_ID,
-					principal.UserID,
-				),
-			)
 	}
 
-	// Metadata is fetched separately via GetAssetMetadataByAssetIDs when includeMetadata is true
-
-	// Add lesson and course joins if enabled
-	if dbOpts != nil {
-		// If both course and lesson are requested, join lesson first, then course through lesson
-		if dbOpts.IncludeCourse && dbOpts.IncludeLesson {
-			builderOpts = builderOpts.
-				WithJoin(models.LESSON_TABLE, models.ASSET_TABLE_LESSON_ID+" = "+models.LESSON_TABLE_ID).
-				WithJoin(models.COURSE_TABLE, models.LESSON_TABLE_COURSE_ID+" = "+models.COURSE_TABLE_ID)
-		} else if dbOpts.IncludeLesson {
-			// Only lesson join
-			builderOpts = builderOpts.WithJoin(models.LESSON_TABLE, models.ASSET_TABLE_LESSON_ID+" = "+models.LESSON_TABLE_ID)
-		} else if dbOpts.IncludeCourse {
-			// Only course join
-			builderOpts = builderOpts.WithJoin(models.COURSE_TABLE, models.ASSET_TABLE_COURSE_ID+" = "+models.COURSE_TABLE_ID)
-		}
+	// When no relations are included, use a simpler query
+	if !includeProgress && !includeMetadata {
+		return listGeneric[models.Asset](ctx, dao, *builderOpts)
 	}
 
-	rows, err := listGeneric[models.AssetRow](ctx, dao, *builderOpts)
+	records, err := listGeneric[models.Asset](ctx, dao, *builderOpts)
 	if err != nil {
 		return nil, err
 	}
 
-	if len(rows) == 0 {
+	if len(records) == 0 {
 		return nil, nil
 	}
 
-	records := make([]*models.Asset, 0, len(rows))
-	for i := range rows {
-		records = append(records, rows[i].ToDomain(includeProgress, includeMetadata))
-	}
-
-	if includeMetadata && len(records) > 0 {
+	if includeProgress {
 		assetIDs := make([]string, len(records))
 		for i, a := range records {
 			assetIDs[i] = a.ID
 		}
+
+		dbOpts := NewOptions().WithWhere(squirrel.And{
+			squirrel.Eq{models.ASSET_PROGRESS_ASSET_ID: assetIDs},
+			squirrel.Eq{models.ASSET_PROGRESS_USER_ID: principal.UserID},
+		})
+
+		progressRows, err := dao.ListAssetProgress(ctx, dbOpts)
+		if err != nil {
+			return nil, err
+		}
+
+		progressMap := make(map[string]*models.AssetProgress, len(assetIDs))
+		for _, id := range assetIDs {
+			progressMap[id] = &models.AssetProgress{AssetID: id, UserID: principal.UserID}
+		}
+
+		for _, p := range progressRows {
+			if p != nil {
+				progressMap[p.AssetID] = p
+			}
+		}
+
+		for _, a := range records {
+			a.Progress = progressMap[a.ID]
+		}
+	}
+
+	if includeMetadata {
+		assetIDs := make([]string, len(records))
+
+		for i, a := range records {
+			assetIDs[i] = a.ID
+		}
+
 		metaMap, err := dao.GetAssetMetadataByAssetIDs(ctx, assetIDs)
 		if err != nil {
 			return nil, err
 		}
+
 		for _, a := range records {
 			a.AssetMetadata = metaMap[a.ID]
 		}

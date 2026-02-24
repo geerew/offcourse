@@ -1,9 +1,6 @@
 package models
 
-import (
-	"database/sql"
-	"fmt"
-)
+import "fmt"
 
 // ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
 
@@ -78,43 +75,3 @@ func CourseColumns() []string {
 	}
 }
 
-// ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
-
-// CourseRow is for use in scanning a full course with optional relations
-type CourseRow struct {
-	Course
-
-	// Progress
-	CourseProgressRow
-
-	// Favourite (when included via LEFT JOIN)
-	FavouriteID sql.NullString `db:"favourite_id"`
-}
-
-// ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
-
-// ToDomain converts CourseRow to Course
-func (r *CourseRow) ToDomain() *Course {
-	c := &Course{
-		Base: Base{
-			ID:        r.ID,
-			CreatedAt: r.CreatedAt,
-			UpdatedAt: r.UpdatedAt,
-		},
-		Title:       r.Title,
-		Path:        r.Path,
-		CardPath:    r.CardPath,
-		CardHash:    r.CardHash,
-		CardModTime: r.CardModTime,
-		Available:   r.Available,
-		Duration:    r.Duration,
-		InitialScan: r.InitialScan,
-		Maintenance: r.Maintenance,
-		Description: r.Description,
-	}
-
-	c.Progress = r.CourseProgressRow.ToDomain()
-	c.Favourited = r.FavouriteID.Valid
-
-	return c
-}

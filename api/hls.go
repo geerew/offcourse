@@ -369,7 +369,6 @@ func (api *hlsAPI) GetQualities(c *fiber.Ctx) error {
 // and verifies it belongs to a course
 func (api *hlsAPI) getAssetWithMetadataAndCourse(ctx context.Context, assetID string) (*models.Asset, error) {
 	dbOpts := dao.NewOptions().
-		WithCourse().
 		WithWhere(squirrel.Eq{models.ASSET_TABLE_ID: assetID}).
 		WithAssetMetadata()
 

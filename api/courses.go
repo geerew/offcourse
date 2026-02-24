@@ -446,12 +446,10 @@ func (api coursesAPI) getAttachments(c *fiber.Ctx) error {
 		return errorResponse(c, fiber.StatusBadRequest, "Error parsing query", err)
 	}
 
-	dbOpts.WithCourse().
-		WithLesson().
-		WithWhere(squirrel.And{
-			squirrel.Eq{models.LESSON_TABLE_ID: lessonId},
-			squirrel.Eq{models.COURSE_TABLE_ID: id},
-		})
+	dbOpts.WithWhere(squirrel.And{
+		squirrel.Eq{models.ATTACHMENT_TABLE_LESSON_ID: lessonId},
+		squirrel.Eq{models.ATTACHMENT_TABLE_COURSE_ID: id},
+	})
 
 	attachments, err := api.r.appDao.ListAttachments(ctx, dbOpts)
 	if err != nil {
@@ -479,12 +477,10 @@ func (api coursesAPI) getAttachment(c *fiber.Ctx) error {
 	}
 
 	dbOpts := dao.NewOptions().
-		WithCourse().
-		WithLesson().
 		WithWhere(squirrel.And{
 			squirrel.Eq{models.ATTACHMENT_TABLE_ID: attachmentId},
-			squirrel.Eq{models.LESSON_TABLE_ID: lessonId},
-			squirrel.Eq{models.COURSE_TABLE_ID: id},
+			squirrel.Eq{models.ATTACHMENT_TABLE_LESSON_ID: lessonId},
+			squirrel.Eq{models.ATTACHMENT_TABLE_COURSE_ID: id},
 		})
 
 	attachment, err := api.r.appDao.GetAttachment(ctx, dbOpts)
@@ -512,12 +508,10 @@ func (api coursesAPI) serveAttachment(c *fiber.Ctx) error {
 	}
 
 	dbOpts := dao.NewOptions().
-		WithCourse().
-		WithLesson().
 		WithWhere(squirrel.And{
 			squirrel.Eq{models.ATTACHMENT_TABLE_ID: attachmentId},
-			squirrel.Eq{models.LESSON_TABLE_ID: lessonId},
-			squirrel.Eq{models.COURSE_TABLE_ID: id},
+			squirrel.Eq{models.ATTACHMENT_TABLE_LESSON_ID: lessonId},
+			squirrel.Eq{models.ATTACHMENT_TABLE_COURSE_ID: id},
 		})
 
 	attachment, err := api.r.appDao.GetAttachment(ctx, dbOpts)
@@ -546,11 +540,9 @@ func (api coursesAPI) serveAsset(c *fiber.Ctx) error {
 	assetId := c.Params("asset")
 
 	dbOpts := dao.NewOptions().
-		WithCourse().
-		WithLesson().
 		WithWhere(squirrel.And{
-			squirrel.Eq{models.COURSE_TABLE_ID: id},
-			squirrel.Eq{models.LESSON_TABLE_ID: lessonId},
+			squirrel.Eq{models.ASSET_TABLE_COURSE_ID: id},
+			squirrel.Eq{models.ASSET_TABLE_LESSON_ID: lessonId},
 			squirrel.Eq{models.ASSET_TABLE_ID: assetId},
 		})
 
@@ -932,18 +924,16 @@ func (api coursesAPI) unfavouriteCourse(c *fiber.Ctx) error {
 // ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
 
 // coursesAfterParseHook runs after parsing the query expression and is used to build the
-// WHERE/JOIN clauses
+// WHERE clause. Progress and favourite filters use EXISTS subqueries (no joins needed).
 func coursesAfterParseHook(parsed *queryparser.QueryResult, dbOpts *dao.Options, userID string) {
-	dbOpts.WithWhere(coursesWhereBuilder(parsed.Expr))
-
-	// Note: LEFT JOIN for favourites is already added in ListCourses/GetCourse when withUserProgress is true
-	// The favourite filter WHERE clause will work because the JOIN is already present
+	dbOpts.WithWhere(coursesWhereBuilder(parsed.Expr, userID))
 }
 
 // ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
 
-// coursesWhereBuilder builds a squirrel.Sqlizer, for use in a WHERE clause
-func coursesWhereBuilder(expr queryparser.QueryExpr) squirrel.Sqlizer {
+// coursesWhereBuilder builds a squirrel.Sqlizer, for use in a WHERE clause.
+// Progress and favourite filters use EXISTS subqueries (no joins required).
+func coursesWhereBuilder(expr queryparser.QueryExpr, userID string) squirrel.Sqlizer {
 	switch node := expr.(type) {
 	case *queryparser.ValueExpr:
 		return squirrel.Like{models.COURSE_TABLE_TITLE: "%" + node.Value + "%"}
@@ -958,47 +948,9 @@ func coursesWhereBuilder(expr queryparser.QueryExpr) squirrel.Sqlizer {
 		case "tag":
 			return courseTagsBuilder([]string{node.Value})
 		case "progress":
-			switch strings.ToLower(node.Value) {
-			case "not started":
-				// For "not started", we need:
-				// 1. Either no progress record exists (IS NULL after LEFT JOIN)
-				// 2. Or the progress record exists but started=false
-				return squirrel.Or{
-					// No progress record exists
-					squirrel.Expr(models.COURSE_PROGRESS_TABLE_ID + " IS NULL"),
-					// Or started is false
-					squirrel.Eq{models.COURSE_PROGRESS_TABLE_STARTED: false},
-				}
-			case "started":
-				return squirrel.And{
-					// Must have a progress record
-					squirrel.Expr(models.COURSE_PROGRESS_TABLE_ID + " IS NOT NULL"),
-					// Started must be true
-					squirrel.Eq{models.COURSE_PROGRESS_TABLE_STARTED: true},
-					// But not 100% complete
-					squirrel.NotEq{models.COURSE_PROGRESS_TABLE_PERCENT: 100},
-				}
-			case "completed":
-				return squirrel.And{
-					// Must have a progress record
-					squirrel.Expr(models.COURSE_PROGRESS_TABLE_ID + " IS NOT NULL"),
-					// And must be 100% complete
-					squirrel.Eq{models.COURSE_PROGRESS_TABLE_PERCENT: 100},
-				}
-			default:
-				return nil
-			}
+			return courseProgressFilterBuilder(node.Value, userID)
 		case "favourite":
-			switch strings.ToLower(node.Value) {
-			case "true":
-				// Must have a favourite record (IS NOT NULL after LEFT JOIN)
-				return squirrel.Expr(models.COURSE_FAVOURITE_TABLE_ID + " IS NOT NULL")
-			case "false":
-				// Must not have a favourite record (IS NULL after LEFT JOIN)
-				return squirrel.Expr(models.COURSE_FAVOURITE_TABLE_ID + " IS NULL")
-			default:
-				return nil
-			}
+			return courseFavouriteFilterBuilder(node.Value, userID)
 		default:
 			return nil
 		}
@@ -1013,7 +965,7 @@ func coursesWhereBuilder(expr queryparser.QueryExpr) squirrel.Sqlizer {
 				tags = append(tags, child.(*queryparser.FilterExpr).Value)
 			} else {
 				onlyTags = false
-				andSlice = append(andSlice, coursesWhereBuilder(child))
+				andSlice = append(andSlice, coursesWhereBuilder(child, userID))
 			}
 		}
 
@@ -1033,10 +985,65 @@ func coursesWhereBuilder(expr queryparser.QueryExpr) squirrel.Sqlizer {
 	case *queryparser.OrExpr:
 		var orSlice []squirrel.Sqlizer
 		for _, child := range node.Children {
-			orSlice = append(orSlice, coursesWhereBuilder(child))
+			orSlice = append(orSlice, coursesWhereBuilder(child, userID))
 		}
 
 		return squirrel.Or(orSlice)
+	default:
+		return nil
+	}
+}
+
+// ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
+
+// courseProgressFilterBuilder builds an EXISTS subquery for progress filtering
+func courseProgressFilterBuilder(value, userID string) squirrel.Sqlizer {
+	baseWhere := squirrel.And{
+		squirrel.Expr(models.COURSE_PROGRESS_TABLE_COURSE_ID + " = " + models.COURSE_TABLE_ID),
+		squirrel.Eq{models.COURSE_PROGRESS_TABLE_USER_ID: userID},
+	}
+
+	switch strings.ToLower(value) {
+	case "not started":
+		// No progress record, or progress exists with started=false
+		noProgress := squirrel.Expr("NOT EXISTS (?)",
+			squirrel.Select("1").From(models.COURSE_PROGRESS_TABLE).Where(baseWhere))
+		startedFalse := squirrel.Expr("EXISTS (?)",
+			squirrel.Select("1").From(models.COURSE_PROGRESS_TABLE).
+				Where(baseWhere).
+				Where(squirrel.Eq{models.COURSE_PROGRESS_TABLE_STARTED: false}))
+		return squirrel.Or{noProgress, startedFalse}
+	case "started":
+		return squirrel.Expr("EXISTS (?)",
+			squirrel.Select("1").From(models.COURSE_PROGRESS_TABLE).
+				Where(baseWhere).
+				Where(squirrel.Eq{models.COURSE_PROGRESS_TABLE_STARTED: true}).
+				Where(squirrel.NotEq{models.COURSE_PROGRESS_TABLE_PERCENT: 100}))
+	case "completed":
+		return squirrel.Expr("EXISTS (?)",
+			squirrel.Select("1").From(models.COURSE_PROGRESS_TABLE).
+				Where(baseWhere).
+				Where(squirrel.Eq{models.COURSE_PROGRESS_TABLE_PERCENT: 100}))
+	default:
+		return nil
+	}
+}
+
+// ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
+
+// courseFavouriteFilterBuilder builds an EXISTS subquery for favourite filtering
+func courseFavouriteFilterBuilder(value, userID string) squirrel.Sqlizer {
+	where := squirrel.And{
+		squirrel.Expr(models.COURSE_FAVOURITE_TABLE_COURSE_ID + " = " + models.COURSE_TABLE_ID),
+		squirrel.Eq{models.COURSE_FAVOURITE_TABLE_USER_ID: userID},
+	}
+	existsSubq := squirrel.Select("1").From(models.COURSE_FAVOURITE_TABLE).Where(where)
+
+	switch strings.ToLower(value) {
+	case "true":
+		return squirrel.Expr("EXISTS (?)", existsSubq)
+	case "false":
+		return squirrel.Expr("NOT EXISTS (?)", existsSubq)
 	default:
 		return nil
 	}
