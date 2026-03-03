@@ -15,6 +15,7 @@ import (
 // ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
 
 func Test_CreateParam(t *testing.T) {
+	// Test successfully inserting a param record
 	t.Run("success", func(t *testing.T) {
 		dao, ctx := setup(t)
 
@@ -22,6 +23,7 @@ func Test_CreateParam(t *testing.T) {
 		require.NoError(t, dao.CreateParam(ctx, param))
 	})
 
+	// Test error due to duplicate record
 	t.Run("duplicate", func(t *testing.T) {
 		dao, ctx := setup(t)
 
@@ -31,12 +33,14 @@ func Test_CreateParam(t *testing.T) {
 		require.ErrorContains(t, dao.CreateParam(ctx, param), "UNIQUE constraint failed: "+models.PARAM_TABLE_KEY)
 	})
 
+	// Test error due to nil pointer
 	t.Run("nil pointer", func(t *testing.T) {
 		dao, ctx := setup(t)
 
 		require.ErrorIs(t, dao.CreateParam(ctx, nil), utils.ErrNilPtr)
 	})
 
+	// Test error due to invalid key
 	t.Run("invalid key", func(t *testing.T) {
 		dao, ctx := setup(t)
 
@@ -48,6 +52,7 @@ func Test_CreateParam(t *testing.T) {
 // ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
 
 func Test_GetParam(t *testing.T) {
+	// Test successfully retrieving a param record
 	t.Run("success", func(t *testing.T) {
 		dao, ctx := setup(t)
 
@@ -60,6 +65,7 @@ func Test_GetParam(t *testing.T) {
 		require.Equal(t, param.ID, record.ID)
 	})
 
+	// Test no error when retrieving a non-existent param record
 	t.Run("not found", func(t *testing.T) {
 		dao, ctx := setup(t)
 
@@ -72,6 +78,7 @@ func Test_GetParam(t *testing.T) {
 // ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
 
 func Test_ListParams(t *testing.T) {
+	// Test successfully retrieving all param records
 	t.Run("success", func(t *testing.T) {
 		dao, ctx := setup(t)
 
@@ -93,6 +100,7 @@ func Test_ListParams(t *testing.T) {
 		}
 	})
 
+	// Test successfully retrieving no param records
 	t.Run("empty", func(t *testing.T) {
 		dao, ctx := setup(t)
 
@@ -101,6 +109,7 @@ func Test_ListParams(t *testing.T) {
 		require.Empty(t, records)
 	})
 
+	// Test successfully retrieving ordered param records
 	t.Run("order by", func(t *testing.T) {
 		dao, ctx := setup(t)
 
@@ -135,6 +144,7 @@ func Test_ListParams(t *testing.T) {
 		}
 	})
 
+	// Test successfully retrieving selected param records
 	t.Run("where", func(t *testing.T) {
 		dao, ctx := setup(t)
 
@@ -148,6 +158,7 @@ func Test_ListParams(t *testing.T) {
 		require.Equal(t, param.ID, records[0].ID)
 	})
 
+	// Test successfully retrieving paginated param records
 	t.Run("pagination", func(t *testing.T) {
 		dao, ctx := setup(t)
 
@@ -180,6 +191,7 @@ func Test_ListParams(t *testing.T) {
 // ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
 
 func Test_UpdateParam(t *testing.T) {
+	// Test successfully updating a param record
 	t.Run("success", func(t *testing.T) {
 		dao, ctx := setup(t)
 
@@ -207,6 +219,7 @@ func Test_UpdateParam(t *testing.T) {
 		require.False(t, record.UpdatedAt.Equal(originalParam.UpdatedAt)) // Changed
 	})
 
+	// Test error due to invalid param record
 	t.Run("invalid", func(t *testing.T) {
 		dao, ctx := setup(t)
 
@@ -229,6 +242,7 @@ func Test_UpdateParam(t *testing.T) {
 // ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
 
 func Test_DeleteParams(t *testing.T) {
+	// Test successfully deleting a param record
 	t.Run("success", func(t *testing.T) {
 		dao, ctx := setup(t)
 
@@ -243,6 +257,7 @@ func Test_DeleteParams(t *testing.T) {
 		require.Empty(t, records)
 	})
 
+	// Test no error when deleting a non-existent param record
 	t.Run("not found", func(t *testing.T) {
 		dao, ctx := setup(t)
 
@@ -258,6 +273,7 @@ func Test_DeleteParams(t *testing.T) {
 		require.Equal(t, param.ID, records[0].ID)
 	})
 
+	// Test error due to missing where clause
 	t.Run("missing where", func(t *testing.T) {
 		dao, ctx := setup(t)
 

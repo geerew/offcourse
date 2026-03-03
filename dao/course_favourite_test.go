@@ -13,6 +13,7 @@ import (
 )
 
 func Test_CreateCourseFavourite(t *testing.T) {
+	// Test successfully inserting a course favourite record
 	t.Run("success", func(t *testing.T) {
 		dao, ctx := setup(t)
 
@@ -36,6 +37,7 @@ func Test_CreateCourseFavourite(t *testing.T) {
 		require.Equal(t, user.ID, record.UserID)
 	})
 
+	// Test error due to duplicate record
 	t.Run("duplicate", func(t *testing.T) {
 		dao, ctx := setup(t)
 
@@ -53,12 +55,14 @@ func Test_CreateCourseFavourite(t *testing.T) {
 		require.ErrorContains(t, dao.CreateCourseFavourite(ctx, courseFavourite2), "UNIQUE constraint failed")
 	})
 
+	// Test error due to nil pointer
 	t.Run("nil pointer", func(t *testing.T) {
 		dao, ctx := setup(t)
 
 		require.ErrorIs(t, dao.CreateCourseFavourite(ctx, nil), utils.ErrNilPtr)
 	})
 
+	// Test error due to invalid course ID
 	t.Run("invalid course ID", func(t *testing.T) {
 		dao, ctx := setup(t)
 
@@ -69,6 +73,7 @@ func Test_CreateCourseFavourite(t *testing.T) {
 		require.ErrorIs(t, dao.CreateCourseFavourite(ctx, courseFavourite), utils.ErrCourseId)
 	})
 
+	// Test error due to invalid user ID
 	t.Run("invalid user ID", func(t *testing.T) {
 		dao, ctx := setup(t)
 
@@ -79,6 +84,7 @@ func Test_CreateCourseFavourite(t *testing.T) {
 		require.ErrorIs(t, dao.CreateCourseFavourite(ctx, courseFavourite), utils.ErrUserId)
 	})
 
+	// Test error due to foreign key constraint on course
 	t.Run("foreign key constraint - course", func(t *testing.T) {
 		dao, ctx := setup(t)
 
@@ -89,6 +95,7 @@ func Test_CreateCourseFavourite(t *testing.T) {
 		require.ErrorContains(t, dao.CreateCourseFavourite(ctx, courseFavourite), "FOREIGN KEY constraint failed")
 	})
 
+	// Test error due to foreign key constraint on user
 	t.Run("foreign key constraint - user", func(t *testing.T) {
 		dao, ctx := setup(t)
 
@@ -103,6 +110,7 @@ func Test_CreateCourseFavourite(t *testing.T) {
 // ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
 
 func Test_GetCourseFavourite(t *testing.T) {
+	// Test successfully retrieving a course favourite record
 	t.Run("success", func(t *testing.T) {
 		dao, ctx := setup(t)
 
@@ -123,6 +131,7 @@ func Test_GetCourseFavourite(t *testing.T) {
 		require.Equal(t, user.ID, record.UserID)
 	})
 
+	// Test no error when retrieving a non-existent course favourite record
 	t.Run("not found", func(t *testing.T) {
 		dao, ctx := setup(t)
 
@@ -135,6 +144,7 @@ func Test_GetCourseFavourite(t *testing.T) {
 // ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
 
 func Test_ListCourseFavourites(t *testing.T) {
+	// Test successfully retrieving all course favourite records
 	t.Run("success", func(t *testing.T) {
 		dao, ctx := setup(t)
 
@@ -167,6 +177,7 @@ func Test_ListCourseFavourites(t *testing.T) {
 		}
 	})
 
+	// Test no error when retrieving no course favourite records
 	t.Run("empty", func(t *testing.T) {
 		dao, ctx := setup(t)
 
@@ -175,6 +186,7 @@ func Test_ListCourseFavourites(t *testing.T) {
 		require.Empty(t, records)
 	})
 
+	// Test successfully retrieving ordered course favourite records
 	t.Run("order by", func(t *testing.T) {
 		dao, ctx := setup(t)
 
@@ -219,6 +231,7 @@ func Test_ListCourseFavourites(t *testing.T) {
 		}
 	})
 
+	// Test successfully retrieving selected course favourite records
 	t.Run("where", func(t *testing.T) {
 		dao, ctx := setup(t)
 
@@ -238,6 +251,7 @@ func Test_ListCourseFavourites(t *testing.T) {
 		require.Equal(t, courseFavourite.ID, records[0].ID)
 	})
 
+	// Test successfully retrieving paginated course favourite records
 	t.Run("pagination", func(t *testing.T) {
 		dao, ctx := setup(t)
 
@@ -280,6 +294,7 @@ func Test_ListCourseFavourites(t *testing.T) {
 // ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
 
 func Test_DeleteCourseFavourites(t *testing.T) {
+	// Test successfully deleting a course favourite record
 	t.Run("success", func(t *testing.T) {
 		dao, ctx := setup(t)
 
@@ -300,6 +315,7 @@ func Test_DeleteCourseFavourites(t *testing.T) {
 		require.Empty(t, records)
 	})
 
+	// Test no error when deleting a non-existent course favourite record
 	t.Run("not found", func(t *testing.T) {
 		dao, ctx := setup(t)
 
@@ -321,6 +337,7 @@ func Test_DeleteCourseFavourites(t *testing.T) {
 		require.Equal(t, courseFavourite.ID, records[0].ID)
 	})
 
+	// Test error due to missing where clause
 	t.Run("missing where", func(t *testing.T) {
 		dao, ctx := setup(t)
 
@@ -341,6 +358,7 @@ func Test_DeleteCourseFavourites(t *testing.T) {
 		require.Equal(t, courseFavourite.ID, records[0].ID)
 	})
 
+	// Test successfully deleting course favourites when deleting a course
 	t.Run("cascade - course", func(t *testing.T) {
 		dao, ctx := setup(t)
 
@@ -361,6 +379,7 @@ func Test_DeleteCourseFavourites(t *testing.T) {
 		require.Empty(t, records)
 	})
 
+	// Test successfully deleting course favourites when deleting a user
 	t.Run("cascade - user", func(t *testing.T) {
 		dao, ctx := setup(t)
 

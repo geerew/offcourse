@@ -18,12 +18,14 @@ import (
 // ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
 
 func Test_CreateCourse(t *testing.T) {
+	// Test successfully inserting a course record
 	t.Run("success", func(t *testing.T) {
 		dao, ctx := setup(t)
 		course := &models.Course{Title: "Course 1", Path: "/course-1"}
 		require.NoError(t, dao.CreateCourse(ctx, course))
 	})
 
+	// Test successfully inserting a course record with a description
 	t.Run("success with description", func(t *testing.T) {
 		dao, ctx := setup(t)
 		course := &models.Course{
@@ -39,11 +41,13 @@ func Test_CreateCourse(t *testing.T) {
 		require.Equal(t, "A test course description", record.Description)
 	})
 
+	// Test error due to nil pointer
 	t.Run("nil pointer", func(t *testing.T) {
 		dao, ctx := setup(t)
 		require.ErrorIs(t, dao.CreateCourse(ctx, nil), utils.ErrNilPtr)
 	})
 
+	// Test error due to duplicate record
 	t.Run("duplicate", func(t *testing.T) {
 		dao, ctx := setup(t)
 
@@ -59,6 +63,7 @@ func Test_CreateCourse(t *testing.T) {
 		require.ErrorContains(t, dao.CreateCourse(ctx, course), "UNIQUE constraint failed: "+models.COURSE_TABLE_PATH)
 	})
 
+	// Test error due to invalid fields
 	t.Run("invalid", func(t *testing.T) {
 		dao, ctx := setup(t)
 
@@ -74,6 +79,7 @@ func Test_CreateCourse(t *testing.T) {
 // ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
 
 func Test_GetCourse(t *testing.T) {
+	// Test successfully retrieving a course record with no relations
 	t.Run("success", func(t *testing.T) {
 		dao, ctx := setup(t)
 
@@ -87,6 +93,7 @@ func Test_GetCourse(t *testing.T) {
 		require.Nil(t, record.Progress)
 	})
 
+	// Test successfully retrieving a course record with relations
 	t.Run("success with relations", func(t *testing.T) {
 		dao, ctx := setup(t)
 
@@ -102,11 +109,7 @@ func Test_GetCourse(t *testing.T) {
 		record, err := dao.GetCourse(ctx, dbOpts)
 		require.NoError(t, err)
 		require.Equal(t, course.ID, record.ID)
-		require.NotNil(t, record.Progress)
-		require.False(t, record.Progress.Started)
-		require.Equal(t, 0, record.Progress.Percent)
-		require.True(t, record.Progress.StartedAt.IsZero())
-		require.True(t, record.Progress.CompletedAt.IsZero())
+		require.Nil(t, record.Progress)
 
 		// Create lesson + asset
 		lesson := &models.Lesson{
@@ -201,6 +204,7 @@ func Test_GetCourse(t *testing.T) {
 		require.False(t, record.Progress.CompletedAt.IsZero())
 	})
 
+	// Test no error when retrieving a non-existent course record
 	t.Run("not found", func(t *testing.T) {
 		dao, ctx := setup(t)
 
@@ -209,6 +213,7 @@ func Test_GetCourse(t *testing.T) {
 		require.Nil(t, record)
 	})
 
+	// Test error due to missing principal
 	t.Run("missing principal", func(t *testing.T) {
 		dao, _ := setup(t)
 
@@ -222,6 +227,7 @@ func Test_GetCourse(t *testing.T) {
 // ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
 
 func Test_ListCourses(t *testing.T) {
+	// Test successfully retrieving all course records
 	t.Run("success", func(t *testing.T) {
 		dao, ctx := setup(t)
 
@@ -243,6 +249,7 @@ func Test_ListCourses(t *testing.T) {
 		}
 	})
 
+	// Test successfully retrieving all course records with relations
 	t.Run("success with relations", func(t *testing.T) {
 		dao, ctx := setup(t)
 
@@ -260,14 +267,10 @@ func Test_ListCourses(t *testing.T) {
 		require.Nil(t, err)
 		require.Len(t, records, 3)
 
-		// Ensure everything defaults to the zero value (for this user)
+		// Ensure no progress when none exists
 		for i, record := range records {
 			require.Equal(t, courses[i].ID, record.ID)
-			require.NotNil(t, record.Progress)
-			require.False(t, record.Progress.Started)
-			require.Equal(t, 0, record.Progress.Percent)
-			require.True(t, record.Progress.StartedAt.IsZero())
-			require.True(t, record.Progress.CompletedAt.IsZero())
+			require.Nil(t, record.Progress)
 		}
 
 		// Generate progress for the default user
@@ -297,8 +300,7 @@ func Test_ListCourses(t *testing.T) {
 			assets = append(assets, asset)
 			require.NoError(t, dao.CreateAsset(ctx, asset))
 
-			// for the first course, create an asset progress (and therefore a course
-			// progress) for the default user
+			// Create an asset progress for the first course
 			if i == 0 {
 				assetProgress := &models.AssetProgress{
 					AssetID:   asset.ID,
@@ -310,26 +312,22 @@ func Test_ListCourses(t *testing.T) {
 			time.Sleep(1 * time.Millisecond)
 		}
 
-		// List again)
+		// List again
 		records, err = dao.ListCourses(ctx, dbOpts)
 		require.Nil(t, err)
 		require.Len(t, records, 3)
 
-		// Ensure they all have progress and that the first course is started/completed
+		// Ensure first course has progress, others do not
 		for i, record := range records {
 			require.Equal(t, courses[i].ID, record.ID)
-			require.NotNil(t, record.Progress)
-
 			if i == 0 {
+				require.NotNil(t, record.Progress)
 				require.True(t, record.Progress.Started)
 				require.Equal(t, 100, record.Progress.Percent)
 				require.False(t, record.Progress.StartedAt.IsZero())
 				require.False(t, record.Progress.CompletedAt.IsZero())
 			} else {
-				require.False(t, record.Progress.Started)
-				require.Equal(t, 0, record.Progress.Percent)
-				require.True(t, record.Progress.StartedAt.IsZero())
-				require.True(t, record.Progress.CompletedAt.IsZero())
+				require.Nil(t, record.Progress)
 			}
 		}
 
@@ -360,24 +358,22 @@ func Test_ListCourses(t *testing.T) {
 		require.Nil(t, err)
 		require.Len(t, records, 3)
 
-		// Ensure they all have progress and that the second course is started/completed
+		// Ensure second course has progress for user2, others do not
 		for i, record := range records {
 			require.Equal(t, courses[i].ID, record.ID)
-			require.NotNil(t, record.Progress)
 			if i == 1 {
+				require.NotNil(t, record.Progress)
 				require.True(t, record.Progress.Started)
 				require.Equal(t, 100, record.Progress.Percent)
 				require.False(t, record.Progress.StartedAt.IsZero())
 				require.False(t, record.Progress.CompletedAt.IsZero())
 			} else {
-				require.False(t, record.Progress.Started)
-				require.Equal(t, 0, record.Progress.Percent)
-				require.True(t, record.Progress.StartedAt.IsZero())
-				require.True(t, record.Progress.CompletedAt.IsZero())
+				require.Nil(t, record.Progress)
 			}
 		}
 	})
 
+	// Test no error when retrieving no course records
 	t.Run("empty", func(t *testing.T) {
 		dao, ctx := setup(t)
 
@@ -386,6 +382,7 @@ func Test_ListCourses(t *testing.T) {
 		require.Empty(t, records)
 	})
 
+	// Test successfully retrieving ordered course records
 	t.Run("order by", func(t *testing.T) {
 		dao, ctx := setup(t)
 
@@ -418,6 +415,7 @@ func Test_ListCourses(t *testing.T) {
 		}
 	})
 
+	// Test successfully retrieving selected course records
 	t.Run("where", func(t *testing.T) {
 		dao, ctx := setup(t)
 
@@ -431,6 +429,7 @@ func Test_ListCourses(t *testing.T) {
 		require.Equal(t, course.ID, records[0].ID)
 	})
 
+	// Test successfully retrieving paginated course records
 	t.Run("pagination", func(t *testing.T) {
 		dao, ctx := setup(t)
 
@@ -463,6 +462,7 @@ func Test_ListCourses(t *testing.T) {
 // ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
 
 func Test_UpdateCourse(t *testing.T) {
+	// Test successfully updating a course record
 	t.Run("success", func(t *testing.T) {
 		dao, ctx := setup(t)
 
@@ -506,6 +506,7 @@ func Test_UpdateCourse(t *testing.T) {
 		require.NotEqual(t, originalCourse.UpdatedAt, record.UpdatedAt)   // Changed
 	})
 
+	// Test successfully updating a course record with a description
 	t.Run("success with description", func(t *testing.T) {
 		dao, ctx := setup(t)
 
@@ -532,6 +533,7 @@ func Test_UpdateCourse(t *testing.T) {
 		require.Equal(t, "Updated description", record.Description)
 	})
 
+	// Test error due to invalid fields
 	t.Run("invalid", func(t *testing.T) {
 		dao, ctx := setup(t)
 
@@ -560,6 +562,7 @@ func Test_UpdateCourse(t *testing.T) {
 // ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
 
 func Test_DeleteCourses(t *testing.T) {
+	// Test successfully deleting a course record
 	t.Run("success", func(t *testing.T) {
 		dao, ctx := setup(t)
 
@@ -574,6 +577,7 @@ func Test_DeleteCourses(t *testing.T) {
 		require.Empty(t, records)
 	})
 
+	// Test no error when deleting a non-existent course record
 	t.Run("not found", func(t *testing.T) {
 		dao, ctx := setup(t)
 
@@ -589,6 +593,7 @@ func Test_DeleteCourses(t *testing.T) {
 		require.Equal(t, course.ID, records[0].ID)
 	})
 
+	// Test error due to missing where clause
 	t.Run("missing where", func(t *testing.T) {
 		dao, ctx := setup(t)
 
@@ -607,6 +612,7 @@ func Test_DeleteCourses(t *testing.T) {
 // ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
 
 func Test_ClassifyCoursePaths(t *testing.T) {
+	// Test successfully classifying course paths
 	t.Run("success", func(t *testing.T) {
 		dao, ctx := setup(t)
 
@@ -634,6 +640,7 @@ func Test_ClassifyCoursePaths(t *testing.T) {
 		require.Equal(t, types.PathClassificationDescendant, result[path4])
 	})
 
+	// Test no error when classifying no paths
 	t.Run("no paths", func(t *testing.T) {
 		dao, ctx := setup(t)
 
@@ -642,6 +649,7 @@ func Test_ClassifyCoursePaths(t *testing.T) {
 		require.Empty(t, result)
 	})
 
+	// Test no error when classifying empty paths
 	t.Run("empty path", func(t *testing.T) {
 		dao, ctx := setup(t)
 
@@ -650,6 +658,7 @@ func Test_ClassifyCoursePaths(t *testing.T) {
 		require.Empty(t, result)
 	})
 
+	// Test error due to database error
 	t.Run("db error", func(t *testing.T) {
 		dao, ctx := setup(t)
 

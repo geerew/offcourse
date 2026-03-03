@@ -3,7 +3,6 @@ package dao
 import (
 	"context"
 
-	"github.com/Masterminds/squirrel"
 	"github.com/geerew/off-course/models"
 	"github.com/geerew/off-course/utils"
 )
@@ -42,13 +41,13 @@ func (dao *DAO) CreateAttachment(ctx context.Context, attachment *models.Attachm
 	builderOpts := newBuilderOptions(models.ATTACHMENT_TABLE).
 		WithData(
 			map[string]interface{}{
-				models.BASE_ID:               attachment.ID,
-				models.ATTACHMENT_COURSE_ID:  attachment.CourseID,
-				models.ATTACHMENT_LESSON_ID:  attachment.LessonID,
-				models.ATTACHMENT_TITLE:      attachment.Title,
-				models.ATTACHMENT_PATH:       attachment.Path,
-				models.BASE_CREATED_AT:       attachment.CreatedAt,
-				models.BASE_UPDATED_AT:       attachment.UpdatedAt,
+				models.BASE_ID:              attachment.ID,
+				models.ATTACHMENT_COURSE_ID: attachment.CourseID,
+				models.ATTACHMENT_LESSON_ID: attachment.LessonID,
+				models.ATTACHMENT_TITLE:     attachment.Title,
+				models.ATTACHMENT_PATH:      attachment.Path,
+				models.BASE_CREATED_AT:      attachment.CreatedAt,
+				models.BASE_UPDATED_AT:      attachment.UpdatedAt,
 			},
 		)
 
@@ -78,44 +77,6 @@ func (dao *DAO) ListAttachments(ctx context.Context, dbOpts *Options) ([]*models
 		SetDbOpts(dbOpts)
 
 	return listGeneric[models.Attachment](ctx, dao, *builderOpts)
-}
-
-// ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
-
-// UpdateAttachment updates an attachment record
-func (dao *DAO) UpdateAttachment(ctx context.Context, attachment *models.Attachment) error {
-	if attachment == nil {
-		return utils.ErrNilPtr
-	}
-
-	if attachment.ID == "" {
-		return utils.ErrId
-	}
-
-	if attachment.Title == "" {
-		return utils.ErrTitle
-	}
-
-	if attachment.Path == "" {
-		return utils.ErrPath
-	}
-
-	attachment.RefreshUpdatedAt()
-
-	dbOpts := NewOptions().WithWhere(squirrel.Eq{models.BASE_ID: attachment.ID})
-
-	builderOpts := newBuilderOptions(models.ATTACHMENT_TABLE).
-		WithData(
-			map[string]interface{}{
-				models.ATTACHMENT_TITLE: attachment.Title,
-				models.ATTACHMENT_PATH:  attachment.Path,
-				models.BASE_UPDATED_AT:  attachment.UpdatedAt,
-			},
-		).
-		SetDbOpts(dbOpts)
-
-	_, err := updateGeneric(ctx, dao, *builderOpts)
-	return err
 }
 
 // ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~

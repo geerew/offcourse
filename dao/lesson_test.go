@@ -85,6 +85,7 @@ func helper_createLessons(t *testing.T, ctx context.Context, dao *DAO, numCourse
 // ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
 
 func Test_CreateLesson(t *testing.T) {
+	// Test successfully creating a lesson record
 	t.Run("success", func(t *testing.T) {
 		dao, ctx := setup(t)
 
@@ -100,11 +101,13 @@ func Test_CreateLesson(t *testing.T) {
 		require.NoError(t, dao.CreateLesson(ctx, lesson))
 	})
 
+	// Test error due to nil pointer
 	t.Run("nil pointer", func(t *testing.T) {
 		dao, ctx := setup(t)
 		require.ErrorIs(t, dao.CreateLesson(ctx, nil), utils.ErrNilPtr)
 	})
 
+	// Test error due to invalid fields
 	t.Run("invalid", func(t *testing.T) {
 		dao, ctx := setup(t)
 
@@ -128,6 +131,7 @@ func Test_CreateLesson(t *testing.T) {
 // ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
 
 func Test_GetLesson(t *testing.T) {
+	// Test successfully retrieving a lesson record with no relations
 	t.Run("success", func(t *testing.T) {
 		dao, ctx := setup(t)
 
@@ -151,6 +155,7 @@ func Test_GetLesson(t *testing.T) {
 		require.Equal(t, allAttachments[0].ID, record.Attachments[1].ID)
 	})
 
+	// Test no error when retrieving a non-existent lesson record
 	t.Run("not found", func(t *testing.T) {
 		dao, ctx := setup(t)
 
@@ -159,6 +164,7 @@ func Test_GetLesson(t *testing.T) {
 		require.Nil(t, record)
 	})
 
+	// Test error due to missing principal
 	t.Run("missing principal", func(t *testing.T) {
 		dao, ctx := setup(t)
 
@@ -183,6 +189,7 @@ func Test_GetLesson(t *testing.T) {
 // ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
 
 func Test_ListLessons(t *testing.T) {
+	// Test successfully retrieving all lesson records
 	t.Run("success", func(t *testing.T) {
 		dao, ctx := setup(t)
 
@@ -192,11 +199,11 @@ func Test_ListLessons(t *testing.T) {
 		require.Nil(t, err)
 		require.Len(t, records, 9)
 
-		// Simple relation check
 		require.Len(t, records[0].Attachments, 2)
 		require.Len(t, records[0].Assets, 3)
 	})
 
+	// Test successfully retrieving no lesson records
 	t.Run("empty", func(t *testing.T) {
 		dao, ctx := setup(t)
 
@@ -205,6 +212,7 @@ func Test_ListLessons(t *testing.T) {
 		require.Empty(t, records)
 	})
 
+	// Test successfully retrieving selected lesson records
 	t.Run("where", func(t *testing.T) {
 		dao, ctx := setup(t)
 
@@ -220,6 +228,7 @@ func Test_ListLessons(t *testing.T) {
 		require.Equal(t, lessons[3].ID, records[2].ID)
 	})
 
+	// Test successfully retrieving paginated lesson records
 	t.Run("pagination", func(t *testing.T) {
 		dao, ctx := setup(t)
 
@@ -259,6 +268,7 @@ func Test_ListLessons(t *testing.T) {
 // ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
 
 func Test_UpdateLesson(t *testing.T) {
+	// Test successfully updating a lesson record
 	t.Run("success", func(t *testing.T) {
 		dao, ctx := setup(t)
 
@@ -296,6 +306,7 @@ func Test_UpdateLesson(t *testing.T) {
 		require.NotEqual(t, originalLesson.UpdatedAt, record.UpdatedAt)   // Changed
 	})
 
+	// Test error due to invalid fields
 	t.Run("invalid", func(t *testing.T) {
 		dao, ctx := setup(t)
 
@@ -327,6 +338,7 @@ func Test_UpdateLesson(t *testing.T) {
 // ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
 
 func Test_DeleteLesson(t *testing.T) {
+	// Test successfully deleting a lesson record
 	t.Run("success", func(t *testing.T) {
 		dao, ctx := setup(t)
 
@@ -344,12 +356,12 @@ func Test_DeleteLesson(t *testing.T) {
 		opts := NewOptions().WithWhere(squirrel.Eq{models.LESSON_TABLE_ID: lesson.ID})
 		require.Nil(t, dao.DeleteLessons(ctx, opts))
 
-		// TODO add list when supported
-		// records, err := dao.ListLessons(ctx, opts)
-		// require.NoError(t, err)
-		// require.Empty(t, records)
+		records, err := dao.ListLessons(ctx, opts)
+		require.NoError(t, err)
+		require.Empty(t, records)
 	})
 
+	// Test no error when deleting a non-existent lesson record
 	t.Run("not found", func(t *testing.T) {
 		dao, ctx := setup(t)
 
@@ -367,12 +379,13 @@ func Test_DeleteLesson(t *testing.T) {
 		opts := NewOptions().WithWhere(squirrel.Eq{models.LESSON_TABLE_ID: "non-existent"})
 		require.Nil(t, dao.DeleteLessons(ctx, opts))
 
-		// records, err := dao.ListLessons(ctx, nil)
-		// require.NoError(t, err)
-		// require.Len(t, records, 1)
-		// require.Equal(t, lesson.ID, records[0].ID)
+		records, err := dao.ListLessons(ctx, nil)
+		require.NoError(t, err)
+		require.Len(t, records, 1)
+		require.Equal(t, lesson.ID, records[0].ID)
 	})
 
+	// Test error due to missing where clause
 	t.Run("missing where", func(t *testing.T) {
 		dao, ctx := setup(t)
 
@@ -389,12 +402,13 @@ func Test_DeleteLesson(t *testing.T) {
 
 		require.ErrorIs(t, dao.DeleteLessons(ctx, nil), utils.ErrWhere)
 
-		// records, err := dao.ListLessons(ctx, nil)
-		// require.NoError(t, err)
-		// require.Len(t, records, 1)
-		// require.Equal(t, lesson.ID, records[0].ID)
+		records, err := dao.ListLessons(ctx, nil)
+		require.NoError(t, err)
+		require.Len(t, records, 1)
+		require.Equal(t, lesson.ID, records[0].ID)
 	})
 
+	// Test cascading delete of lesson records when deleting a course
 	t.Run("cascade", func(t *testing.T) {
 		dao, ctx := setup(t)
 
@@ -412,8 +426,8 @@ func Test_DeleteLesson(t *testing.T) {
 		dbOpts := NewOptions().WithWhere(squirrel.Eq{models.COURSE_TABLE_ID: course.ID})
 		require.Nil(t, dao.DeleteCourses(ctx, dbOpts))
 
-		// records, err := dao.ListLessons(ctx, nil)
-		// require.NoError(t, err)
-		// require.Empty(t, records)
+		records, err := dao.ListLessons(ctx, nil)
+		require.NoError(t, err)
+		require.Empty(t, records)
 	})
 }

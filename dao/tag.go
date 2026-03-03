@@ -43,14 +43,6 @@ func (dao *DAO) CreateTag(ctx context.Context, tag *models.Tag) error {
 
 // ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
 
-// CountTags counts the number of tag records
-func (dao *DAO) CountTags(ctx context.Context, dbOpts *Options) (int, error) {
-	builderOpts := newBuilderOptions(models.TAG_TABLE).SetDbOpts(dbOpts)
-	return countGeneric(ctx, dao, *builderOpts)
-}
-
-// ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
-
 // GetTag gets a record from the tags table based upon the where clause in the options. If
 // there is no where clause, it will return the first record in the table
 func (dao *DAO) GetTag(ctx context.Context, dbOpts *Options) (*models.Tag, error) {
@@ -80,7 +72,7 @@ func (dao *DAO) ListTags(ctx context.Context, dbOpts *Options) ([]*models.Tag, e
 
 // ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
 
-// ListTagNames returns just the tag names as a []string
+// ListTagNames returns the tag names as a string slice
 //
 // TODO add tests
 func (dao *DAO) ListTagNames(ctx context.Context, dbOpts *Options) ([]string, error) {

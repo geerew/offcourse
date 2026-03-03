@@ -18,6 +18,7 @@ import (
 // ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
 
 func Test_CreateOrReplaceSession(t *testing.T) {
+	// Test successfully inserting a session record
 	t.Run("success", func(t *testing.T) {
 		dao, ctx := setup(t)
 
@@ -30,6 +31,7 @@ func Test_CreateOrReplaceSession(t *testing.T) {
 		require.NoError(t, dao.CreateOrReplaceSession(ctx, session))
 	})
 
+	// Test successfully replacing a session record
 	t.Run("replace", func(t *testing.T) {
 		dao, ctx := setup(t)
 
@@ -53,12 +55,14 @@ func Test_CreateOrReplaceSession(t *testing.T) {
 		require.Equal(t, session.Data, record.Data)
 	})
 
+	// Test error due to nil pointer
 	t.Run("nil pointer", func(t *testing.T) {
 		dao, ctx := setup(t)
 
 		require.ErrorIs(t, dao.CreateOrReplaceSession(ctx, nil), utils.ErrNilPtr)
 	})
 
+	// Test error due to invalid ID
 	t.Run("invalid ID", func(t *testing.T) {
 		dao, ctx := setup(t)
 
@@ -71,6 +75,7 @@ func Test_CreateOrReplaceSession(t *testing.T) {
 		require.ErrorIs(t, dao.CreateOrReplaceSession(ctx, session), utils.ErrId)
 	})
 
+	// Test error due to invalid user ID
 	t.Run("invalid user ID", func(t *testing.T) {
 		dao, ctx := setup(t)
 
@@ -87,6 +92,7 @@ func Test_CreateOrReplaceSession(t *testing.T) {
 // ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
 
 func Test_GetSession(t *testing.T) {
+	// Test successfully retrieving a session record
 	t.Run("success", func(t *testing.T) {
 		dao, ctx := setup(t)
 
@@ -104,6 +110,7 @@ func Test_GetSession(t *testing.T) {
 		require.Equal(t, session.ID, record.ID)
 	})
 
+	// Test no error when retrieving a non-existent session record
 	t.Run("not found", func(t *testing.T) {
 		dao, ctx := setup(t)
 
@@ -116,6 +123,7 @@ func Test_GetSession(t *testing.T) {
 // ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
 
 func Test_ListSessions(t *testing.T) {
+	// Test successfully retrieving all session records
 	t.Run("success", func(t *testing.T) {
 		dao, ctx := setup(t)
 
@@ -141,6 +149,7 @@ func Test_ListSessions(t *testing.T) {
 		}
 	})
 
+	// Test successfully retrieving no session records
 	t.Run("empty", func(t *testing.T) {
 		dao, ctx := setup(t)
 
@@ -149,6 +158,7 @@ func Test_ListSessions(t *testing.T) {
 		require.Empty(t, records)
 	})
 
+	// Test successfully retrieving ordered session records
 	t.Run("order by", func(t *testing.T) {
 		dao, ctx := setup(t)
 
@@ -188,6 +198,7 @@ func Test_ListSessions(t *testing.T) {
 		}
 	})
 
+	// Test successfully retrieving selected session records
 	t.Run("where", func(t *testing.T) {
 		dao, ctx := setup(t)
 
@@ -206,6 +217,7 @@ func Test_ListSessions(t *testing.T) {
 		require.Equal(t, session.ID, records[0].ID)
 	})
 
+	// Test successfully retrieving paginated session records
 	t.Run("pagination", func(t *testing.T) {
 		dao, ctx := setup(t)
 
@@ -243,6 +255,7 @@ func Test_ListSessions(t *testing.T) {
 // ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
 
 func Test_UpdateSession(t *testing.T) {
+	// Test successfully updating a session record
 	t.Run("success", func(t *testing.T) {
 		dao, ctx := setup(t)
 
@@ -273,6 +286,7 @@ func Test_UpdateSession(t *testing.T) {
 		require.Equal(t, updatedSession.Expires, record.Expires) // Changed
 	})
 
+	// Test error due to invalid session record
 	t.Run("invalid", func(t *testing.T) {
 		dao, ctx := setup(t)
 
@@ -294,7 +308,58 @@ func Test_UpdateSession(t *testing.T) {
 }
 
 // ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
+
+func Test_BulkUpdateSessions(t *testing.T) {
+	// Test successfully updating multiple session records
+	t.Run("success", func(t *testing.T) {
+		dao, ctx := setup(t)
+
+		sessions := make([]*models.Session, 3)
+		for i := range 3 {
+			s := &models.Session{
+				ID:      fmt.Sprintf("session-%d", i),
+				UserId:  "user-123",
+				Data:    []byte(fmt.Sprintf("data-%d", i)),
+				Expires: time.Now().Add(24 * time.Hour).Unix(),
+			}
+			sessions[i] = s
+			require.NoError(t, dao.CreateOrReplaceSession(ctx, s))
+			time.Sleep(1 * time.Millisecond)
+		}
+
+		for i, s := range sessions {
+			s.Data = []byte(fmt.Sprintf("updated-%d", i))
+			s.Expires = time.Now().Add(48 * time.Hour).Unix()
+		}
+
+		require.NoError(t, dao.BulkUpdateSessions(ctx, sessions))
+
+		for i, s := range sessions {
+			opts := NewOptions().WithWhere(squirrel.Eq{models.SESSION_TABLE_ID: s.ID})
+			record, err := dao.GetSession(ctx, opts)
+			require.NoError(t, err)
+			require.Equal(t, s.Data, record.Data)
+			require.Equal(t, s.Expires, record.Expires, "session %d", i)
+		}
+	})
+
+	// Test successfully updating no session records
+	t.Run("empty slice", func(t *testing.T) {
+		dao, ctx := setup(t)
+		require.NoError(t, dao.BulkUpdateSessions(ctx, []*models.Session{}))
+	})
+
+	// Test error due to nil slice
+	t.Run("nil slice", func(t *testing.T) {
+		dao, ctx := setup(t)
+		require.ErrorIs(t, dao.BulkUpdateSessions(ctx, nil), utils.ErrNilPtr)
+	})
+}
+
+// ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
+
 func Test_UpdateSessionRoleForUser(t *testing.T) {
+	// Test successfully updating the session role for a user
 	t.Run("success", func(t *testing.T) {
 		dao, ctx := setup(t)
 
@@ -335,6 +400,7 @@ func Test_UpdateSessionRoleForUser(t *testing.T) {
 		}
 	})
 
+	// Test error due to invalid user ID
 	t.Run("invalid user ID", func(t *testing.T) {
 		dao, ctx := setup(t)
 
@@ -345,6 +411,7 @@ func Test_UpdateSessionRoleForUser(t *testing.T) {
 // ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
 
 func Test_DeleteSessions(t *testing.T) {
+	// Test successfully deleting a session record
 	t.Run("success", func(t *testing.T) {
 		dao, ctx := setup(t)
 
@@ -364,6 +431,7 @@ func Test_DeleteSessions(t *testing.T) {
 		require.Empty(t, records)
 	})
 
+	// Test no error when deleting a non-existent session record
 	t.Run("not found", func(t *testing.T) {
 		dao, ctx := setup(t)
 
@@ -384,6 +452,7 @@ func Test_DeleteSessions(t *testing.T) {
 		require.Equal(t, session.ID, records[0].ID)
 	})
 
+	// Test error due to missing where clause
 	t.Run("missing where", func(t *testing.T) {
 		dao, ctx := setup(t)
 
@@ -407,6 +476,7 @@ func Test_DeleteSessions(t *testing.T) {
 // ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
 
 func Test_DeleteAllSessions(t *testing.T) {
+	// Test successfully deleting all session records
 	t.Run("success", func(t *testing.T) {
 		dao, ctx := setup(t)
 

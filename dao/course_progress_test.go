@@ -17,10 +17,10 @@ import (
 // ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
 
 func Test_GetCourseProgress(t *testing.T) {
+	// Test successfully retrieving course progress with a single asset
 	t.Run("success (video)", func(t *testing.T) {
 		dao, ctx := setup(t)
 
-		// Course + lesson
 		course := &models.Course{Title: "Course 1", Path: "/course-1"}
 		require.NoError(t, dao.CreateCourse(ctx, course))
 		lesson := &models.Lesson{
@@ -31,7 +31,6 @@ func Test_GetCourseProgress(t *testing.T) {
 		}
 		require.NoError(t, dao.CreateLesson(ctx, lesson))
 
-		// Video asset
 		video := &models.Asset{
 			CourseID: course.ID,
 			LessonID: lesson.ID,
@@ -46,7 +45,6 @@ func Test_GetCourseProgress(t *testing.T) {
 		}
 		require.NoError(t, dao.CreateAsset(ctx, video))
 
-		// Video metadata (100s duration)
 		require.NoError(t, dao.CreateAssetMetadata(ctx, &models.AssetMetadata{
 			AssetID: video.ID,
 			VideoMetadata: &models.VideoMetadata{
@@ -61,43 +59,39 @@ func Test_GetCourseProgress(t *testing.T) {
 			},
 		}))
 
-		// No progress
-		opts := NewOptions().WithWhere(squirrel.Eq{models.COURSE_PROGRESS_TABLE_COURSE_ID: course.ID})
-		cp, err := dao.GetCourseProgress(ctx, opts)
+		dbOpts := NewOptions().WithWhere(squirrel.Eq{models.COURSE_PROGRESS_TABLE_COURSE_ID: course.ID})
+		record, err := dao.GetCourseProgress(ctx, dbOpts)
 		require.NoError(t, err)
-		require.Nil(t, cp)
+		require.Nil(t, record)
 
-		// Set the asset progress to 50% complete
 		ap := &models.AssetProgress{AssetID: video.ID, Position: 50}
 		require.NoError(t, dao.UpsertAssetProgress(ctx, ap))
 
-		cp, err = dao.GetCourseProgress(ctx, opts)
+		record, err = dao.GetCourseProgress(ctx, dbOpts)
 		require.NoError(t, err)
-		require.NotNil(t, cp)
-		require.Equal(t, course.ID, cp.CourseID)
-		require.True(t, cp.Started)
-		require.False(t, cp.StartedAt.IsZero())
-		require.Equal(t, 50, cp.Percent)
-		require.True(t, cp.CompletedAt.IsZero())
+		require.NotNil(t, record)
+		require.Equal(t, course.ID, record.CourseID)
+		require.True(t, record.Started)
+		require.False(t, record.StartedAt.IsZero())
+		require.Equal(t, 50, record.Percent)
+		require.True(t, record.CompletedAt.IsZero())
 
-		// Update position to 100 (100%) and set completed
 		ap.Completed = true
 		ap.Position = 100
 		require.NoError(t, dao.UpsertAssetProgress(ctx, ap))
 
-		cp2, err := dao.GetCourseProgress(ctx, opts)
-
+		record, err = dao.GetCourseProgress(ctx, dbOpts)
 		require.NoError(t, err)
-		require.NotNil(t, cp2)
-		require.Equal(t, 100, cp2.Percent)
-		require.False(t, cp2.CompletedAt.IsZero())
-		require.False(t, cp2.StartedAt.IsZero())
+		require.NotNil(t, record)
+		require.Equal(t, 100, record.Percent)
+		require.False(t, record.CompletedAt.IsZero())
+		require.False(t, record.StartedAt.IsZero())
 	})
 
+	// Test successfully retrieving course progress with multiple assets
 	t.Run("success (multiple assets)", func(t *testing.T) {
 		dao, ctx := setup(t)
 
-		// Course + lesson
 		course := &models.Course{Title: "Course M", Path: "/course-m"}
 		require.NoError(t, dao.CreateCourse(ctx, course))
 		lesson := &models.Lesson{
@@ -107,8 +101,7 @@ func Test_GetCourseProgress(t *testing.T) {
 		}
 		require.NoError(t, dao.CreateLesson(ctx, lesson))
 
-		// Video A
-		vA := &models.Asset{
+		video1 := &models.Asset{
 			CourseID: course.ID,
 			LessonID: lesson.ID,
 			Title:    "Video A",
@@ -120,9 +113,10 @@ func Test_GetCourseProgress(t *testing.T) {
 			Hash:     "va",
 			Weight:   1,
 		}
-		require.NoError(t, dao.CreateAsset(ctx, vA))
+		require.NoError(t, dao.CreateAsset(ctx, video1))
+
 		require.NoError(t, dao.CreateAssetMetadata(ctx, &models.AssetMetadata{
-			AssetID: vA.ID,
+			AssetID: video1.ID,
 			VideoMetadata: &models.VideoMetadata{
 				DurationSec: 100,
 				Container:   "mp4",
@@ -135,8 +129,7 @@ func Test_GetCourseProgress(t *testing.T) {
 			},
 		}))
 
-		// Video B
-		vB := &models.Asset{
+		video2 := &models.Asset{
 			CourseID: course.ID,
 			LessonID: lesson.ID,
 			Title:    "Video B",
@@ -148,9 +141,10 @@ func Test_GetCourseProgress(t *testing.T) {
 			Hash:     "vb",
 			Weight:   1,
 		}
-		require.NoError(t, dao.CreateAsset(ctx, vB))
+		require.NoError(t, dao.CreateAsset(ctx, video2))
+
 		require.NoError(t, dao.CreateAssetMetadata(ctx, &models.AssetMetadata{
-			AssetID: vB.ID,
+			AssetID: video2.ID,
 			VideoMetadata: &models.VideoMetadata{
 				DurationSec: 200,
 				Container:   "mp4",
@@ -163,7 +157,6 @@ func Test_GetCourseProgress(t *testing.T) {
 			},
 		}))
 
-		// Document C
 		doc := &models.Asset{
 			CourseID: course.ID,
 			LessonID: lesson.ID,
@@ -178,60 +171,51 @@ func Test_GetCourseProgress(t *testing.T) {
 		}
 		require.NoError(t, dao.CreateAsset(ctx, doc))
 
-		opts := NewOptions().WithWhere(squirrel.Eq{models.COURSE_PROGRESS_TABLE_COURSE_ID: course.ID})
+		dbOpts := NewOptions().WithWhere(squirrel.Eq{models.COURSE_PROGRESS_TABLE_COURSE_ID: course.ID})
 
-		// A @ 50s (0.5), B @ 0 (0.0), Doc not completed (0.0):
-		// percent = round(100 * (0.5 + 0 + 0) / 3) = 17
-		require.NoError(t, dao.UpsertAssetProgress(ctx, &models.AssetProgress{
-			AssetID:  vA.ID,
-			Position: 50,
-		}))
-		cp, err := dao.GetCourseProgress(ctx, opts)
-		require.NoError(t, err)
-		require.NotNil(t, cp)
-		require.Equal(t, 17, cp.Percent)
-		require.True(t, cp.Started)
-		require.False(t, cp.StartedAt.IsZero())
+		video1Progress := &models.AssetProgress{AssetID: video1.ID, Position: 50}
+		require.NoError(t, dao.UpsertAssetProgress(ctx, video1Progress))
 
-		// Now B @ 100/200 (0.5): avg = (0.5 + 0.5 + 0) / 3 = 0.333.. -> 33
-		require.NoError(t, dao.UpsertAssetProgress(ctx, &models.AssetProgress{
-			AssetID:  vB.ID,
-			Position: 100,
-		}))
-		cp, err = dao.GetCourseProgress(ctx, opts)
+		record, err := dao.GetCourseProgress(ctx, dbOpts)
 		require.NoError(t, err)
-		require.NotNil(t, cp)
-		require.Equal(t, 33, cp.Percent)
+		require.NotNil(t, record)
+		require.Equal(t, 17, record.Percent)
+		require.True(t, record.Started)
+		require.False(t, record.StartedAt.IsZero())
 
-		// Mark doc completed (1.0): avg = (0.5 + 0.5 + 1.0) / 3 = 0.666.. -> 67
-		require.NoError(t, dao.UpsertAssetProgress(ctx, &models.AssetProgress{
-			AssetID:   doc.ID,
-			Completed: true,
-		}))
-		cp, err = dao.GetCourseProgress(ctx, opts)
-		require.NoError(t, err)
-		require.NotNil(t, cp)
-		require.Equal(t, 67, cp.Percent)
-		require.True(t, cp.CompletedAt.IsZero()) // not 100 yet
+		video2Progress := &models.AssetProgress{AssetID: video2.ID, Position: 100}
+		require.NoError(t, dao.UpsertAssetProgress(ctx, video2Progress))
 
-		// Complete both videos: (1 + 1 + 1) / 3 = 1.0 -> 100, completed_at set
-		require.NoError(t, dao.UpsertAssetProgress(ctx, &models.AssetProgress{
-			AssetID:   vA.ID,
-			Completed: true,
-			Position:  100,
-		}))
-		require.NoError(t, dao.UpsertAssetProgress(ctx, &models.AssetProgress{
-			AssetID:   vB.ID,
-			Completed: true,
-			Position:  200,
-		}))
-		cp, err = dao.GetCourseProgress(ctx, opts)
+		record, err = dao.GetCourseProgress(ctx, dbOpts)
 		require.NoError(t, err)
-		require.NotNil(t, cp)
-		require.Equal(t, 100, cp.Percent)
-		require.False(t, cp.CompletedAt.IsZero())
+		require.NotNil(t, record)
+		require.Equal(t, 33, record.Percent)
+
+		documentProgress := &models.AssetProgress{AssetID: doc.ID, Completed: true}
+		require.NoError(t, dao.UpsertAssetProgress(ctx, documentProgress))
+
+		record, err = dao.GetCourseProgress(ctx, dbOpts)
+		require.NoError(t, err)
+		require.NotNil(t, record)
+		require.Equal(t, 67, record.Percent)
+		require.True(t, record.CompletedAt.IsZero())
+
+		video1Progress.Completed = true
+		video1Progress.Position = 100
+		require.NoError(t, dao.UpsertAssetProgress(ctx, video1Progress))
+
+		video2Progress.Completed = true
+		video2Progress.Position = 200
+		require.NoError(t, dao.UpsertAssetProgress(ctx, video2Progress))
+
+		record, err = dao.GetCourseProgress(ctx, dbOpts)
+		require.NoError(t, err)
+		require.NotNil(t, record)
+		require.Equal(t, 100, record.Percent)
+		require.False(t, record.CompletedAt.IsZero())
 	})
 
+	// Test querying a non-existent course progress record
 	t.Run("not found", func(t *testing.T) {
 		dao, ctx := setup(t)
 
@@ -244,6 +228,7 @@ func Test_GetCourseProgress(t *testing.T) {
 // ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
 
 func Test_ListCourseProgress(t *testing.T) {
+	// Test successfully retrieving all course progress records
 	t.Run("success", func(t *testing.T) {
 		dao, ctx := setup(t)
 
@@ -276,7 +261,6 @@ func Test_ListCourseProgress(t *testing.T) {
 			}
 			require.NoError(t, dao.CreateAsset(ctx, asset))
 
-			// Set the asset progress to 5
 			assetProgress := &models.AssetProgress{
 				AssetID:  asset.ID,
 				Position: 5,
@@ -294,6 +278,7 @@ func Test_ListCourseProgress(t *testing.T) {
 		}
 	})
 
+	// Test successfully retrieving no course progress records
 	t.Run("empty", func(t *testing.T) {
 		dao, ctx := setup(t)
 
@@ -302,6 +287,7 @@ func Test_ListCourseProgress(t *testing.T) {
 		require.Empty(t, records)
 	})
 
+	// Test successfully retrieving ordered course progress records
 	t.Run("order by", func(t *testing.T) {
 		dao, ctx := setup(t)
 
@@ -333,7 +319,6 @@ func Test_ListCourseProgress(t *testing.T) {
 			}
 			require.NoError(t, dao.CreateAsset(ctx, asset))
 
-			// Set the asset progress to 5
 			assetProgress := &models.AssetProgress{
 				AssetID:  asset.ID,
 				Position: 5,
@@ -365,6 +350,7 @@ func Test_ListCourseProgress(t *testing.T) {
 		}
 	})
 
+	// Test successfully retrieving selected course progress records
 	t.Run("where", func(t *testing.T) {
 		dao, ctx := setup(t)
 
@@ -393,7 +379,6 @@ func Test_ListCourseProgress(t *testing.T) {
 		}
 		require.NoError(t, dao.CreateAsset(ctx, asset))
 
-		// Set the asset progress to 5
 		assetProgress := &models.AssetProgress{
 			AssetID:  asset.ID,
 			Position: 5,
@@ -407,6 +392,7 @@ func Test_ListCourseProgress(t *testing.T) {
 		require.Equal(t, course.ID, records[0].CourseID)
 	})
 
+	// Test successfully retrieving paginated course progress records
 	t.Run("pagination", func(t *testing.T) {
 		dao, ctx := setup(t)
 
@@ -438,7 +424,6 @@ func Test_ListCourseProgress(t *testing.T) {
 			}
 			require.NoError(t, dao.CreateAsset(ctx, asset))
 
-			// Set the asset progress to 5
 			assetProgress := &models.AssetProgress{
 				AssetID:  asset.ID,
 				Position: 5,
@@ -468,6 +453,7 @@ func Test_ListCourseProgress(t *testing.T) {
 // ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
 
 func Test_DeleteCourseProgress(t *testing.T) {
+	// Test successfully deleting a course progress record
 	t.Run("success", func(t *testing.T) {
 		dao, ctx := setup(t)
 
@@ -496,7 +482,6 @@ func Test_DeleteCourseProgress(t *testing.T) {
 		}
 		require.NoError(t, dao.CreateAsset(ctx, asset))
 
-		// Set the asset progress to 5
 		assetProgress := &models.AssetProgress{
 			AssetID:  asset.ID,
 			Position: 5,
@@ -511,6 +496,7 @@ func Test_DeleteCourseProgress(t *testing.T) {
 		require.Empty(t, records)
 	})
 
+	// Test no error when deleting a non-existent course progress record
 	t.Run("not found", func(t *testing.T) {
 		dao, ctx := setup(t)
 
@@ -539,7 +525,6 @@ func Test_DeleteCourseProgress(t *testing.T) {
 		}
 		require.NoError(t, dao.CreateAsset(ctx, asset))
 
-		// Set the asset progress to 5
 		assetProgress := &models.AssetProgress{
 			AssetID:  asset.ID,
 			Position: 5,
@@ -555,6 +540,7 @@ func Test_DeleteCourseProgress(t *testing.T) {
 		require.Equal(t, course.ID, records[0].CourseID)
 	})
 
+	// Test error due to missing where clause
 	t.Run("missing where", func(t *testing.T) {
 		dao, ctx := setup(t)
 
@@ -583,7 +569,6 @@ func Test_DeleteCourseProgress(t *testing.T) {
 		}
 		require.NoError(t, dao.CreateAsset(ctx, asset))
 
-		// Set the asset progress to 5
 		assetProgress := &models.AssetProgress{
 			AssetID:  asset.ID,
 			Position: 5,
@@ -598,6 +583,7 @@ func Test_DeleteCourseProgress(t *testing.T) {
 		require.Equal(t, course.ID, records[0].CourseID)
 	})
 
+	// Test cascading delete of course progress records when deleting a course
 	t.Run("cascade", func(t *testing.T) {
 		dao, ctx := setup(t)
 
@@ -626,7 +612,6 @@ func Test_DeleteCourseProgress(t *testing.T) {
 		}
 		require.NoError(t, dao.CreateAsset(ctx, asset))
 
-		// Set the asset progress to 5
 		assetProgress := &models.AssetProgress{
 			AssetID:  asset.ID,
 			Position: 5,

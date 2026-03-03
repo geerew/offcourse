@@ -11,6 +11,7 @@ import (
 	"testing"
 	"time"
 
+	"github.com/geerew/off-course/dao"
 	"github.com/geerew/off-course/models"
 	"github.com/geerew/off-course/utils/coursemetadata"
 	"github.com/geerew/off-course/utils/pagination"
@@ -659,9 +660,10 @@ func TestTags_DeleteTag(t *testing.T) {
 		require.NoError(t, err)
 		require.Equal(t, http.StatusNoContent, status)
 
-		count, err := router.appDao.CountTags(ctx, nil)
+		records, err := router.appDao.ListTags(ctx, nil)
 		require.NoError(t, err)
-		require.Equal(t, 1, count)
+		require.Len(t, records, 1)
+		require.Equal(t, tag2.ID, records[0].ID)
 	})
 
 	t.Run("204 (not found)", func(t *testing.T) {
@@ -740,8 +742,11 @@ func TestTags_DeleteTag(t *testing.T) {
 		require.Equal(t, []string{"Python"}, metadata2.Tags)
 
 		// Verify tag was deleted from DB
-		count, err := router.appDao.CountTags(ctx, nil)
+		dbOpts := dao.NewOptions().WithOrderBy(models.TAG_TABLE_TAG + " ASC")
+		records, err := router.appDao.ListTags(ctx, dbOpts)
 		require.NoError(t, err)
-		require.Equal(t, 2, count) // Only PHP and Python remain
+		require.Len(t, records, 2) // Only PHP and Python remain
+		require.Equal(t, tag2.ID, records[0].ID)
+		require.Equal(t, tag3.ID, records[1].ID)
 	})
 }

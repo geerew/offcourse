@@ -13,7 +13,6 @@ import (
 
 // CreateAsset inserts a new asset record
 func (dao *DAO) CreateAsset(ctx context.Context, asset *models.Asset) error {
-
 	if err := assetValidation(asset); err != nil {
 		return err
 	}
@@ -62,8 +61,15 @@ func (dao *DAO) CountAssets(ctx context.Context, dbOpts *Options) (int, error) {
 // GetAsset gets a record from the assets table based upon the where clause in the options. If
 // there is no where clause, it will return the first record in the table
 //
-// Asset progress is not included by default. It can be enabled by calling `WithUserProgress()` on the options
-// Asset metadata is not included by default. It can be enabled by calling `WithAssetMetadata()` on the options
+// Asset progress is not included by default. It can be enabled by calling `WithUserProgress()`
+// on the options. This will add an additional db query
+//
+// Asset metadata is not included by default. It can be enabled by calling `WithAssetMetadata()`
+// on the options. This will add an additional db query
+//
+// Note: This could be updated to use a JOIN instead of doing additional queries. However, I
+// don't like nullable fields in the model struct or having to support a second struct with
+// nullable fields. So for now, this function can make up to 2 additional db queries
 func (dao *DAO) GetAsset(ctx context.Context, dbOpts *Options) (*models.Asset, error) {
 	builderOpts := newBuilderOptions(models.ASSET_TABLE).
 		WithColumns(models.AssetColumns()...).
@@ -73,19 +79,16 @@ func (dao *DAO) GetAsset(ctx context.Context, dbOpts *Options) (*models.Asset, e
 	includeProgress := dbOpts != nil && dbOpts.IncludeUserProgress
 	includeMetadata := dbOpts != nil && dbOpts.IncludeAssetMetadata
 
-	// When no relations are included, use a simpler query
 	if !includeProgress && !includeMetadata {
 		return getGeneric[models.Asset](ctx, dao, *builderOpts)
 	}
 
-	// When progress is requested, validate the principal before fetching
-	// the asset
 	var principal types.Principal
 	if includeProgress {
-		var err error
-		principal, err = principalFromCtx(ctx)
-		if err != nil {
+		if p, err := principalFromCtx(ctx); err != nil {
 			return nil, err
+		} else {
+			principal = p
 		}
 	}
 
@@ -98,31 +101,8 @@ func (dao *DAO) GetAsset(ctx context.Context, dbOpts *Options) (*models.Asset, e
 		return nil, nil
 	}
 
-	if includeProgress {
-		dbOpts := NewOptions().WithWhere(squirrel.And{
-			squirrel.Eq{models.ASSET_PROGRESS_ASSET_ID: asset.ID},
-			squirrel.Eq{models.ASSET_PROGRESS_USER_ID: principal.UserID},
-		})
-
-		assetProgress, err := dao.GetAssetProgress(ctx, dbOpts)
-		if err != nil {
-			return nil, err
-		}
-
-		if assetProgress != nil {
-			asset.Progress = assetProgress
-		} else {
-			asset.Progress = &models.AssetProgress{AssetID: asset.ID, UserID: principal.UserID}
-		}
-	}
-
-	if includeMetadata {
-		assetMetadata, err := dao.GetAssetMetadata(ctx, asset.ID)
-		if err != nil {
-			return nil, err
-		}
-
-		asset.AssetMetadata = assetMetadata
+	if err := attachAssetRelations(ctx, dao, principal, []*models.Asset{asset}, includeProgress, includeMetadata); err != nil {
+		return nil, err
 	}
 
 	return asset, nil
@@ -133,8 +113,15 @@ func (dao *DAO) GetAsset(ctx context.Context, dbOpts *Options) (*models.Asset, e
 // ListAssets gets all records from the assets table based upon the where clause and pagination
 // in the options
 //
-// Asset progress is not included by default. It can be enabled by calling `WithUserProgress()` on the options
-// Asset metadata is not included by default. It can be enabled by calling `WithAssetMetadata()` on the options
+// Asset progress is not included by default. It can be enabled by calling `WithUserProgress()`
+// on the options. This will add an additional db query
+//
+// Asset metadata is not included by default. It can be enabled by calling `WithAssetMetadata()`
+// on the options. This will add an additional db query
+//
+// Note: This could be updated to use a JOIN instead of doing additional queries. However, I
+// don't like nullable fields in the model struct or having to support a second struct with
+// nullable fields. So for now, this function can make up to 2 additional db queries
 func (dao *DAO) ListAssets(ctx context.Context, dbOpts *Options) ([]*models.Asset, error) {
 	builderOpts := newBuilderOptions(models.ASSET_TABLE).
 		WithColumns(models.AssetColumns()...).
@@ -143,19 +130,18 @@ func (dao *DAO) ListAssets(ctx context.Context, dbOpts *Options) ([]*models.Asse
 	includeProgress := dbOpts != nil && dbOpts.IncludeUserProgress
 	includeMetadata := dbOpts != nil && dbOpts.IncludeAssetMetadata
 
-	// Validate principal early when progress is requested
-	var principal types.Principal
-	if includeProgress {
-		var err error
-		principal, err = principalFromCtx(ctx)
-		if err != nil {
-			return nil, err
-		}
-	}
-
 	// When no relations are included, use a simpler query
 	if !includeProgress && !includeMetadata {
 		return listGeneric[models.Asset](ctx, dao, *builderOpts)
+	}
+
+	var principal types.Principal
+	if includeProgress {
+		if p, err := principalFromCtx(ctx); err != nil {
+			return nil, err
+		} else {
+			principal = p
+		}
 	}
 
 	records, err := listGeneric[models.Asset](ctx, dao, *builderOpts)
@@ -167,53 +153,8 @@ func (dao *DAO) ListAssets(ctx context.Context, dbOpts *Options) ([]*models.Asse
 		return nil, nil
 	}
 
-	if includeProgress {
-		assetIDs := make([]string, len(records))
-		for i, a := range records {
-			assetIDs[i] = a.ID
-		}
-
-		dbOpts := NewOptions().WithWhere(squirrel.And{
-			squirrel.Eq{models.ASSET_PROGRESS_ASSET_ID: assetIDs},
-			squirrel.Eq{models.ASSET_PROGRESS_USER_ID: principal.UserID},
-		})
-
-		progressRows, err := dao.ListAssetProgress(ctx, dbOpts)
-		if err != nil {
-			return nil, err
-		}
-
-		progressMap := make(map[string]*models.AssetProgress, len(assetIDs))
-		for _, id := range assetIDs {
-			progressMap[id] = &models.AssetProgress{AssetID: id, UserID: principal.UserID}
-		}
-
-		for _, p := range progressRows {
-			if p != nil {
-				progressMap[p.AssetID] = p
-			}
-		}
-
-		for _, a := range records {
-			a.Progress = progressMap[a.ID]
-		}
-	}
-
-	if includeMetadata {
-		assetIDs := make([]string, len(records))
-
-		for i, a := range records {
-			assetIDs[i] = a.ID
-		}
-
-		metaMap, err := dao.GetAssetMetadataByAssetIDs(ctx, assetIDs)
-		if err != nil {
-			return nil, err
-		}
-
-		for _, a := range records {
-			a.AssetMetadata = metaMap[a.ID]
-		}
+	if err := attachAssetRelations(ctx, dao, principal, records, includeProgress, includeMetadata); err != nil {
+		return nil, err
 	}
 
 	return records, nil
@@ -301,6 +242,60 @@ func assetValidation(asset *models.Asset) error {
 
 	if asset.Path == "" {
 		return utils.ErrPath
+	}
+
+	return nil
+}
+
+// ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
+
+// attachAssetRelations attaches asset progress and metadata to the given assets
+func attachAssetRelations(ctx context.Context, dao *DAO, principal types.Principal, assetRecords []*models.Asset, includeProgress, includeMetadata bool) error {
+	if len(assetRecords) == 0 {
+		return nil
+	}
+
+	// Map asset IDs to a slice
+	assetIDs := utils.Map(assetRecords, func(asset *models.Asset) string {
+		return asset.ID
+	})
+
+	if includeProgress {
+		dbOpts := NewOptions().WithWhere(squirrel.And{
+			squirrel.Eq{models.ASSET_PROGRESS_ASSET_ID: assetIDs},
+			squirrel.Eq{models.ASSET_PROGRESS_USER_ID: principal.UserID},
+		})
+
+		progressRecords, err := dao.ListAssetProgress(ctx, dbOpts)
+		if err != nil {
+			return err
+		}
+
+		progressMap := make(map[string]*models.AssetProgress, len(progressRecords))
+		for _, pr := range progressRecords {
+			if pr != nil {
+				progressMap[pr.AssetID] = pr
+			}
+		}
+
+		for _, asset := range assetRecords {
+			if progress, ok := progressMap[asset.ID]; ok {
+				asset.Progress = progress
+			} else {
+				asset.Progress = nil
+			}
+		}
+	}
+
+	if includeMetadata {
+		metadataRecords, err := dao.ListAssetMetadataByAssetIDs(ctx, assetIDs)
+		if err != nil {
+			return err
+		}
+
+		for _, asset := range assetRecords {
+			asset.AssetMetadata = metadataRecords[asset.ID]
+		}
 	}
 
 	return nil

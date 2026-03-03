@@ -15,16 +15,8 @@ import (
 
 // CreateCourse inserts a new course record
 func (dao *DAO) CreateCourse(ctx context.Context, course *models.Course) error {
-	if course == nil {
-		return utils.ErrNilPtr
-	}
-
-	if course.Title == "" {
-		return utils.ErrTitle
-	}
-
-	if course.Path == "" {
-		return utils.ErrPath
+	if err := courseValidation(course); err != nil {
+		return err
 	}
 
 	if course.ID == "" {
@@ -65,7 +57,12 @@ func (dao *DAO) CreateCourse(ctx context.Context, course *models.Course) error {
 // GetCourse gets a record from the courses table based upon the where clause in the options. If
 // there is no where clause, it will return the first record in the table
 //
-// Course progress is not included by default. It can be enabled by calling `WithUserProgress()` on the options
+// Course progress is not included by default. It can be enabled by calling `WithUserProgress()`
+// on the options. This will add 2 additional db queries
+//
+// Note: This could be updated to use a JOIN instead of doing additional queries. However, I
+// don't like nullable fields in the model struct or having to support a second struct with
+// nullable fields. So for now, this function can make up to 2 additional db queries
 func (dao *DAO) GetCourse(ctx context.Context, dbOpts *Options) (*models.Course, error) {
 	builderOpts := newBuilderOptions(models.COURSE_TABLE).
 		WithColumns(models.CourseColumns()...).
@@ -74,12 +71,10 @@ func (dao *DAO) GetCourse(ctx context.Context, dbOpts *Options) (*models.Course,
 
 	includeProgress := dbOpts != nil && dbOpts.IncludeUserProgress
 
-	// When progress is not included, use a simpler query
 	if !includeProgress {
 		return getGeneric[models.Course](ctx, dao, *builderOpts)
 	}
 
-	// Validate principal early
 	principal, err := principalFromCtx(ctx)
 	if err != nil {
 		return nil, err
@@ -94,8 +89,7 @@ func (dao *DAO) GetCourse(ctx context.Context, dbOpts *Options) (*models.Course,
 		return nil, nil
 	}
 
-	// Load progress and favourite separately
-	if err := attachCourseProgressAndFavourite(ctx, dao, principal.UserID, []*models.Course{course}); err != nil {
+	if err := attachCourseRelations(ctx, dao, principal.UserID, []*models.Course{course}); err != nil {
 		return nil, err
 	}
 
@@ -107,7 +101,12 @@ func (dao *DAO) GetCourse(ctx context.Context, dbOpts *Options) (*models.Course,
 // ListCourses gets all records from the courses table based upon the where clause and pagination
 // in the options
 //
-// Course progress and favourite status are not included by default. They can be enabled by calling `WithUserProgress()` on the options
+// Course progress is not included by default. It can be enabled by calling `WithUserProgress()`
+// on the options. This will add 2 additional db queries
+//
+// Note: This could be updated to use a JOIN instead of doing additional queries. However, I
+// don't like nullable fields in the model struct or having to support a second struct with
+// nullable fields. So for now, this function can make up to 2 additional db queries
 func (dao *DAO) ListCourses(ctx context.Context, dbOpts *Options) ([]*models.Course, error) {
 	builderOpts := newBuilderOptions(models.COURSE_TABLE).
 		WithColumns(models.CourseColumns()...).
@@ -115,7 +114,6 @@ func (dao *DAO) ListCourses(ctx context.Context, dbOpts *Options) ([]*models.Cou
 
 	includeProgress := dbOpts != nil && dbOpts.IncludeUserProgress
 
-	// When progress is not included, use a simpler query
 	if !includeProgress {
 		return listGeneric[models.Course](ctx, dao, *builderOpts)
 	}
@@ -135,86 +133,23 @@ func (dao *DAO) ListCourses(ctx context.Context, dbOpts *Options) ([]*models.Cou
 		return nil, nil
 	}
 
-	// Load progress and favourite separately
-	if err := attachCourseProgressAndFavourite(ctx, dao, principal.UserID, courses); err != nil {
+	if err := attachCourseRelations(ctx, dao, principal.UserID, courses); err != nil {
 		return nil, err
 	}
 
 	return courses, nil
 }
 
-// attachCourseProgressAndFavourite fetches progress and favourites for the given courses and attaches
-// them. This centralizes the logic so adding new relations (e.g. favourites) only requires updating
-// this helper.
-func attachCourseProgressAndFavourite(ctx context.Context, dao *DAO, userID string, courses []*models.Course) error {
-	if len(courses) == 0 {
-		return nil
-	}
-
-	courseIDs := make([]string, len(courses))
-	for i, c := range courses {
-		courseIDs[i] = c.ID
-	}
-
-	// Batch fetch progress
-	progressOpts := NewOptions().WithWhere(squirrel.And{
-		squirrel.Eq{models.COURSE_PROGRESS_USER_ID: userID},
-		squirrel.Eq{models.COURSE_PROGRESS_COURSE_ID: courseIDs},
-	})
-	progressList, err := dao.ListCourseProgress(ctx, progressOpts)
-	if err != nil {
-		return err
-	}
-	progressMap := make(map[string]*models.CourseProgress)
-	for _, p := range progressList {
-		progressMap[p.CourseID] = p
-	}
-
-	// Batch fetch favourites
-	favouriteOpts := NewOptions().WithWhere(squirrel.And{
-		squirrel.Eq{models.COURSE_FAVOURITE_USER_ID: userID},
-		squirrel.Eq{models.COURSE_FAVOURITE_COURSE_ID: courseIDs},
-	})
-	favouritesList, err := dao.ListCourseFavourites(ctx, favouriteOpts)
-	if err != nil {
-		return err
-	}
-	favouritedSet := make(map[string]bool)
-	for _, f := range favouritesList {
-		favouritedSet[f.CourseID] = true
-	}
-
-	// Attach to each course
-	for _, c := range courses {
-		if p, ok := progressMap[c.ID]; ok {
-			c.Progress = p
-		} else {
-			c.Progress = &models.CourseProgress{CourseID: c.ID, UserID: userID}
-		}
-		c.Favourited = favouritedSet[c.ID]
-	}
-
-	return nil
-}
-
 // ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
 
 // UpdateCourse updates a course record
 func (dao *DAO) UpdateCourse(ctx context.Context, course *models.Course) error {
-	if course == nil {
-		return utils.ErrNilPtr
+	if err := courseValidation(course); err != nil {
+		return err
 	}
 
 	if course.ID == "" {
 		return utils.ErrId
-	}
-
-	if course.Title == "" {
-		return utils.ErrTitle
-	}
-
-	if course.Path == "" {
-		return utils.ErrPath
 	}
 
 	course.RefreshUpdatedAt()
@@ -262,14 +197,13 @@ func (dao *DAO) DeleteCourses(ctx context.Context, dbOpts *Options) error {
 
 // ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
 
-// ClassifyCoursePaths classifies the given paths into one of the following categories:
+// ClassifyCoursePaths classifies the given paths into one of the following categories
 //   - PathClassificationNone: The path does not exist in the courses table
-//   - PathClassificationAncestor: The path is an ancestor of a course path
+//   - PathClassificationAncestor: The path is an ancestor of a course path (parent, grandparent, etc.)
 //   - PathClassificationCourse: The path is an exact match to a course path
-//   - PathClassificationDescendant: The path is a descendant of a course path
+//   - PathClassificationDescendant: The path is a descendant of a course path (child, grandchild, etc.)
 //
-// The paths are returned as a map with the original path as the key and the classification as the
-// value
+// The paths are returned as a path/classification map
 func (dao *DAO) ClassifyCoursePaths(ctx context.Context, paths []string) (map[string]types.PathClassification, error) {
 	paths = slices.DeleteFunc(paths, func(s string) bool {
 		return s == ""
@@ -289,33 +223,16 @@ func (dao *DAO) ClassifyCoursePaths(ctx context.Context, paths []string) (map[st
 		whereClause[i] = squirrel.Like{models.COURSE_TABLE_PATH: path + "%"}
 	}
 
-	query, args, _ := squirrel.
-		StatementBuilder.
-		Select(models.COURSE_TABLE_PATH).
-		From(models.COURSE_TABLE).
-		Where(squirrel.Or(whereClause)).
-		ToSql()
+	dbOpts := NewOptions().WithWhere(squirrel.Or(whereClause))
+	builderOpts := newBuilderOptions(models.COURSE_TABLE).
+		WithColumns(models.COURSE_TABLE_PATH).
+		SetDbOpts(dbOpts)
 
-	rows, err := dao.db.QueryContext(ctx, query, args...)
+	coursePaths, err := pluck[string](ctx, dao, *builderOpts)
 	if err != nil {
 		return nil, err
 	}
-	defer rows.Close()
 
-	var coursePath string
-	coursePaths := []string{}
-	for rows.Next() {
-		if err := rows.Scan(&coursePath); err != nil {
-			return nil, err
-		}
-		coursePaths = append(coursePaths, coursePath)
-	}
-
-	if err := rows.Err(); err != nil {
-		return nil, err
-	}
-
-	// Process
 	for _, path := range paths {
 		for _, coursePath := range coursePaths {
 			if coursePath == path {
@@ -332,4 +249,81 @@ func (dao *DAO) ClassifyCoursePaths(ctx context.Context, paths []string) (map[st
 	}
 
 	return results, nil
+}
+
+// ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
+
+// assetValidation validates the asset fields
+func courseValidation(course *models.Course) error {
+	if course == nil {
+		return utils.ErrNilPtr
+	}
+
+	if course.Title == "" {
+		return utils.ErrTitle
+	}
+
+	if course.Path == "" {
+		return utils.ErrPath
+	}
+
+	return nil
+}
+
+// ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
+
+// attachCourseRelations attaches course progress and favourited courses to the given courses
+func attachCourseRelations(ctx context.Context, dao *DAO, userID string, courses []*models.Course) error {
+	if len(courses) == 0 {
+		return nil
+	}
+
+	// Map courses IDs to a slice
+	courseIDs := utils.Map(courses, func(course *models.Course) string {
+		return course.ID
+	})
+
+	// Get associated course progress records
+	dbOpts := NewOptions().WithWhere(squirrel.And{
+		squirrel.Eq{models.COURSE_PROGRESS_USER_ID: userID},
+		squirrel.Eq{models.COURSE_PROGRESS_COURSE_ID: courseIDs},
+	})
+
+	progressRecords, err := dao.ListCourseProgress(ctx, dbOpts)
+	if err != nil {
+		return err
+	}
+
+	progressMap := make(map[string]*models.CourseProgress)
+	for _, p := range progressRecords {
+		progressMap[p.CourseID] = p
+	}
+
+	// Get associated course favourite records
+	dbOpts = NewOptions().WithWhere(squirrel.And{
+		squirrel.Eq{models.COURSE_FAVOURITE_USER_ID: userID},
+		squirrel.Eq{models.COURSE_FAVOURITE_COURSE_ID: courseIDs},
+	})
+
+	favouritesRecords, err := dao.ListCourseFavourites(ctx, dbOpts)
+	if err != nil {
+		return err
+	}
+
+	favouritedMap := make(map[string]bool)
+	for _, f := range favouritesRecords {
+		favouritedMap[f.CourseID] = true
+	}
+
+	for _, c := range courses {
+		if p, ok := progressMap[c.ID]; ok {
+			c.Progress = p
+		} else {
+			c.Progress = nil
+		}
+
+		c.Favourited = favouritedMap[c.ID]
+	}
+
+	return nil
 }

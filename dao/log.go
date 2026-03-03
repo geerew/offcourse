@@ -75,7 +75,6 @@ func (dao *DAO) CreateLogsBatch(ctx context.Context, logs []*models.Log) error {
 		return nil
 	}
 
-	// Validate and prepare logs
 	for _, log := range logs {
 		if log == nil {
 			return utils.ErrNilPtr

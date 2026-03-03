@@ -28,7 +28,7 @@ func New(db database.Database) *DAO {
 // ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
 
 // RunInTransaction is a wrapper for database.RunInTransaction
-func RunInTransaction(ctx context.Context, dao *DAO, fn func(ctx context.Context) error) error {
+func (dao *DAO) RunInTransaction(ctx context.Context, fn func(ctx context.Context) error) error {
 	return dao.db.RunInTransaction(ctx, fn)
 }
 

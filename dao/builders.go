@@ -2,10 +2,16 @@ package dao
 
 import (
 	"fmt"
+	"strings"
 
 	"github.com/Masterminds/squirrel"
+	"github.com/geerew/off-course/models"
+	"github.com/geerew/off-course/utils"
 )
 
+// ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
+
+// countBuilder builds a query for counting distinct records in a table
 func countBuilder(builderOpts builderOptions) (string, []interface{}, error) {
 	if builderOpts.Table == "" {
 		return "", nil, fmt.Errorf("builderOpts.Table cannot be empty")
@@ -19,7 +25,6 @@ func countBuilder(builderOpts builderOptions) (string, []interface{}, error) {
 		Select().
 		From(builderOpts.Table)
 
-	// Builder joins
 	commonBuilder = applyJoins(commonBuilder, builderOpts.Joins)
 
 	if builderOpts.DbOpts != nil {
@@ -28,7 +33,7 @@ func countBuilder(builderOpts builderOptions) (string, []interface{}, error) {
 		}
 	}
 
-	// Fast path when no GROUP BY/HAVING
+	// Fast path when no GROUP BY or HAVING
 	if len(builderOpts.GroupBy) == 0 || builderOpts.Having == nil {
 		return commonBuilder.
 			Columns("COUNT(DISTINCT " + builderOpts.Table + ".id)").
@@ -50,48 +55,6 @@ func countBuilder(builderOpts builderOptions) (string, []interface{}, error) {
 		FromSelect(inner, "sub").
 		ToSql()
 }
-
-// ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
-
-// // countBuilder builds a query for counting distinct records in a table
-// func countBuilder(builderOpts builderOptions) (string, []interface{}, error) {
-// 	if builderOpts.Table == "" {
-// 		return "", nil, fmt.Errorf("builderOpts.Table cannot be empty")
-// 	}
-
-// 	builder := squirrel.
-// 		StatementBuilder.
-// 		Select("COUNT(DISTINCT " + builderOpts.Table + ".id)").
-// 		From(builderOpts.Table)
-
-// 	builder = applyJoins(builder, builderOpts.Joins)
-
-// 	builder = builder.GroupBy(builderOpts.GroupBy...)
-
-// 	if builderOpts.Having != nil {
-// 		builder = builder.Having(builderOpts.Having)
-// 	}
-
-// 	// When there is a GroupBy and Having clause, we need to wrap the query in a subquery
-// 	if len(builderOpts.GroupBy) > 0 && builderOpts.Having != nil {
-// 		builder = squirrel.StatementBuilder.
-// 			PlaceholderFormat(squirrel.Question).
-// 			Select("COUNT(*)").
-// 			FromSelect(builder, "sub")
-// 	}
-
-// 	if builderOpts.DbOpts != nil {
-// 		builder = builder.Where(builderOpts.DbOpts.Where)
-
-// 		builder = applyJoins(builder, builderOpts.DbOpts.Joins)
-
-// 		if builderOpts.DbOpts.OrderByClause != nil {
-// 			builder = builder.OrderByClause(builderOpts.DbOpts.OrderByClause)
-// 		}
-// 	}
-
-// 	return builder.ToSql()
-// }
 
 // ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
 
@@ -167,9 +130,16 @@ func insertBuilder(builderOpts builderOptions) (string, []interface{}, error) {
 
 // ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
 
+// updateBuilder builds a query for updating records in the database
+//
+// When BulkUpdate is set, it will fall through to the bulk update builder
 func updateBuilder(builderOpts builderOptions) (string, []interface{}, error) {
 	if builderOpts.Table == "" {
 		return "", nil, fmt.Errorf("builderOpts.Table cannot be empty")
+	}
+
+	if builderOpts.BulkUpdate != nil && len(builderOpts.BulkUpdate.Rows) > 0 {
+		return updateBuilderBulk(builderOpts)
 	}
 
 	if len(builderOpts.Data) == 0 {
@@ -185,6 +155,53 @@ func updateBuilder(builderOpts builderOptions) (string, []interface{}, error) {
 		Update(builderOpts.Table).
 		SetMap(builderOpts.Data).
 		Where(builderOpts.DbOpts.Where)
+
+	return builder.ToSql()
+}
+
+// ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
+
+// updateBuilderBulk builds a query for updating multiple records in the database
+func updateBuilderBulk(builderOpts builderOptions) (string, []interface{}, error) {
+	bulkUpdate := builderOpts.BulkUpdate
+
+	if bulkUpdate == nil {
+		return "", nil, fmt.Errorf("builderOpts.BulkUpdate cannot be nil")
+	}
+
+	if len(bulkUpdate.Columns) == 0 {
+		return "", nil, fmt.Errorf("builderOpts.BulkUpdate.Columns cannot be empty")
+	}
+
+	if len(bulkUpdate.Rows) == 0 {
+		return "", nil, fmt.Errorf("builderOpts.BulkUpdate.Rows cannot be empty")
+	}
+
+	ids := utils.Map(bulkUpdate.Rows, func(row bulkUpdateRow) string { return row.ID })
+
+	caseSQL := fmt.Sprintf("CASE %s %s END",
+		models.BASE_ID,
+		strings.TrimSpace(strings.Repeat("WHEN ? THEN ? ", len(bulkUpdate.Rows))),
+	)
+
+	setMap := make(map[string]interface{})
+	for colIdx, col := range bulkUpdate.Columns {
+		var caseArgs []interface{}
+		for _, row := range bulkUpdate.Rows {
+			if colIdx < len(row.Values) {
+				caseArgs = append(caseArgs, row.ID, row.Values[colIdx])
+			}
+		}
+
+		setMap[col] = squirrel.Expr(caseSQL, caseArgs...)
+	}
+
+	builder := squirrel.
+		StatementBuilder.
+		PlaceholderFormat(squirrel.Question).
+		Update(builderOpts.Table).
+		SetMap(setMap).
+		Where(squirrel.Eq{models.BASE_ID: ids})
 
 	return builder.ToSql()
 }
@@ -210,15 +227,16 @@ func deleteBuilder(builderOpts builderOptions) (string, []interface{}, error) {
 
 // ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
 
+// applyJoins applies joins to a SELECT builder
 func applyJoins(builder squirrel.SelectBuilder, joins []join) squirrel.SelectBuilder {
 	for _, j := range joins {
 		clause := fmt.Sprintf("%s ON %s", j.Table, j.Condition)
 		switch j.Type {
-		case "LEFT JOIN":
+		case joinTypeLeft:
 			builder = builder.LeftJoin(clause)
-		case "RIGHT JOIN":
+		case joinTypeRight:
 			builder = builder.RightJoin(clause)
-		case "JOIN", "INNER JOIN", "":
+		case joinTypeInner:
 			builder = builder.Join(clause)
 		}
 	}

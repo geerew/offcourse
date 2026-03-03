@@ -1127,9 +1127,9 @@ func applyAssetOps(
 				if keyframes, exists := extractedKeyframes[v.New.Path]; exists {
 					if len(keyframes) > 0 {
 						assetKeyframes := &models.AssetKeyframes{
-							AssetID:        v.New.ID,
-							KeyframesSlice: keyframes,
-							IsComplete:     true,
+							AssetID:    v.New.ID,
+							Keyframes:  types.Keyframes(keyframes),
+							IsComplete: true,
 						}
 
 						if err := s.dao.CreateAssetKeyframes(ctx, assetKeyframes); err != nil {
@@ -1243,9 +1243,9 @@ func applyAssetOps(
 				if keyframes, exists := extractedKeyframes[v.Renamed.Path]; exists {
 					if len(keyframes) > 0 {
 						assetKeyframes := &models.AssetKeyframes{
-							AssetID:        v.Renamed.ID,
-							KeyframesSlice: keyframes,
-							IsComplete:     true,
+							AssetID:    v.Renamed.ID,
+							Keyframes:  types.Keyframes(keyframes),
+							IsComplete: true,
 						}
 
 						if err := s.dao.CreateAssetKeyframes(ctx, assetKeyframes); err != nil {

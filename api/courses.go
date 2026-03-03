@@ -249,19 +249,28 @@ func (api coursesAPI) deleteCourseProgress(c *fiber.Ctx) error {
 		return errorResponse(c, fiber.StatusUnauthorized, "Missing principal", nil)
 	}
 
-	err = dao.RunInTransaction(ctx, api.r.appDao, func(txCtx context.Context) error {
+	err = api.r.appDao.RunInTransaction(ctx, func(txCtx context.Context) error {
 		// Delete the course progress for this user
 		dbOpts := dao.NewOptions().WithWhere(squirrel.And{
 			squirrel.Eq{models.COURSE_PROGRESS_COURSE_ID: courseId},
 			squirrel.Eq{models.COURSE_PROGRESS_USER_ID: principal.UserID},
-		},
-		)
+		})
 
 		if err := api.r.appDao.DeleteCourseProgress(txCtx, dbOpts); err != nil {
 			return err
 		}
 
-		if err := api.r.appDao.DeleteAssetProgressForCourse(txCtx, courseId, principal.UserID); err != nil {
+		dbOpts = dao.NewOptions().WithWhere(squirrel.And{
+			squirrel.Eq{models.ASSET_PROGRESS_TABLE_USER_ID: principal.UserID},
+			squirrel.Expr(
+				"EXISTS (SELECT 1 FROM "+models.ASSET_TABLE+
+					" WHERE "+models.ASSET_TABLE_ID+" = "+models.ASSET_PROGRESS_TABLE_ASSET_ID+
+					" AND "+models.ASSET_TABLE_COURSE_ID+" = ?)",
+				courseId,
+			),
+		})
+
+		if err := api.r.appDao.DeleteAssetProgress(txCtx, dbOpts); err != nil {
 			return err
 		}
 

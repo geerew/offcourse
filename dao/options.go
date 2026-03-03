@@ -1,6 +1,5 @@
 package dao
 
-// TODO Tidy to to make this more consistent. Use the builder pattern for all options
 import (
 	"github.com/Masterminds/squirrel"
 	"github.com/geerew/off-course/utils/pagination"
@@ -8,16 +7,18 @@ import (
 
 // ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
 
-// Options defines optional params for a database query
+// Options defines a limited set of database query options
+//
+// This will passed to the internal DAO builder options struct for use in the query
+// building process
 type Options struct {
-	// ORDER BY
+	// OrderBy cab be used to order the results
 	//
 	// Example: []string{"id DESC", "title ASC"}
 	OrderBy []string
 
-	// ORDER BY (clause)
-	//
-	// Example: []string{"id DESC", "title ASC"}
+	// OrderByClause can be used to set a custom ORDER BY clause, for example
+	// when using a case expression
 	OrderByClause squirrel.Sqlizer
 
 	// Any valid squirrel WHERE expression
@@ -32,15 +33,20 @@ type Options struct {
 	//   NOT:  squirrel.NotEq{"id": "123"}
 	Where squirrel.Sqlizer
 
-	// IncludeUserProgress indicates whether to include course/asset progress
-	// when performing a query
+	// IncludeUserProgress indicates whether to include user progress when querying courses or
+	// assets
+	//
+	// Valid when querying courses or assets
 	IncludeUserProgress bool
 
-	// IncludeAssetMetadata indicates whether to include asset metadata
-	// when performing a query
+	// IncludeAssetMetadata indicates whether to include asset metadata when querying assets
+	//
+	// Valid when querying assets
 	IncludeAssetMetadata bool
 
-	// Used to paginate the results
+	// Pagination is used to paginate the results
+	//
+	// Example: &pagination.Pagination{Page: 1, Limit: 10}
 	Pagination *pagination.Pagination
 }
 
@@ -51,16 +57,22 @@ func NewOptions() *Options {
 	return &Options{}
 }
 
+// ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
+
 // WithOrderBy appends ORDER BY fields
 func (o *Options) WithOrderBy(fields ...string) *Options {
 	o.OrderBy = append(o.OrderBy, fields...)
 	return o
 }
 
+// ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
+
 func (o *Options) OverrideOrderBy(fields ...string) *Options {
 	o.OrderBy = fields
 	return o
 }
+
+// ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
 
 // WithOrderByClause sets a custom ORDER BY clause
 //
@@ -70,11 +82,15 @@ func (o *Options) WithOrderByClause(clause squirrel.Sqlizer) *Options {
 	return o
 }
 
+// ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
+
 // WithWhere sets the WHERE clause using a squirrel.Sqlizer
 func (o *Options) WithWhere(pred squirrel.Sqlizer) *Options {
 	o.Where = pred
 	return o
 }
+
+// ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
 
 // WithPagination sets the pagination options
 func (o *Options) WithPagination(p *pagination.Pagination) *Options {
@@ -85,6 +101,11 @@ func (o *Options) WithPagination(p *pagination.Pagination) *Options {
 // ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
 
 // WithUserProgress enables progress inclusion in queries
+//
+// Can be used when querying assets and courses
+//
+//   - For assets, it adds an additional db query (asset progress)
+//   - For courses, it adds 2 additional db queries (course progress and course favourite)
 func (o *Options) WithUserProgress() *Options {
 	o.IncludeUserProgress = true
 	return o
@@ -93,6 +114,9 @@ func (o *Options) WithUserProgress() *Options {
 // ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
 
 // WithAssetMetadata enables asset metadata inclusion in queries
+//
+// Can be used when querying assets and will add an additional db query to the asset metadata
+// table
 func (o *Options) WithAssetMetadata() *Options {
 	o.IncludeAssetMetadata = true
 	return o

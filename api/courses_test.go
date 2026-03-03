@@ -837,19 +837,19 @@ func TestCourses_GetLessons(t *testing.T) {
 		require.Len(t, lessonsResp[1].Attachments, 1)
 		require.Equal(t, lessonsResp[1].Attachments[0].ID, attachments[3].ID)
 
-		// Asset 1
+		// Asset 1 - no progress records created, so Progress is nil
 		require.Len(t, lessonsResp[0].Assets, 2)
 		require.Equal(t, assets[4].ID, lessonsResp[0].Assets[0].ID)
-		require.NotNil(t, lessonsResp[0].Assets[0].Progress)
+		require.Nil(t, lessonsResp[0].Assets[0].Progress)
 		require.Equal(t, assets[5].ID, lessonsResp[0].Assets[1].ID)
-		require.NotNil(t, lessonsResp[0].Assets[1].Progress)
+		require.Nil(t, lessonsResp[0].Assets[1].Progress)
 
 		// Asset 2
 		require.Len(t, lessonsResp[1].Assets, 2)
 		require.Equal(t, assets[6].ID, lessonsResp[1].Assets[0].ID)
-		require.NotNil(t, lessonsResp[1].Assets[0].Progress)
+		require.Nil(t, lessonsResp[1].Assets[0].Progress)
 		require.Equal(t, assets[7].ID, lessonsResp[1].Assets[1].ID)
-		require.NotNil(t, lessonsResp[1].Assets[1].Progress)
+		require.Nil(t, lessonsResp[1].Assets[1].Progress)
 	})
 
 	t.Run("200 (orderBy)", func(t *testing.T) {
@@ -1369,12 +1369,12 @@ func TestCourses_GetModules(t *testing.T) {
 		require.NoError(t, err)
 		require.Len(t, response.Modules, 2)
 
-		// Module 1
+		// Module 1 - no progress records created, so Progress is nil
 		require.Equal(t, lessons[2].Module, response.Modules[0].Module)
 		require.Len(t, response.Modules[0].Lessons, 1)
 		require.Len(t, response.Modules[0].Lessons[0].Assets, 1)
 		require.Equal(t, assets[2].Title, response.Modules[0].Lessons[0].Assets[0].Title)
-		require.NotNil(t, response.Modules[0].Lessons[0].Assets[0].Progress)
+		require.Nil(t, response.Modules[0].Lessons[0].Assets[0].Progress)
 		require.Len(t, response.Modules[0].Lessons[0].Attachments, 1)
 		require.Equal(t, attachments[2].Title, response.Modules[0].Lessons[0].Attachments[0].Title)
 
@@ -1383,7 +1383,7 @@ func TestCourses_GetModules(t *testing.T) {
 		require.Len(t, response.Modules[1].Lessons, 1)
 		require.Len(t, response.Modules[1].Lessons[0].Assets, 1)
 		require.Equal(t, assets[3].Title, response.Modules[1].Lessons[0].Assets[0].Title)
-		require.NotNil(t, response.Modules[1].Lessons[0].Assets[0].Progress)
+		require.Nil(t, response.Modules[1].Lessons[0].Assets[0].Progress)
 		require.Len(t, response.Modules[1].Lessons[0].Attachments, 1)
 		require.Equal(t, attachments[3].Title, response.Modules[1].Lessons[0].Attachments[0].Title)
 	})

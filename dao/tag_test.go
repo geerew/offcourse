@@ -15,6 +15,7 @@ import (
 // ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
 
 func Test_CreateTag(t *testing.T) {
+	// Test successfully creating a tag record
 	t.Run("success", func(t *testing.T) {
 		dao, ctx := setup(t)
 
@@ -22,6 +23,7 @@ func Test_CreateTag(t *testing.T) {
 		require.NoError(t, dao.CreateTag(ctx, tag))
 	})
 
+	// Test error due to duplicate record
 	t.Run("duplicate", func(t *testing.T) {
 		dao, ctx := setup(t)
 
@@ -37,12 +39,14 @@ func Test_CreateTag(t *testing.T) {
 		require.ErrorContains(t, dao.CreateTag(ctx, duplicateTag), "UNIQUE constraint failed: "+models.TAG_TABLE_TAG)
 	})
 
+	// Test error due to nil pointer
 	t.Run("nil pointer", func(t *testing.T) {
 		dao, ctx := setup(t)
 
 		require.ErrorIs(t, dao.CreateTag(ctx, nil), utils.ErrNilPtr)
 	})
 
+	// Test error due to invalid tag
 	t.Run("invalid tag", func(t *testing.T) {
 		dao, ctx := setup(t)
 
@@ -55,6 +59,7 @@ func Test_CreateTag(t *testing.T) {
 
 // TODO Add test to check course count aggregation
 func Test_GetTag(t *testing.T) {
+	// Test successfully retrieving a tag record
 	t.Run("success", func(t *testing.T) {
 		dao, ctx := setup(t)
 
@@ -69,6 +74,7 @@ func Test_GetTag(t *testing.T) {
 		require.Zero(t, record.CourseCount)
 	})
 
+	// Test no error when retrieving a non-existent tag record
 	t.Run("not found", func(t *testing.T) {
 		dao, ctx := setup(t)
 
@@ -81,6 +87,7 @@ func Test_GetTag(t *testing.T) {
 // ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
 
 func Test_ListTags(t *testing.T) {
+	// Test successfully retrieving all tag records
 	t.Run("success", func(t *testing.T) {
 		dao, ctx := setup(t)
 
@@ -102,6 +109,7 @@ func Test_ListTags(t *testing.T) {
 		}
 	})
 
+	// Test successfully retrieving no tag records
 	t.Run("empty", func(t *testing.T) {
 		dao, ctx := setup(t)
 
@@ -110,6 +118,7 @@ func Test_ListTags(t *testing.T) {
 		require.Empty(t, records)
 	})
 
+	// Test successfully retrieving ordered tag records
 	t.Run("order by", func(t *testing.T) {
 		dao, ctx := setup(t)
 
@@ -144,6 +153,7 @@ func Test_ListTags(t *testing.T) {
 		}
 	})
 
+	// Test successfully retrieving selected tag records
 	t.Run("where", func(t *testing.T) {
 		dao, ctx := setup(t)
 
@@ -157,6 +167,7 @@ func Test_ListTags(t *testing.T) {
 		require.Equal(t, tag.ID, records[0].ID)
 	})
 
+	// Test successfully retrieving paginated tag records
 	t.Run("pagination", func(t *testing.T) {
 		dao, ctx := setup(t)
 
@@ -194,6 +205,7 @@ func Test_ListTags(t *testing.T) {
 // ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
 
 func Test_UpdateTag(t *testing.T) {
+	// Test successfully updating a tag record
 	t.Run("success", func(t *testing.T) {
 		dao, ctx := setup(t)
 
@@ -216,6 +228,7 @@ func Test_UpdateTag(t *testing.T) {
 		require.False(t, record.UpdatedAt.Equal(originalTag.UpdatedAt)) // Changed
 	})
 
+	// Test error due to invalid tag
 	t.Run("invalid", func(t *testing.T) {
 		dao, ctx := setup(t)
 
@@ -238,6 +251,7 @@ func Test_UpdateTag(t *testing.T) {
 // ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
 
 func Test_DeleteTags(t *testing.T) {
+	// Test successfully deleting a tag record
 	t.Run("success", func(t *testing.T) {
 		dao, ctx := setup(t)
 
@@ -252,6 +266,7 @@ func Test_DeleteTags(t *testing.T) {
 		require.Empty(t, records)
 	})
 
+	// Test no error when deleting a non-existent tag record
 	t.Run("not found", func(t *testing.T) {
 		dao, ctx := setup(t)
 
@@ -267,6 +282,7 @@ func Test_DeleteTags(t *testing.T) {
 		require.Equal(t, tag.ID, records[0].ID)
 	})
 
+	// Test error due to missing where clause
 	t.Run("missing where", func(t *testing.T) {
 		dao, ctx := setup(t)
 

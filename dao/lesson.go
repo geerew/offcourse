@@ -38,10 +38,22 @@ func (dao *DAO) CreateLesson(ctx context.Context, lesson *models.Lesson) error {
 }
 
 // ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
+
 // GetLesson gets a record from the lessons table based upon the where clause in the options. If
 // there is no where clause, it will return the first record in the table
+//
+// Performs a minimum of 3 db queries (lesson, attachments, assets) with the potential to make 2
+// additional db queries (asset progress and asset metadata)
+//
+// Asset progress is not included by default. It can be enabled by calling `WithUserProgress()`
+// on the options. This will add an additional db query
+//
+// Asset metadata is not included by default. It can be enabled by calling `WithAssetMetadata()`
+// on the options. This will add an additional db query
+//
+// Note: Something can definitely be done to reduce the number of db queries whether via
+// JOINS, parallelisation, or something else
 func (dao *DAO) GetLesson(ctx context.Context, dbOpts *Options) (*models.Lesson, error) {
-	// Fetch lesson
 	builderOpts := newBuilderOptions(models.LESSON_TABLE).
 		WithColumns(models.LessonColumns()...).
 		SetDbOpts(dbOpts).
@@ -56,32 +68,12 @@ func (dao *DAO) GetLesson(ctx context.Context, dbOpts *Options) (*models.Lesson,
 		return nil, nil
 	}
 
-	// Fetch attachments (ordered by title)
-	attachmentOpts := NewOptions().
-		WithWhere(squirrel.Eq{models.ATTACHMENT_LESSON_ID: lesson.ID}).
-		WithOrderBy(models.ATTACHMENT_TABLE_TITLE + " ASC")
+	includeProgress := dbOpts != nil && dbOpts.IncludeUserProgress
+	includeMetadata := dbOpts != nil && dbOpts.IncludeAssetMetadata
 
-	attachments, err := dao.ListAttachments(ctx, attachmentOpts)
-	if err != nil {
+	if err := attachLessonRelations(ctx, dao, []*models.Lesson{lesson}, includeProgress, includeMetadata); err != nil {
 		return nil, err
 	}
-	lesson.Attachments = attachments
-
-	// Fetch assets (ordered by prefix + sub_prefix)
-	assetDbOpts := NewOptions().
-		WithWhere(squirrel.Eq{models.ASSET_LESSON_ID: lesson.ID}).
-		WithOrderBy(models.ASSET_TABLE_PREFIX + " ASC, " + models.ASSET_TABLE_SUB_PREFIX + " ASC")
-
-	if dbOpts != nil {
-		assetDbOpts.IncludeUserProgress = dbOpts.IncludeUserProgress
-		assetDbOpts.IncludeAssetMetadata = dbOpts.IncludeAssetMetadata
-	}
-
-	assets, err := dao.ListAssets(ctx, assetDbOpts)
-	if err != nil {
-		return nil, err
-	}
-	lesson.Assets = assets
 
 	return lesson, nil
 }
@@ -90,6 +82,18 @@ func (dao *DAO) GetLesson(ctx context.Context, dbOpts *Options) (*models.Lesson,
 
 // ListLessons gets all records from the lessons table based upon the where clause and pagination
 // in the options
+//
+// Performs a minimum of 3 db queries (lesson, attachments, assets) with the potential to make 2
+// additional db queries (asset progress and asset metadata)
+//
+// Asset progress is not included by default. It can be enabled by calling `WithUserProgress()`
+// on the options. This will add an additional db query
+//
+// Asset metadata is not included by default. It can be enabled by calling `WithAssetMetadata()`
+// on the options. This will add an additional db query
+//
+// Note: Something can definitely be done to reduce the number of db queries whether via
+// JOINS, parallelisation, or something else
 func (dao *DAO) ListLessons(ctx context.Context, dbOpts *Options) ([]*models.Lesson, error) {
 	// Fetch lessons
 	builderOpts := newBuilderOptions(models.LESSON_TABLE).
@@ -107,58 +111,11 @@ func (dao *DAO) ListLessons(ctx context.Context, dbOpts *Options) ([]*models.Les
 		return lessons, err
 	}
 
-	// Gather IDs
-	ids := make([]string, 0, len(lessons))
-	for i := range lessons {
-		ids = append(ids, lessons[i].ID)
-	}
+	includeProgress := dbOpts != nil && dbOpts.IncludeUserProgress
+	includeMetadata := dbOpts != nil && dbOpts.IncludeAssetMetadata
 
-	// Fetch attachments for all lessons, ordering by title
-	attachmentDbOpts := NewOptions().
-		WithWhere(squirrel.Eq{models.ATTACHMENT_LESSON_ID: ids}).
-		WithOrderBy(
-			models.ATTACHMENT_TABLE_LESSON_ID+" ASC",
-			models.ATTACHMENT_TABLE_TITLE+" ASC",
-		)
-
-	attachments, err := dao.ListAttachments(ctx, attachmentDbOpts)
-	if err != nil {
+	if err := attachLessonRelations(ctx, dao, lessons, includeProgress, includeMetadata); err != nil {
 		return nil, err
-	}
-
-	attMap := make(map[string][]*models.Attachment)
-	for _, a := range attachments {
-		attMap[a.LessonID] = append(attMap[a.LessonID], a)
-	}
-
-	// Fetch assets for all lessons
-	assetDbOpts := NewOptions().
-		WithWhere(squirrel.Eq{models.ASSET_LESSON_ID: ids}).
-		WithOrderBy(
-			models.ASSET_TABLE_LESSON_ID+" ASC ",
-			models.ASSET_TABLE_PREFIX+" ASC ",
-			models.ASSET_TABLE_SUB_PREFIX+" ASC",
-		)
-
-	if dbOpts != nil {
-		assetDbOpts.IncludeUserProgress = dbOpts.IncludeUserProgress
-		assetDbOpts.IncludeAssetMetadata = dbOpts.IncludeAssetMetadata
-	}
-
-	assets, err := dao.ListAssets(ctx, assetDbOpts)
-	if err != nil {
-		return nil, err
-	}
-
-	assetMap := make(map[string][]*models.Asset)
-	for _, a := range assets {
-		assetMap[a.LessonID] = append(assetMap[a.LessonID], a)
-	}
-
-	// Stitch children onto parents in order
-	for _, lesson := range lessons {
-		lesson.Attachments = attMap[lesson.ID]
-		lesson.Assets = assetMap[lesson.ID]
 	}
 
 	return lessons, nil
@@ -228,6 +185,66 @@ func lessonValidation(ag *models.Lesson) error {
 
 	if !ag.Prefix.Valid || ag.Prefix.Int16 < 0 {
 		return utils.ErrPrefix
+	}
+
+	return nil
+}
+
+// ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
+
+// attachLessonRelations attaches attachments and assets to the given lessons
+//
+// It will also optionally attach asset progress and metadata to the assets
+func attachLessonRelations(ctx context.Context, dao *DAO, lessons []*models.Lesson, includeProgress, includeMetadata bool) error {
+	if len(lessons) == 0 {
+		return nil
+	}
+
+	lessonIDs := utils.Map(lessons, func(l *models.Lesson) string { return l.ID })
+
+	// Attachments (ordered by title)
+	dbOpts := NewOptions().
+		WithWhere(squirrel.Eq{models.ATTACHMENT_LESSON_ID: lessonIDs}).
+		WithOrderBy(
+			models.ATTACHMENT_TABLE_LESSON_ID+" ASC",
+			models.ATTACHMENT_TABLE_TITLE+" ASC",
+		)
+
+	attachmentRecords, err := dao.ListAttachments(ctx, dbOpts)
+	if err != nil {
+		return err
+	}
+
+	attMap := make(map[string][]*models.Attachment)
+	for _, record := range attachmentRecords {
+		attMap[record.LessonID] = append(attMap[record.LessonID], record)
+	}
+
+	// Assets (ordered by prefix + sub_prefix)
+	dbOpts = NewOptions().
+		WithWhere(squirrel.Eq{models.ASSET_LESSON_ID: lessonIDs}).
+		WithOrderBy(
+			models.ASSET_TABLE_LESSON_ID+" ASC",
+			models.ASSET_TABLE_PREFIX+" ASC",
+			models.ASSET_TABLE_SUB_PREFIX+" ASC",
+		).
+		WithUserProgress().
+		WithAssetMetadata()
+
+	assetRecords, err := dao.ListAssets(ctx, dbOpts)
+	if err != nil {
+		return err
+	}
+
+	assetMap := make(map[string][]*models.Asset)
+	for _, record := range assetRecords {
+		assetMap[record.LessonID] = append(assetMap[record.LessonID], record)
+	}
+
+	// Attach attachments and assets to the lessons
+	for _, lesson := range lessons {
+		lesson.Attachments = attMap[lesson.ID]
+		lesson.Assets = assetMap[lesson.ID]
 	}
 
 	return nil

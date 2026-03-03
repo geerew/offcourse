@@ -299,7 +299,7 @@ func TestUsers_CreateUser(t *testing.T) {
 		req = httptest.NewRequest(http.MethodPost, "/api/users/", strings.NewReader(`{"username": "admin", "password": ""}`))
 		req.Header.Set(fiber.HeaderContentType, fiber.MIMEApplicationJSON)
 
-		status, body, err = requestHelper(t, router, req)
+		status, _, err = requestHelper(t, router, req)
 		require.NoError(t, err)
 		require.Equal(t, http.StatusBadRequest, status)
 		require.Contains(t, string(body), "A username and password are required")

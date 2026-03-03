@@ -12,6 +12,12 @@ import (
 // ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
 
 // CreateCourseTag inserts a new course tag record
+//
+// # When tag ID is set, the record is created immediately
+//
+// When tag ID is not set, a lookup of the tag (by name) is performed. If a tag is found,
+// it's ID is used to create the course tag record. If no tag is found, a new tag is created and
+// then used to create the course tag record
 func (dao *DAO) CreateCourseTag(ctx context.Context, courseTag *models.CourseTag) error {
 	if courseTag == nil {
 		return utils.ErrNilPtr
@@ -28,32 +34,32 @@ func (dao *DAO) CreateCourseTag(ctx context.Context, courseTag *models.CourseTag
 	courseTag.RefreshCreatedAt()
 	courseTag.RefreshUpdatedAt()
 
-	courseTagData := map[string]interface{}{
+	courseTagData := map[string]any{
 		models.BASE_ID:              courseTag.ID,
 		models.COURSE_TAG_COURSE_ID: courseTag.CourseID,
 		models.BASE_CREATED_AT:      courseTag.CreatedAt,
 		models.BASE_UPDATED_AT:      courseTag.UpdatedAt,
 	}
 
-	// When the tag ID is set, we can just create the course tag
+	// Create the record immediately when tag ID is set
 	if courseTag.TagID != "" {
 		courseTagData[models.COURSE_TAG_TAG_ID] = courseTag.TagID
 		builderOpts := newBuilderOptions(models.COURSE_TAG_TABLE).WithData(courseTagData)
 		return createGeneric(ctx, dao, *builderOpts)
 	}
 
-	// If the tag ID is not set, we need to find the tag by name
+	// When tag ID is not set, lookup the tag by name
 	if courseTag.Tag == "" {
 		return utils.ErrTag
 	}
 
-	return dao.db.RunInTransaction(ctx, func(txCtx context.Context) error {
-		dbOpts := NewOptions().WithWhere(squirrel.Eq{models.TAG_TABLE_TAG: courseTag.Tag})
+	dbOpts := NewOptions().WithWhere(squirrel.Eq{models.TAG_TABLE_TAG: courseTag.Tag})
+	tag, err := dao.GetTag(ctx, dbOpts)
+	if err != nil {
+		return err
+	}
 
-		tag, err := dao.GetTag(txCtx, dbOpts)
-		if err != nil {
-			return err
-		}
+	return dao.RunInTransaction(ctx, func(txCtx context.Context) error {
 
 		// If the tag does not exist, create it
 		if tag == nil {

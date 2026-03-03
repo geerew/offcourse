@@ -18,6 +18,7 @@ import (
 // ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
 
 func Test_CreateAsset(t *testing.T) {
+	// Test successfully inserting an asset record
 	t.Run("success", func(t *testing.T) {
 		dao, ctx := setup(t)
 
@@ -44,11 +45,13 @@ func Test_CreateAsset(t *testing.T) {
 		require.NoError(t, dao.CreateAsset(ctx, asset))
 	})
 
+	// Test error due to nil pointer
 	t.Run("nil pointer", func(t *testing.T) {
 		dao, ctx := setup(t)
 		require.ErrorIs(t, dao.CreateAsset(ctx, nil), utils.ErrNilPtr)
 	})
 
+	// Test error due to invalid fields
 	t.Run("invalid", func(t *testing.T) {
 		dao, ctx := setup(t)
 
@@ -84,6 +87,7 @@ func Test_CreateAsset(t *testing.T) {
 // ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
 
 func Test_GetAsset(t *testing.T) {
+	// Test successfully retrieving an asset record
 	t.Run("success", func(t *testing.T) {
 		dao, ctx := setup(t)
 
@@ -98,7 +102,6 @@ func Test_GetAsset(t *testing.T) {
 		}
 		require.NoError(t, dao.CreateLesson(ctx, lesson))
 
-		// Create Asset
 		asset := &models.Asset{
 			CourseID: course.ID,
 			LessonID: lesson.ID,
@@ -117,6 +120,7 @@ func Test_GetAsset(t *testing.T) {
 		require.Nil(t, record.Progress)
 	})
 
+	// Test successfully retrieving an asset record with relations
 	t.Run("success with relations", func(t *testing.T) {
 		dao, ctx := setup(t)
 
@@ -131,7 +135,6 @@ func Test_GetAsset(t *testing.T) {
 		}
 		require.NoError(t, dao.CreateLesson(ctx, lesson))
 
-		// Create Asset
 		asset := &models.Asset{
 			CourseID: course.ID,
 			LessonID: lesson.ID,
@@ -143,7 +146,6 @@ func Test_GetAsset(t *testing.T) {
 		}
 		require.NoError(t, dao.CreateAsset(ctx, asset))
 
-		// Create asset metadata
 		meta := &models.AssetMetadata{
 			AssetID: asset.ID,
 			VideoMetadata: &models.VideoMetadata{
@@ -170,10 +172,7 @@ func Test_GetAsset(t *testing.T) {
 		record, err := dao.GetAsset(ctx, dbOpts)
 		require.Nil(t, err)
 		require.Equal(t, asset.ID, record.ID)
-		require.NotNil(t, record.Progress)
-		require.Zero(t, record.Progress.Position)
-		require.False(t, record.Progress.Completed)
-		require.True(t, record.Progress.CompletedAt.IsZero())
+		require.Nil(t, record.Progress)
 		require.Nil(t, record.AssetMetadata)
 
 		// Set progress
@@ -254,6 +253,7 @@ func Test_GetAsset(t *testing.T) {
 		require.Nil(t, record.AssetMetadata.AudioMetadata)
 	})
 
+	// Test successfully querying without a where clause
 	t.Run("not found", func(t *testing.T) {
 		dao, ctx := setup(t)
 
@@ -262,6 +262,7 @@ func Test_GetAsset(t *testing.T) {
 		require.Nil(t, record)
 	})
 
+	// Test error due to missing principal
 	t.Run("missing principal", func(t *testing.T) {
 		dao, _ := setup(t)
 
@@ -275,6 +276,7 @@ func Test_GetAsset(t *testing.T) {
 // ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
 
 func Test_ListAssets(t *testing.T) {
+	// Test successfully retrieving all asset records
 	t.Run("success", func(t *testing.T) {
 		dao, ctx := setup(t)
 
@@ -291,7 +293,6 @@ func Test_ListAssets(t *testing.T) {
 			}
 			require.NoError(t, dao.CreateLesson(ctx, lesson))
 
-			// Create Asset
 			asset := &models.Asset{
 				CourseID: course.ID,
 				LessonID: lesson.ID,
@@ -317,6 +318,7 @@ func Test_ListAssets(t *testing.T) {
 		}
 	})
 
+	// Test successfully retrieving all asset records with relations
 	t.Run("success with relations", func(t *testing.T) {
 		dao, ctx := setup(t)
 
@@ -333,7 +335,6 @@ func Test_ListAssets(t *testing.T) {
 			}
 			require.NoError(t, dao.CreateLesson(ctx, lesson))
 
-			// Create Asset
 			asset := &models.Asset{
 				CourseID: course.ID,
 				LessonID: lesson.ID,
@@ -346,7 +347,6 @@ func Test_ListAssets(t *testing.T) {
 			require.NoError(t, dao.CreateAsset(ctx, asset))
 			assets = append(assets, asset)
 
-			// Create asset metadata
 			meta := &models.AssetMetadata{
 				AssetID: asset.ID,
 				VideoMetadata: &models.VideoMetadata{
@@ -375,13 +375,10 @@ func Test_ListAssets(t *testing.T) {
 		require.Nil(t, err)
 		require.Len(t, records, 3)
 
-		// Ensure everything defaults to the zero value (for this user)
+		// Ensure no progress when none exists
 		for i, record := range records {
 			require.Equal(t, assets[i].ID, record.ID)
-			require.NotNil(t, record.Progress)
-			require.Zero(t, record.Progress.Position)
-			require.False(t, record.Progress.Completed)
-			require.True(t, record.Progress.CompletedAt.IsZero())
+			require.Nil(t, record.Progress)
 			require.Nil(t, record.AssetMetadata)
 		}
 
@@ -399,19 +396,16 @@ func Test_ListAssets(t *testing.T) {
 		require.Nil(t, err)
 		require.Len(t, records, 3)
 
-		// Ensure they all have progress and that the first asset has a video position of 20 and is completed
+		// Ensure first asset has progress, others do not
 		for i, record := range records {
 			require.Equal(t, assets[i].ID, record.ID)
-			require.NotNil(t, record.Progress)
-
 			if i == 0 {
+				require.NotNil(t, record.Progress)
 				require.Equal(t, 20, record.Progress.Position)
 				require.True(t, record.Progress.Completed)
 				require.False(t, record.Progress.CompletedAt.IsZero())
 			} else {
-				require.Zero(t, record.Progress.Position)
-				require.False(t, record.Progress.Completed)
-				require.True(t, record.Progress.CompletedAt.IsZero())
+				require.Nil(t, record.Progress)
 			}
 		}
 
@@ -443,19 +437,16 @@ func Test_ListAssets(t *testing.T) {
 		require.Nil(t, err)
 		require.Len(t, records, 3)
 
-		// Ensure they all have progress and that the second course is started/completed
+		// Ensure second asset has progress for user2, others do not
 		for i, record := range records {
 			require.Equal(t, assets[i].ID, record.ID)
-			require.NotNil(t, record.Progress)
-
 			if i == 1 {
+				require.NotNil(t, record.Progress)
 				require.Equal(t, 50, record.Progress.Position)
 				require.True(t, record.Progress.Completed)
 				require.False(t, record.Progress.CompletedAt.IsZero())
 			} else {
-				require.Zero(t, record.Progress.Position)
-				require.False(t, record.Progress.Completed)
-				require.True(t, record.Progress.CompletedAt.IsZero())
+				require.Nil(t, record.Progress)
 			}
 		}
 
@@ -466,29 +457,27 @@ func Test_ListAssets(t *testing.T) {
 		require.Nil(t, err)
 		require.Len(t, records, 3)
 
-		// Ensure they all have progress and metadata, and that the second course is started/completed
+		// Ensure second asset has progress and metadata for user2, others have metadata only
 		for i, record := range records {
 			require.Equal(t, assets[i].ID, record.ID)
-			require.NotNil(t, record.Progress)
 			require.NotNil(t, record.AssetMetadata)
-			require.NotNil(t, record.AssetMetadata.VideoMetadata)
 			require.NotNil(t, record.AssetMetadata.VideoMetadata)
 			require.Equal(t, 120, record.AssetMetadata.VideoMetadata.DurationSec)
 			require.Equal(t, 1280, record.AssetMetadata.VideoMetadata.Width)
 			require.Nil(t, record.AssetMetadata.AudioMetadata)
 
 			if i == 1 {
+				require.NotNil(t, record.Progress)
 				require.Equal(t, 50, record.Progress.Position)
 				require.True(t, record.Progress.Completed)
 				require.False(t, record.Progress.CompletedAt.IsZero())
 			} else {
-				require.Zero(t, record.Progress.Position)
-				require.False(t, record.Progress.Completed)
-				require.True(t, record.Progress.CompletedAt.IsZero())
+				require.Nil(t, record.Progress)
 			}
 		}
 	})
 
+	// Test successfully retrieving no asset records
 	t.Run("empty", func(t *testing.T) {
 		dao, ctx := setup(t)
 
@@ -497,6 +486,7 @@ func Test_ListAssets(t *testing.T) {
 		require.Empty(t, records)
 	})
 
+	// Test successfully retrieving ordered asset records
 	t.Run("order by", func(t *testing.T) {
 		dao, ctx := setup(t)
 
@@ -514,7 +504,6 @@ func Test_ListAssets(t *testing.T) {
 			}
 			require.NoError(t, dao.CreateLesson(ctx, lesson))
 
-			// Create Asset
 			asset := &models.Asset{
 				CourseID: course.ID,
 				LessonID: lesson.ID,
@@ -550,6 +539,7 @@ func Test_ListAssets(t *testing.T) {
 		}
 	})
 
+	// Test successfully retrieving selected asset records
 	t.Run("where", func(t *testing.T) {
 		dao, ctx := setup(t)
 
@@ -582,6 +572,7 @@ func Test_ListAssets(t *testing.T) {
 		require.Equal(t, asset.ID, records[0].ID)
 	})
 
+	// Test successfully retrieving paginated asset records
 	t.Run("pagination", func(t *testing.T) {
 		dao, ctx := setup(t)
 
@@ -599,7 +590,6 @@ func Test_ListAssets(t *testing.T) {
 			}
 			require.NoError(t, dao.CreateLesson(ctx, lesson))
 
-			// Create Asset
 			asset := &models.Asset{
 				CourseID: course.ID,
 				LessonID: lesson.ID,
@@ -635,6 +625,7 @@ func Test_ListAssets(t *testing.T) {
 // ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
 
 func Test_UpdateAsset(t *testing.T) {
+	// Test successfully updating an asset record
 	t.Run("success", func(t *testing.T) {
 		dao, ctx := setup(t)
 
@@ -707,6 +698,7 @@ func Test_UpdateAsset(t *testing.T) {
 
 	})
 
+	// Test error due to invalid fields
 	t.Run("invalid", func(t *testing.T) {
 		dao, ctx := setup(t)
 
@@ -754,6 +746,7 @@ func Test_UpdateAsset(t *testing.T) {
 // ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
 
 func Test_DeleteAsset(t *testing.T) {
+	// Test successfully deleting an asset record
 	t.Run("success", func(t *testing.T) {
 		dao, ctx := setup(t)
 
@@ -787,6 +780,7 @@ func Test_DeleteAsset(t *testing.T) {
 		require.Empty(t, records)
 	})
 
+	// Test no error when deleting a non-existent asset record
 	t.Run("not found", func(t *testing.T) {
 		dao, ctx := setup(t)
 
@@ -821,6 +815,7 @@ func Test_DeleteAsset(t *testing.T) {
 		require.Equal(t, asset.ID, records[0].ID)
 	})
 
+	// Test error due to missing where clause
 	t.Run("missing where", func(t *testing.T) {
 		dao, ctx := setup(t)
 
@@ -854,6 +849,7 @@ func Test_DeleteAsset(t *testing.T) {
 		require.Equal(t, asset.ID, records[0].ID)
 	})
 
+	// Test cascading delete of asset records when deleting a course
 	t.Run("cascade", func(t *testing.T) {
 		dao, ctx := setup(t)
 

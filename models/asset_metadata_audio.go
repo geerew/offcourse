@@ -1,6 +1,9 @@
 package models
 
-import "fmt"
+import (
+	"fmt"
+	"strings"
+)
 
 // ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
 
@@ -42,6 +45,28 @@ type AudioMetadata struct {
 	ChannelLayout string `db:"channel_layout"` // Mutable
 	SampleRate    int    `db:"sample_rate"`    // Mutable
 	BitRate       int    `db:"bit_rate"`       // Mutable
+}
+
+// ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
+
+// FixChannelsFromLayout infers Channels from ChannelLayout when Channels is 0.
+// Call after loading from the database when ffprobe reports channel_layout but not channels.
+//
+// TODO clean this up. It should not be here
+func (am *AudioMetadata) FixChannelsFromLayout() {
+	if am == nil || am.Channels != 0 {
+		return
+	}
+	switch strings.ToLower(am.ChannelLayout) {
+	case "mono":
+		am.Channels = 1
+	case "stereo", "2.0", "2.1":
+		am.Channels = 2
+	case "5.1", "5.1(side)":
+		am.Channels = 6
+	case "7.1", "7.1(wide)":
+		am.Channels = 8
+	}
 }
 
 // ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~

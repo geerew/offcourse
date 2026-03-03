@@ -1,47 +1,21 @@
 package dao
 
 import (
-	"context"
 	"fmt"
 	"testing"
 	"time"
 
 	"github.com/Masterminds/squirrel"
-	"github.com/geerew/off-course/database"
 	"github.com/geerew/off-course/models"
 	"github.com/geerew/off-course/utils"
-	"github.com/geerew/off-course/utils/appfs"
 	"github.com/geerew/off-course/utils/pagination"
-	"github.com/spf13/afero"
 	"github.com/stretchr/testify/require"
 )
 
 // ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
 
-func setupLog(tb testing.TB) (*DAO, context.Context) {
-	tb.Helper()
-
-	// Filesystem
-	appFs := appfs.New(afero.NewMemMapFs())
-
-	// DB
-	dbManager, err := database.NewSQLiteManager(&database.DatabaseManagerConfig{
-		DataDir: "./oc_data",
-		AppFs:   appFs,
-		Testing: true,
-	})
-
-	require.NoError(tb, err)
-	require.NotNil(tb, dbManager)
-
-	dao := &DAO{db: dbManager.LogsDb}
-
-	return dao, context.Background()
-}
-
-// ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
-
 func Test_CreateLog(t *testing.T) {
+	// Test successfully inserting a log record
 	t.Run("success", func(t *testing.T) {
 		dao, ctx := setupLog(t)
 
@@ -49,12 +23,14 @@ func Test_CreateLog(t *testing.T) {
 		require.NoError(t, dao.CreateLog(ctx, log))
 	})
 
+	// Test error due to nil pointer
 	t.Run("nil pointer", func(t *testing.T) {
 		dao, ctx := setupLog(t)
 
 		require.ErrorIs(t, dao.CreateLog(ctx, nil), utils.ErrNilPtr)
 	})
 
+	// Test error due to invalid message
 	t.Run("invalid message", func(t *testing.T) {
 		dao, ctx := setupLog(t)
 
@@ -66,6 +42,7 @@ func Test_CreateLog(t *testing.T) {
 // ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
 
 func Test_GetLog(t *testing.T) {
+	// Test successfully retrieving a log record
 	t.Run("success", func(t *testing.T) {
 		dao, ctx := setupLog(t)
 
@@ -78,6 +55,7 @@ func Test_GetLog(t *testing.T) {
 		require.Equal(t, log.ID, record.ID)
 	})
 
+	// Test no error when retrieving a non-existent log record
 	t.Run("not found", func(t *testing.T) {
 		dao, ctx := setupLog(t)
 
@@ -90,6 +68,7 @@ func Test_GetLog(t *testing.T) {
 // ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
 
 func Test_ListLogs(t *testing.T) {
+	// Test successfully retrieving all log records
 	t.Run("success", func(t *testing.T) {
 		dao, ctx := setupLog(t)
 
@@ -111,6 +90,7 @@ func Test_ListLogs(t *testing.T) {
 		}
 	})
 
+	// Test successfully retrieving no log records
 	t.Run("empty", func(t *testing.T) {
 		dao, ctx := setupLog(t)
 
@@ -119,6 +99,7 @@ func Test_ListLogs(t *testing.T) {
 		require.Empty(t, records)
 	})
 
+	// Test successfully retrieving ordered log records
 	t.Run("order by", func(t *testing.T) {
 		dao, ctx := setupLog(t)
 
@@ -153,6 +134,7 @@ func Test_ListLogs(t *testing.T) {
 		}
 	})
 
+	// Test successfully retrieving selected log records
 	t.Run("where", func(t *testing.T) {
 		dao, ctx := setupLog(t)
 
@@ -166,6 +148,7 @@ func Test_ListLogs(t *testing.T) {
 		require.Equal(t, log.ID, records[0].ID)
 	})
 
+	// Test successfully retrieving paginated log records
 	t.Run("pagination", func(t *testing.T) {
 		dao, ctx := setupLog(t)
 
@@ -198,6 +181,7 @@ func Test_ListLogs(t *testing.T) {
 // ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
 
 func Test_CreateLogsBatch(t *testing.T) {
+	// Test successfully inserting multiple log records
 	t.Run("success", func(t *testing.T) {
 		dao, ctx := setupLog(t)
 
@@ -229,6 +213,7 @@ func Test_CreateLogsBatch(t *testing.T) {
 		}
 	})
 
+	// Test successfully inserting no log records
 	t.Run("empty slice", func(t *testing.T) {
 		dao, ctx := setupLog(t)
 
@@ -241,6 +226,7 @@ func Test_CreateLogsBatch(t *testing.T) {
 		require.Empty(t, records)
 	})
 
+	// Test error due to nil pointer in slice
 	t.Run("nil pointer in slice", func(t *testing.T) {
 		dao, ctx := setupLog(t)
 
@@ -253,6 +239,7 @@ func Test_CreateLogsBatch(t *testing.T) {
 		require.ErrorIs(t, dao.CreateLogsBatch(ctx, logs), utils.ErrNilPtr)
 	})
 
+	// Test error due to invalid message in slice
 	t.Run("invalid message in slice", func(t *testing.T) {
 		dao, ctx := setupLog(t)
 
@@ -265,6 +252,7 @@ func Test_CreateLogsBatch(t *testing.T) {
 		require.ErrorIs(t, dao.CreateLogsBatch(ctx, logs), utils.ErrLogMessage)
 	})
 
+	// Test successfully inserting a large number of log records
 	t.Run("large batch", func(t *testing.T) {
 		dao, ctx := setupLog(t)
 
