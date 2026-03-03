@@ -16,9 +16,7 @@ import (
 
 // ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
 
-// AppFs represents a filesystem. It uses afero under the hood, which
-// eases testing, as we can dynamically injection to pass a real fs or
-// an in-mem fs
+// AppFs represents the application filesystem
 type AppFs struct {
 	Fs afero.Fs
 }
@@ -43,39 +41,35 @@ type PathContents struct {
 
 // ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
 
-// Open attempts to open a file with a given name from its underlying afero.Fs. It adapts the behavior of
-// afero.Fs.Open to match the fs.FS interface from Go's standard library. This function returns an fs.File
-// and an error. The returned file can be nil if the error is not nil. If the file does not exist, it
-// returns an fs.PathError with fs.ErrNotExist. Other types of errors are returned as is.
+// Open opens a file with a given name
 func (appFs *AppFs) Open(name string) (fs.File, error) {
 	file, err := appFs.Fs.Open(name)
 	if err != nil {
 		if os.IsNotExist(err) {
 			return nil, &fs.PathError{Op: "open", Path: name, Err: fs.ErrNotExist}
 		}
+
 		return nil, err
 	}
+
 	return file, nil
 }
 
 // ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
 
-// ReadDir reads the contents of a path and builds a slice of files and
-// directories
+// ReadDir reads the contents of a path, building a slice of files and directories
 func (appFs AppFs) ReadDir(path string, sortResult bool) (*PathContents, error) {
 	path = utils.NormalizeWindowsDrive(path)
 
-	items, err := appFs.PathItems(path)
+	items, err := appFs.pathItems(path)
 	if err != nil {
 		return nil, err
 	}
 
-	// Sort the items
 	if sortResult {
 		sort.Strings(items)
 	}
 
-	// Build slice of directories and files
 	directories := make([]fs.FileInfo, 0)
 	files := make([]fs.FileInfo, 0)
 
@@ -91,48 +85,85 @@ func (appFs AppFs) ReadDir(path string, sortResult bool) (*PathContents, error) 
 		}
 	}
 
-	return &PathContents{Files: files, Directories: directories}, nil
+	return &PathContents{
+		Files:       files,
+		Directories: directories,
+	}, nil
 }
 
 // ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
 
-// ReadDirFlat recursively reads a directory down to a certain depth, and returns
-// a flat string slice of paths
+// ReadDirFlat recursively reads a directory down to a certain depth, building a slice of
+// paths
+//
+// It is a wrapper around `recursivelyReadDir` that normalizes the path and forces the current
+// depth to 0
 func (appFs AppFs) ReadDirFlat(path string, depth int) ([]string, error) {
 	return appFs.recursivelyReadDir(utils.NormalizeWindowsDrive(path), depth, 0)
 }
 
 // ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
 
-// AvailableDrives returns a string slice of available drives on this system. For non-wsl
-// systems `gopsutil` is used. For WSL systems, the string slice is generated manually
+// AvailableDrives returns a string slice of available drives on this system
+//
+// For non-WSL systems, `gopsutil` is used. For WSL systems, the string slice is generated
+// manually
 func (appFs AppFs) AvailableDrives() ([]string, error) {
-	// Lookup system
 	kernel, err := host.KernelVersion()
 	if err != nil {
 		return nil, fmt.Errorf("failed to lookup system information: %w", err)
 	}
 
-	// WSL
 	if strings.Contains(strings.ToLower(kernel), "wsl") {
 		return appFs.wslDrives()
 	}
 
-	// Non-WSL
 	return appFs.nonWslDrives()
 }
 
 // ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
 
-// PathItems does the common work of opening a path and listing
-// its contents
-func (appFs AppFs) PathItems(path string) ([]string, error) {
+// RemoveAllContents removes all everything (files and directories) within a given path
+func (appFs AppFs) RemoveAllContents(path string) error {
+	path = utils.NormalizeWindowsDrive(path)
+
+	fileInfo, err := appFs.Fs.Stat(path)
+	if err != nil {
+		if os.IsNotExist(err) {
+			return &fs.PathError{Op: "removeall", Path: path, Err: fs.ErrNotExist}
+		}
+		return fmt.Errorf("unable to stat path %s: %w", path, err)
+	}
+
+	if !fileInfo.IsDir() {
+		return fmt.Errorf("path %s is not a directory", path)
+	}
+
+	items, err := appFs.pathItems(path)
+	if err != nil {
+		return fmt.Errorf("unable to read directory %s: %w", path, err)
+	}
+
+	for _, item := range items {
+		fullPath := filepath.Join(path, item)
+
+		if err := appFs.Fs.RemoveAll(fullPath); err != nil {
+			return fmt.Errorf("unable to remove %s: %w", fullPath, err)
+		}
+	}
+
+	return nil
+}
+
+// ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
+
+// pathItems does the common work of opening a path and listing its contents
+func (appFs AppFs) pathItems(path string) ([]string, error) {
 	f, err := appFs.Fs.Open(path)
 	if err != nil {
 		return nil, fmt.Errorf("unable to open path %s: %w", path, err)
 	}
 
-	// List the items at the path
 	items, err := f.Readdirnames(-1)
 	if err != nil {
 		return nil, fmt.Errorf("unable to read path %s: %w", path, err)
@@ -143,11 +174,9 @@ func (appFs AppFs) PathItems(path string) ([]string, error) {
 
 // ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
 
-// recursivelyReadDir recursively reads a directory down to a certain depth. It calls itself
-// utils the depth is reached, in which case a flat string slice of all found paths (files
-// and directories) is returned
+// recursivelyReadDir does the common work of recursively reading a directory down to a
+// certain depth, building a slice of paths
 func (appFs AppFs) recursivelyReadDir(path string, maxDepth, currDepth int) ([]string, error) {
-	// Default max depth to 1
 	if maxDepth < 1 {
 		maxDepth = 1
 	}
@@ -158,7 +187,7 @@ func (appFs AppFs) recursivelyReadDir(path string, maxDepth, currDepth int) ([]s
 
 	res := []string{}
 
-	items, err := appFs.PathItems(path)
+	items, err := appFs.pathItems(path)
 	if err != nil {
 		return nil, err
 	}
@@ -185,47 +214,9 @@ func (appFs AppFs) recursivelyReadDir(path string, maxDepth, currDepth int) ([]s
 
 // ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
 
-// RemoveAllContents removes all files and directories within the specified path
-//
-// The directory itself is not removed, only its contents. If the path doesn't exist or is not
-// a directory, an error is returned
-func (appFs AppFs) RemoveAllContents(path string) error {
-	path = utils.NormalizeWindowsDrive(path)
-
-	// Check if the path exists and is a directory
-	fileInfo, err := appFs.Fs.Stat(path)
-	if err != nil {
-		if os.IsNotExist(err) {
-			return &fs.PathError{Op: "removeall", Path: path, Err: fs.ErrNotExist}
-		}
-		return fmt.Errorf("unable to stat path %s: %w", path, err)
-	}
-
-	if !fileInfo.IsDir() {
-		return fmt.Errorf("path %s is not a directory", path)
-	}
-
-	// Get all items in the directory
-	items, err := appFs.PathItems(path)
-	if err != nil {
-		return fmt.Errorf("unable to read directory %s: %w", path, err)
-	}
-
-	// Remove each item
-	for _, item := range items {
-		fullPath := filepath.Join(path, item)
-
-		if err := appFs.Fs.RemoveAll(fullPath); err != nil {
-			return fmt.Errorf("unable to remove %s: %w", fullPath, err)
-		}
-	}
-
-	return nil
-}
-
-// ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
-
 // nonWslDrives builds a list of available drives for non-wsl systems via `gopsutil`
+//
+// Ignores the appFs filesystem and only queries the real disk partitions
 func (appFs AppFs) nonWslDrives() ([]string, error) {
 	var drives []string
 
@@ -243,7 +234,7 @@ func (appFs AppFs) nonWslDrives() ([]string, error) {
 
 // ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
 
-// wslDrives builds a list of available drives in WSL
+// wslDrives manually builds a list of available drives in WSL
 func (appFs AppFs) wslDrives() ([]string, error) {
 	drives := []string{"/"}
 
