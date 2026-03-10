@@ -3,6 +3,7 @@ package types
 import (
 	"database/sql/driver"
 	"encoding/json"
+	"fmt"
 	"time"
 
 	"github.com/spf13/cast"
@@ -10,13 +11,12 @@ import (
 
 // ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
 
-// DefaultDateLayout specifies the default app date strings layout
+// DefaultDateLayout defines the default date string layout
 const DefaultDateLayout = "2006-01-02 15:04:05.000Z"
 
 // ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
 
-// DateTime represents a [time.Time] instance in UTC that is serialized
-// using the app default date layout
+// DateTime represents a serializable `time.Time`
 type DateTime time.Time
 
 // ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
@@ -37,68 +37,70 @@ func ParseDateTime(value any) (DateTime, error) {
 
 // ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
 
-// Time returns the internal [time.Time] instance
-func (d DateTime) Time() time.Time {
-	return time.Time(d)
-}
-
-// ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
-
-// IsZero checks whether the current DateTime instance has zero time value
+// IsZero checks whether DateTime has zero time value
 func (d DateTime) IsZero() bool {
-	return d.Time().IsZero()
+	return time.Time(d).IsZero()
 }
 
 // ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
 
-// Equal checks if two DateTime instances represent the same point in time
+// Equal checks if two DateTime are the same, ignoring milliseconds
 func (d DateTime) Equal(other DateTime) bool {
 	return time.Time(d).UTC().Truncate(time.Millisecond).Equal(time.Time(other).UTC().Truncate(time.Millisecond))
 }
 
 // ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
 
-// String serializes the current DateTime instance into a formatted
-// UTC date string
-//
-// A zero value is serialized to an empty string
+// String implements the `Stringer` interface
 func (d DateTime) String() string {
-	t := d.Time()
+	t := time.Time(d)
+
 	if t.IsZero() {
 		return ""
 	}
+
 	return t.UTC().Format(DefaultDateLayout)
 }
 
 // ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
 
-// MarshalJSON implements the [json.Marshaler] interface
+// MarshalJSON implements the `json.Marshaler` interface
 func (d DateTime) MarshalJSON() ([]byte, error) {
 	return []byte(`"` + d.String() + `"`), nil
 }
 
 // ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
 
-// UnmarshalJSON implements the [json.Unmarshaler] interface
+// UnmarshalJSON implements the `json.Unmarshaler` interface
 func (d *DateTime) UnmarshalJSON(b []byte) error {
 	var raw string
-	if err := json.Unmarshal(b, &raw); err != nil {
-		return err
+	if err := json.Unmarshal(b, &raw); err == nil {
+		return d.Scan(raw)
 	}
-	return d.Scan(raw)
+
+	var num json.Number
+	if err := json.Unmarshal(b, &num); err == nil {
+		i, err := num.Int64()
+		if err != nil {
+			return err
+		}
+		return d.Scan(i)
+	}
+
+	return fmt.Errorf("invalid datetime json: %s", string(b))
 }
 
 // ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
 
-// Value implements the [driver.Valuer] interface
+// Value implements the `driver.Valuer` interface
 func (d DateTime) Value() (driver.Value, error) {
 	return d.String(), nil
 }
 
 // ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
 
-// Scan implements [sql.Scanner] interface to scan the provided value
-// into the current DateTime instance
+// Scan implements `sql.Scanner` interface, scanning the provided value into
+// the DateTime
 func (d *DateTime) Scan(value any) error {
 	switch v := value.(type) {
 	case time.Time:
@@ -111,9 +113,9 @@ func (d *DateTime) Scan(value any) error {
 		} else {
 			t, err := time.Parse(DefaultDateLayout, v)
 			if err != nil {
-				// check for other common date layouts
 				t = cast.ToTime(v)
 			}
+
 			*d = DateTime(t)
 		}
 	case int, int64, int32, uint, uint64, uint32:

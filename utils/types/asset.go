@@ -25,8 +25,9 @@ const (
 
 // ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
 
-// NewAsset creates an AssetType based upon an extension. For example "mp4" => AssetVideo.
-// Returns an error if the extension is unknown.
+// NewAsset creates an AssetType based upon an extension
+//
+// Returns an error if the extension is unknown
 func NewAsset(ext string) (AssetType, error) {
 	switch strings.ToLower(ext) {
 	case "avi",
@@ -56,9 +57,7 @@ func NewAsset(ext string) (AssetType, error) {
 
 // ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
 
-// MustAsset creates an AssetType from an extension, panicking on error.
-// This is useful in tests and initialization code where invalid extensions
-// should cause immediate failure.
+// MustAsset creates an AssetType from an extension, panicking on error
 func MustAsset(ext string) AssetType {
 	at, err := NewAsset(ext)
 	if err != nil {
@@ -75,6 +74,7 @@ func (a AssetType) IsValid() bool {
 	case AssetVideo, AssetPDF, AssetMarkdown, AssetText:
 		return true
 	}
+
 	return false
 }
 
@@ -120,6 +120,7 @@ func (a AssetType) MarshalJSON() ([]byte, error) {
 	if !a.IsValid() {
 		return nil, fmt.Errorf("invalid asset type: %s", a)
 	}
+
 	return []byte(`"` + string(a) + `"`), nil
 }
 
@@ -142,12 +143,14 @@ func (a AssetType) Value() (driver.Value, error) {
 	if !a.IsValid() {
 		return nil, fmt.Errorf("invalid asset type: %s", a)
 	}
+
 	return string(a), nil
 }
 
 // ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
 
-// Scan implements `sql.Scanner` interface
+// Scan implements `sql.Scanner` interface, scanning the provided value into
+// the AssetType
 func (a *AssetType) Scan(value any) error {
 	vv := cast.ToString(value)
 

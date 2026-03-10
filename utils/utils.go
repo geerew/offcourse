@@ -5,15 +5,17 @@ import (
 	"fmt"
 	"net/url"
 	"os"
+	"path/filepath"
 	"runtime"
+	"strings"
 )
 
 // ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
 
-// NormalizeWindowsDrive normalizes a given path to ensure that drive letters on Windows
-// are correctly interpreted. If the path starts with a drive letter, it appends a
-// backslash (\) to paths like "C:" to make them "C:\", and inserts a backslash in paths
-// like "C:folder" to make them "C:\folder"
+// NormalizeWindowsDrive normalizes a given paths that start with a drive letter (e.g. "C:")
+// are correctly interpreted on Windows systems, by appending a backslash (\)
+//
+// For example, "C:" becomes "C:\" and "C:folder" becomes "C:\folder"
 //
 // Skipped on non-Windows platforms
 func NormalizeWindowsDrive(path string) string {
@@ -32,7 +34,8 @@ func NormalizeWindowsDrive(path string) string {
 
 // ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
 
-// GetEnvOr returns the value of the environment variable if set, otherwise the default
+// GetEnvOr returns the value of the environment variable if set, otherwise returns the
+// default
 func GetEnvOr(env string, def string) string {
 	out := os.Getenv(env)
 	if out == "" {
@@ -44,10 +47,7 @@ func GetEnvOr(env string, def string) string {
 
 // ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
 
-// DecodeString is a function that receives a Base64-encoded string and first decodes
-// it from Base64 and then URL-decodes it. The function returns the decoded string, or
-// an error if either of the decoding operations fails. It uses standard library
-// functions for both decoding operations.
+// DecodeString decodes a base64 encoded string
 func DecodeString(p string) (string, error) {
 	bytePath, err := base64.StdEncoding.DecodeString(p)
 	if err != nil {
@@ -65,21 +65,16 @@ func DecodeString(p string) (string, error) {
 
 // ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
 
-// EncodeString is a function that receives a string, URL-encodes it, and then encodes
-// the result in Base64. The function returns the Base64-encoded string. It uses
-// standard library functions for both encoding operations.
+// EncodeString encodes a string into base64
 func EncodeString(p string) string {
 	encodedPath := url.QueryEscape(p)
-
 	res := base64.StdEncoding.EncodeToString([]byte(encodedPath))
-
 	return res
 }
 
 // ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
 
-// Map is a generic function that takes a slice of type T and a function that
-// maps T to type V. It returns a new slice of type V with the mapped values
+// Map runs a function over a slice of type T, returning a new slice of type V
 func Map[T, V any](ts []T, fn func(T) V) []V {
 	result := make([]V, len(ts))
 
@@ -88,4 +83,27 @@ func Map[T, V any](ts []T, fn func(T) V) []V {
 	}
 
 	return result
+}
+
+// ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
+
+// IsCard returns true when the filename is `card.[valid-ext]`
+func IsCard(filename string) bool {
+	ext := strings.ToLower(strings.TrimPrefix(filepath.Ext(filename), "."))
+
+	if ext == "" {
+		return false
+	}
+
+	name := strings.TrimSuffix(filename, "."+ext)
+	if name != "card" {
+		return false
+	}
+
+	switch ext {
+	case "jpg", "jpeg", "png", "webp", "tiff":
+		return true
+	default:
+		return false
+	}
 }

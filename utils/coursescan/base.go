@@ -13,6 +13,7 @@ import (
 	"github.com/geerew/off-course/utils"
 	"github.com/geerew/off-course/utils/appfs"
 	"github.com/geerew/off-course/utils/cardcache"
+	"github.com/geerew/off-course/utils/concurrency"
 	"github.com/geerew/off-course/utils/logger"
 	"github.com/geerew/off-course/utils/media"
 	"github.com/geerew/off-course/utils/types"
@@ -35,7 +36,7 @@ type CourseScan struct {
 	cardCache cardcache.CardCacher
 
 	// In-memory scan state storage
-	scans utils.CMap[string, *ScanState]
+	scans concurrency.Map[string, *ScanState]
 
 	// addMutex protects the Add operation to prevent race conditions
 	addMutex sync.Mutex
@@ -70,7 +71,7 @@ func New(config *CourseScanConfig) *CourseScan {
 		logger:    config.Logger,
 		ffmpeg:    config.FFmpeg,
 		cardCache: config.CardCache,
-		scans:     utils.NewCMap[string, *ScanState](),
+		scans:     concurrency.NewMap[string, *ScanState](),
 	}
 }
 

@@ -9,48 +9,53 @@ import (
 // ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
 
 func TestAsset_NewAsset(t *testing.T) {
-	// Valid
-	tests := []struct {
-		ext      string
-		expected AssetType
-	}{
-		// Video
-		{"avi", AssetVideo},
-		{"mkv", AssetVideo},
-		{"flac", AssetVideo},
-		{"mp4", AssetVideo},
-		{"m4a", AssetVideo},
-		{"mp3", AssetVideo},
-		{"ogv", AssetVideo},
-		{"ogm", AssetVideo},
-		{"ogg", AssetVideo},
-		{"oga", AssetVideo},
-		{"opus", AssetVideo},
-		{"webm", AssetVideo},
-		{"wav", AssetVideo},
-		// document
-		{"pdf", AssetPDF},
-		// markdown
-		{"md", AssetMarkdown},
-		// text
-		{"txt", AssetText},
-	}
+	// Test successfully creating an AssetType from a valid extensions
+	t.Run("success", func(t *testing.T) {
+		tests := []struct {
+			ext      string
+			expected AssetType
+		}{
+			// Video
+			{"avi", AssetVideo},
+			{"mkv", AssetVideo},
+			{"flac", AssetVideo},
+			{"mp4", AssetVideo},
+			{"m4a", AssetVideo},
+			{"mp3", AssetVideo},
+			{"ogv", AssetVideo},
+			{"ogm", AssetVideo},
+			{"ogg", AssetVideo},
+			{"oga", AssetVideo},
+			{"opus", AssetVideo},
+			{"webm", AssetVideo},
+			{"wav", AssetVideo},
+			// document
+			{"pdf", AssetPDF},
+			// markdown
+			{"md", AssetMarkdown},
+			// text
+			{"txt", AssetText},
+		}
 
-	for _, tt := range tests {
-		a, err := NewAsset(tt.ext)
-		require.NoError(t, err)
-		require.Equal(t, tt.expected, a)
-	}
+		for _, tt := range tests {
+			a, err := NewAsset(tt.ext)
+			require.NoError(t, err)
+			require.Equal(t, tt.expected, a)
+		}
+	})
 
-	// Invalid
-	_, err := NewAsset("test")
-	require.Error(t, err)
-	require.Contains(t, err.Error(), "invalid asset extension")
+	// Test erroring when an invalid extension is provided
+	t.Run("error", func(t *testing.T) {
+		_, err := NewAsset("test")
+		require.Error(t, err)
+		require.Contains(t, err.Error(), "invalid asset extension")
+	})
 }
 
 // ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
 
 func TestAsset_MustAsset(t *testing.T) {
+	// Test successfully creating an AssetType from a valid extensions
 	t.Run("success", func(t *testing.T) {
 		tests := []struct {
 			ext      string
@@ -70,6 +75,7 @@ func TestAsset_MustAsset(t *testing.T) {
 		}
 	})
 
+	// Test panicking when an invalid extension is provided
 	t.Run("panic on invalid", func(t *testing.T) {
 		require.Panics(t, func() {
 			MustAsset("invalid")
@@ -84,33 +90,44 @@ func TestAsset_MustAsset(t *testing.T) {
 // ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
 
 func TestAsset_Is(t *testing.T) {
-	// Is video
-	a, _ := NewAsset("mp4")
-	require.True(t, a.IsVideo())
-	require.True(t, a.IsValid())
+	// Test successfully checking if an asset is a video
+	t.Run("video", func(t *testing.T) {
+		a, _ := NewAsset("mp4")
+		require.True(t, a.IsVideo())
+		require.True(t, a.IsValid())
+	})
 
-	// Is PDF
-	a, _ = NewAsset("pdf")
-	require.True(t, a.IsPDF())
-	require.True(t, a.IsValid())
+	// Test successfully checking if an asset is a PDF
+	t.Run("pdf", func(t *testing.T) {
+		a, _ := NewAsset("pdf")
+		require.True(t, a.IsPDF())
+		require.True(t, a.IsValid())
+	})
 
-	// Is Markdown
-	a, _ = NewAsset("md")
-	require.True(t, a.IsMarkdown())
-	require.True(t, a.IsValid())
+	// Test successfully checking if an asset is a Markdown
+	t.Run("markdown", func(t *testing.T) {
+		a, _ := NewAsset("md")
+		require.True(t, a.IsMarkdown())
+		require.True(t, a.IsValid())
+	})
 
-	// Is Text
-	a, _ = NewAsset("txt")
-	require.True(t, a.IsText())
-	require.True(t, a.IsValid())
+	// Test successfully checking if an asset is a Text
+	t.Run("text", func(t *testing.T) {
+		a, _ := NewAsset("txt")
+		require.True(t, a.IsText())
+		require.True(t, a.IsValid())
+	})
 
-	// Is invalid
-	invalid := AssetType("invalid")
-	require.False(t, invalid.IsValid())
+	// Test erroring when an invalid asset type is provided
+	t.Run("invalid", func(t *testing.T) {
+		invalid := AssetType("invalid")
+		require.False(t, invalid.IsValid())
+	})
 }
 
 // ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
 
+// Test successfully getting the string representation of an asset
 func TestAsset_String(t *testing.T) {
 	a, _ := NewAsset("mp4")
 	require.Equal(t, "video", a.String())
@@ -128,107 +145,126 @@ func TestAsset_String(t *testing.T) {
 // ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
 
 func TestAsset_MarshalJSON(t *testing.T) {
-	tests := []struct {
-		input    string
-		expected string
-		hasError bool
-	}{
-		{"mp4", `"video"`, false},
-		{"pdf", `"pdf"`, false},
-		{"md", `"markdown"`, false},
-		{"txt", `"text"`, false},
-	}
-
-	for _, tt := range tests {
-		a, err := NewAsset(tt.input)
-		require.NoError(t, err)
-
-		res, err := a.MarshalJSON()
-		if tt.hasError {
-			require.Error(t, err)
-		} else {
-			require.NoError(t, err)
-			require.Equal(t, tt.expected, string(res))
+	// Test successfully marshalling an asset to JSON
+	t.Run("success", func(t *testing.T) {
+		tests := []struct {
+			input    string
+			expected string
+			hasError bool
+		}{
+			{"mp4", `"video"`, false},
+			{"pdf", `"pdf"`, false},
+			{"md", `"markdown"`, false},
+			{"txt", `"text"`, false},
 		}
-	}
 
-	// Invalid asset type
-	invalid := AssetType("invalid")
-	_, err := invalid.MarshalJSON()
-	require.Error(t, err)
+		for _, tt := range tests {
+			a, err := NewAsset(tt.input)
+			require.NoError(t, err)
+
+			res, err := a.MarshalJSON()
+			if tt.hasError {
+				require.Error(t, err)
+			} else {
+				require.NoError(t, err)
+				require.Equal(t, tt.expected, string(res))
+			}
+		}
+	})
+
+	// Test erroring when an invalid asset type is provided
+	t.Run("error", func(t *testing.T) {
+		invalid := AssetType("invalid")
+		_, err := invalid.MarshalJSON()
+		require.Error(t, err)
+	})
 }
 
 // ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
 
 func TestAsset_UnmarshalJSON(t *testing.T) {
-	tests := []struct {
-		input    string
-		expected AssetType
-		err      string
-	}{
-		// Errors
-		{"", "", "unexpected end of JSON input"},
-		{"xxx", "", "invalid character 'x' looking for beginning of value"},
-		// Invalid asset types
-		{`""`, "", "invalid asset type"},
-		{`"bob"`, "", "invalid asset type"},
-		// Success
-		{`"video"`, AssetVideo, ""},
-		{`"pdf"`, AssetPDF, ""},
-		{`"markdown"`, AssetMarkdown, ""},
-		{`"text"`, AssetText, ""},
-	}
+	t.Run("success", func(t *testing.T) {
+		tests := []struct {
+			input    string
+			expected AssetType
+			err      string
+		}{
+			{`"video"`, AssetVideo, ""},
+			{`"pdf"`, AssetPDF, ""},
+			{`"markdown"`, AssetMarkdown, ""},
+			{`"text"`, AssetText, ""},
+		}
 
-	for _, tt := range tests {
-		var a AssetType
-		err := a.UnmarshalJSON([]byte(tt.input))
-
-		if tt.err == "" {
+		for _, tt := range tests {
+			var a AssetType
+			err := a.UnmarshalJSON([]byte(tt.input))
 			require.NoError(t, err)
 			require.Equal(t, tt.expected, a)
-		} else {
+		}
+	})
+
+	// Test erroring when an invalid JSON is provided
+	t.Run("error", func(t *testing.T) {
+		tests := []struct {
+			input    string
+			expected AssetType
+			err      string
+		}{
+			// Invalid JSON
+			{"", "", "unexpected end of JSON input"},
+			{"xxx", "", "invalid character 'x' looking for beginning of value"},
+			// Unknown asset types
+			{`""`, "", "invalid asset type"},
+			{`"bob"`, "", "invalid asset type"},
+		}
+
+		for _, tt := range tests {
+			var a AssetType
+			err := a.UnmarshalJSON([]byte(tt.input))
+
 			require.Error(t, err)
 			require.Contains(t, err.Error(), tt.err)
 		}
-	}
+	})
 }
 
 // ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
 
 func TestAsset_Value(t *testing.T) {
-	tests := []struct {
-		input    string
-		expected string
-		hasError bool
-	}{
-		{"mp4", "video", false},
-		{"pdf", "pdf", false},
-		{"md", "markdown", false},
-		{"txt", "text", false},
-	}
+	// Test successfully getting the value of an asset
+	t.Run("success", func(t *testing.T) {
+		tests := []struct {
+			input    string
+			expected string
+		}{
+			{"mp4", "video"},
+			{"pdf", "pdf"},
+			{"md", "markdown"},
+			{"txt", "text"},
+		}
 
-	for _, tt := range tests {
-		a, err := NewAsset(tt.input)
-		require.NoError(t, err)
+		for _, tt := range tests {
+			a, err := NewAsset(tt.input)
+			require.NoError(t, err)
 
-		res, err := a.Value()
-		if tt.hasError {
-			require.Error(t, err)
-		} else {
+			res, err := a.Value()
 			require.NoError(t, err)
 			require.Equal(t, tt.expected, res)
 		}
-	}
+	})
 
-	// Invalid asset type
-	invalid := AssetType("invalid")
-	_, err := invalid.Value()
-	require.Error(t, err)
+	// Test erroring when an invalid asset type is provided
+	t.Run("error", func(t *testing.T) {
+		invalid := AssetType("invalid")
+		_, err := invalid.Value()
+		require.Error(t, err)
+	})
 }
 
 // ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
 
 func TestAsset_Scan(t *testing.T) {
+	// Test successfully scanning an asset type
 	t.Run("success", func(t *testing.T) {
 		tests := []struct {
 			value    any
@@ -249,6 +285,7 @@ func TestAsset_Scan(t *testing.T) {
 		}
 	})
 
+	// Test erroring when an invalid asset type is provided
 	t.Run("error", func(t *testing.T) {
 		tests := []struct {
 			value any

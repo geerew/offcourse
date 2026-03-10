@@ -4,7 +4,7 @@ import (
 	"fmt"
 	"strings"
 
-	"github.com/geerew/off-course/utils"
+	"github.com/geerew/off-course/utils/concurrency"
 )
 
 // ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
@@ -16,8 +16,8 @@ type StreamWrapper struct {
 	err     error
 	Out     string
 	Info    *MediaInfo
-	videos  utils.CMap[VideoKey, *VideoStream]
-	audios  utils.CMap[uint32, *AudioStream]
+	videos  concurrency.Map[VideoKey, *VideoStream]
+	audios  concurrency.Map[uint32, *AudioStream]
 }
 
 // ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
@@ -262,7 +262,7 @@ func (sw *StreamWrapper) GetMasterPlaylistSingle(assetID string, isMobile bool) 
 
 // getVideoStream returns a video stream for the given index and quality
 func (sw *StreamWrapper) getVideoStream(idx uint32, quality Quality) (*VideoStream, error) {
-	stream, _ := sw.videos.GetOrCreate(VideoKey{idx, quality}, func() *VideoStream {
+	stream, _ := sw.videos.GetOrSetFn(VideoKey{idx, quality}, func() *VideoStream {
 		ret, _ := NewVideoStream(sw, idx, quality)
 		return ret
 	})
@@ -298,7 +298,7 @@ func (sw *StreamWrapper) GetVideoSegment(idx uint32, quality Quality, segment in
 
 // getAudioStream returns an audio stream for the given audio index
 func (sw *StreamWrapper) getAudioStream(audio uint32) (*AudioStream, error) {
-	stream, _ := sw.audios.GetOrCreate(audio, func() *AudioStream {
+	stream, _ := sw.audios.GetOrSetFn(audio, func() *AudioStream {
 		ret, _ := NewAudioStream(sw, audio)
 		return ret
 	})

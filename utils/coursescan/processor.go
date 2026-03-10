@@ -1446,21 +1446,6 @@ func categorizeFile(p *parsedFile) FileCategory {
 
 // ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
 
-// isCard returns true when the filename is a card
-func isCard(filename string) bool {
-	ext := strings.ToLower(strings.TrimPrefix(filepath.Ext(filename), "."))
-	cardExt := types.CardExtension(ext)
-
-	if !cardExt.IsValid() {
-		return false
-	}
-
-	name := strings.TrimSuffix(filename, "."+ext)
-	return name == "card"
-}
-
-// ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
-
 // populateHashesIfChanged populates the hashes of the scanned assets if they have changed
 // Uses parallel processing with a worker pool to improve performance
 func populateHashesIfChanged(ctx context.Context, s *CourseScan, scanned []*models.Asset, existing []*models.Asset, course *models.Course, scanState *ScanState) error {
@@ -1726,7 +1711,7 @@ var filenameRegex = regexp.MustCompile(
 // parseFilename parses a filename into its constituent parts
 func parseFilename(normalizedPath, filename string) *parsedFile {
 	// Quick check for card
-	if isCard(filename) {
+	if utils.IsCard(filename) {
 		return &parsedFile{
 			Title:          "card",
 			Ext:            strings.ToLower(strings.TrimPrefix(filepath.Ext(filename), ".")),

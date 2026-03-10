@@ -9,137 +9,114 @@ import (
 
 // ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
 
+// Test successfully getting the keyframes value
 func TestKeyframes_Value(t *testing.T) {
-	t.Run("nil", func(t *testing.T) {
-		var k Keyframes
-		v, err := k.Value()
-		require.NoError(t, err)
-		assert.Equal(t, "[]", v)
-	})
+	scenarios := []struct {
+		keyframes Keyframes
+		expected  string
+	}{
+		{nil, "[]"},
+		{Keyframes{}, "[]"},
+		{Keyframes{0.0, 2.5, 5.0, 7.5, 10.0}, "[0,2.5,5,7.5,10]"},
+		{Keyframes{0.0}, "[0]"},
+	}
 
-	t.Run("empty", func(t *testing.T) {
-		k := Keyframes{}
-		v, err := k.Value()
+	for i, s := range scenarios {
+		v, err := s.keyframes.Value()
 		require.NoError(t, err)
-		assert.Equal(t, "[]", v)
-	})
-
-	t.Run("multiple", func(t *testing.T) {
-		k := Keyframes{0.0, 2.5, 5.0, 7.5, 10.0}
-		v, err := k.Value()
-		require.NoError(t, err)
-		assert.Equal(t, "[0,2.5,5,7.5,10]", v)
-	})
-
-	t.Run("single", func(t *testing.T) {
-		k := Keyframes{0.0}
-		v, err := k.Value()
-		require.NoError(t, err)
-		assert.Equal(t, "[0]", v)
-	})
+		require.Equal(t, s.expected, v, "(%d) Expected %s, got %s", i, s.expected, v)
+	}
 }
 
 // ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
 
 func TestKeyframes_Scan(t *testing.T) {
-	t.Run("nil", func(t *testing.T) {
-		var k Keyframes
-		err := k.Scan(nil)
-		require.NoError(t, err)
-		assert.Equal(t, Keyframes{}, k)
+	// Test successfully scanning keyframes from various inputs
+	t.Run("success", func(t *testing.T) {
+		scenarios := []struct {
+			value    any
+			expected Keyframes
+		}{
+			{nil, Keyframes{}},
+			{"", Keyframes{}},
+			{[]byte{}, Keyframes{}},
+			{`[]`, Keyframes{}},
+			{`[0,2.5,5,7.5,10]`, Keyframes{0.0, 2.5, 5.0, 7.5, 10.0}},
+			{`[0]`, Keyframes{0.0}},
+		}
+
+		for i, s := range scenarios {
+			var k Keyframes
+			err := k.Scan(s.value)
+			require.NoError(t, err, "(%d) Expected no error, got %v", i, err)
+			require.Equal(t, s.expected, k, "(%d) Expected %v, got %v", i, s.expected, k)
+		}
 	})
 
-	t.Run("empty string", func(t *testing.T) {
-		var k Keyframes
-		err := k.Scan("")
-		require.NoError(t, err)
-		assert.Equal(t, Keyframes{}, k)
-	})
+	// Test erroring when an invalid JSON is provided
+	t.Run("error", func(t *testing.T) {
+		scenarios := []any{
+			`invalid json`,
+			`{"not": "array"}`,
+		}
 
-	t.Run("empty array JSON", func(t *testing.T) {
-		var k Keyframes
-		err := k.Scan("[]")
-		require.NoError(t, err)
-		assert.Equal(t, Keyframes{}, k)
-	})
-
-	t.Run("valid JSON", func(t *testing.T) {
-		var k Keyframes
-		err := k.Scan("[0,2.5,5,7.5,10]")
-		require.NoError(t, err)
-		assert.Equal(t, Keyframes{0.0, 2.5, 5.0, 7.5, 10.0}, k)
-	})
-
-	t.Run("invalid JSON", func(t *testing.T) {
-		var k Keyframes
-		err := k.Scan("invalid json")
-		require.Error(t, err)
-	})
-
-	t.Run("wrong type JSON", func(t *testing.T) {
-		var k Keyframes
-		err := k.Scan(`{"not": "array"}`)
-		require.Error(t, err)
+		for i, s := range scenarios {
+			var k Keyframes
+			err := k.Scan(s)
+			require.Error(t, err, "(%d) Expected error, got %v", i, err)
+		}
 	})
 }
 
 // ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
 
 func TestKeyframes_Validate(t *testing.T) {
-	t.Run("empty", func(t *testing.T) {
-		k := Keyframes{}
-		require.NoError(t, k.Validate())
+	// Test successfully validating keyframes
+	t.Run("success", func(t *testing.T) {
+		scenarios := []Keyframes{
+			{},
+			{0.0},
+			{0.0, 2.5, 5.0, 7.5, 10.0},
+		}
+
+		for i, k := range scenarios {
+			err := k.Validate()
+			require.NoError(t, err, "(%d) Expected no error, got %v", i, err)
+		}
 	})
 
-	t.Run("single", func(t *testing.T) {
-		k := Keyframes{0.0}
-		require.NoError(t, k.Validate())
-	})
+	// Test erroring when keyframes are not in ascending order, or contain negative
+	// timestamps, or duplicate timestamps
+	t.Run("error", func(t *testing.T) {
+		scenarios := []Keyframes{
+			{-1.0, 2.5, 5.0},
+			{0.0, 5.0, 2.5, 10.0},
+			{0.0, 2.5, 2.5, 5.0},
+		}
 
-	t.Run("valid ascending", func(t *testing.T) {
-		k := Keyframes{0.0, 2.5, 5.0, 7.5, 10.0}
-		require.NoError(t, k.Validate())
-	})
-
-	t.Run("negative timestamp", func(t *testing.T) {
-		k := Keyframes{-1.0, 2.5, 5.0}
-		err := k.Validate()
-		require.Error(t, err)
-		assert.Contains(t, err.Error(), "negative timestamp")
-	})
-
-	t.Run("not ascending", func(t *testing.T) {
-		k := Keyframes{0.0, 5.0, 2.5, 10.0}
-		err := k.Validate()
-		require.Error(t, err)
-		assert.Contains(t, err.Error(), "not in ascending order")
-	})
-
-	t.Run("duplicate timestamps", func(t *testing.T) {
-		k := Keyframes{0.0, 2.5, 2.5, 5.0}
-		err := k.Validate()
-		require.Error(t, err)
-		assert.Contains(t, err.Error(), "not in ascending order")
+		for i, k := range scenarios {
+			err := k.Validate()
+			require.Error(t, err, "(%d) Expected error, got %v", i, err)
+		}
 	})
 }
 
 // ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
 
+// Test successfully getting the number of segments
 func TestKeyframes_SegmentCount(t *testing.T) {
-	t.Run("empty", func(t *testing.T) {
-		k := Keyframes{}
-		assert.Equal(t, 0, k.SegmentCount())
-	})
+	scenarios := []struct {
+		keyframes Keyframes
+		expected  int
+	}{
+		{Keyframes{}, 0},
+		{Keyframes{0.0}, 1},
+		{Keyframes{0.0, 2.5, 5.0, 7.5, 10.0}, 5},
+	}
 
-	t.Run("single", func(t *testing.T) {
-		k := Keyframes{0.0}
-		assert.Equal(t, 1, k.SegmentCount())
-	})
-
-	t.Run("multiple", func(t *testing.T) {
-		k := Keyframes{0.0, 2.5, 5.0, 7.5, 10.0}
-		assert.Equal(t, 5, k.SegmentCount())
-	})
+	for i, k := range scenarios {
+		assert.Equal(t, k.expected, k.keyframes.SegmentCount(), "(%d) Expected %d, got %d", i, k.expected, k.keyframes.SegmentCount())
+	}
 }
 
 // ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
@@ -147,14 +124,17 @@ func TestKeyframes_SegmentCount(t *testing.T) {
 func TestKeyframes_SegmentDuration(t *testing.T) {
 	k := Keyframes{0.0, 2.5, 5.0, 7.5, 10.0}
 
+	// Test successfully getting 0.0 when the index is negative
 	t.Run("negative index", func(t *testing.T) {
 		assert.Equal(t, 0.0, k.SegmentDuration(-1))
 	})
 
+	// Test successfully getting 0.0 when the index is out of bounds
 	t.Run("index out of bounds", func(t *testing.T) {
 		assert.Equal(t, 0.0, k.SegmentDuration(10))
 	})
 
+	// Test successfully getting the duration of the segment at the given index
 	t.Run("valid segments", func(t *testing.T) {
 		assert.Equal(t, 2.5, k.SegmentDuration(0))
 		assert.Equal(t, 2.5, k.SegmentDuration(1))
@@ -162,21 +142,8 @@ func TestKeyframes_SegmentDuration(t *testing.T) {
 		assert.Equal(t, 2.5, k.SegmentDuration(3))
 	})
 
+	// Test successfully getting 0.0 when the index is the last segment
 	t.Run("last segment", func(t *testing.T) {
 		assert.Equal(t, 0.0, k.SegmentDuration(4))
 	})
-}
-
-// ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
-
-func TestKeyframes_SqlRoundTrip(t *testing.T) {
-	// Verify Value/Scan round-trip works with sql.Null
-	original := Keyframes{0.0, 2.5, 5.0}
-	v, err := original.Value()
-	require.NoError(t, err)
-
-	var scanned Keyframes
-	err = scanned.Scan(v)
-	require.NoError(t, err)
-	assert.Equal(t, original, scanned)
 }

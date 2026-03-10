@@ -80,11 +80,13 @@ func (k Keyframes) SegmentCount() int {
 
 // ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
 
-// SegmentDuration returns the duration of the segment at index. Returns 0 when
-// index is out of bounds or it is the last segment
+// SegmentDuration returns the duration of the segment at index
+//
+// Returns 0 when the index is out of bounds or it's the last segment
 func (k Keyframes) SegmentDuration(segmentIndex int) float64 {
 	if segmentIndex < 0 || segmentIndex >= len(k) || segmentIndex == len(k)-1 {
 		return 0
 	}
+
 	return k[segmentIndex+1] - k[segmentIndex]
 }

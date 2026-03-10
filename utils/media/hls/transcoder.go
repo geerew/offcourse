@@ -8,8 +8,8 @@ import (
 	"github.com/Masterminds/squirrel"
 	"github.com/geerew/off-course/dao"
 	"github.com/geerew/off-course/models"
-	"github.com/geerew/off-course/utils"
 	"github.com/geerew/off-course/utils/appfs"
+	"github.com/geerew/off-course/utils/concurrency"
 	"github.com/geerew/off-course/utils/logger"
 	"github.com/spf13/afero"
 )
@@ -20,7 +20,7 @@ import (
 type Transcoder struct {
 	config    *TranscoderConfig
 	cachePath string
-	streams   utils.CMap[string, *StreamWrapper]
+	streams   concurrency.Map[string, *StreamWrapper]
 	assetChan chan string
 	tracker   *Tracker
 }
@@ -66,7 +66,7 @@ func NewTranscoder(config *TranscoderConfig) (*Transcoder, error) {
 	transcoder := &Transcoder{
 		config:    config,
 		cachePath: cachePath,
-		streams:   utils.NewCMap[string, *StreamWrapper](),
+		streams:   concurrency.NewMap[string, *StreamWrapper](),
 		assetChan: make(chan string, 10),
 	}
 
@@ -83,8 +83,8 @@ func (t *Transcoder) newStreamWrapper(ctx context.Context, path string, assetID 
 	streamWrapper := &StreamWrapper{
 		config:  t.config,
 		Out:     filepath.Join(t.cachePath, assetID),
-		videos:  utils.NewCMap[VideoKey, *VideoStream](),
-		audios:  utils.NewCMap[uint32, *AudioStream](),
+		videos:  concurrency.NewMap[VideoKey, *VideoStream](),
+		audios:  concurrency.NewMap[uint32, *AudioStream](),
 		assetID: assetID,
 	}
 
@@ -161,9 +161,7 @@ func (t *Transcoder) newStreamWrapper(ctx context.Context, path string, assetID 
 //
 // It blocks until the StreamWrapper is ready or returns an error
 func (t *Transcoder) getStreamWrapper(ctx context.Context, path string, assetID string) (*StreamWrapper, error) {
-	streamWrapper, _ := t.streams.GetOrCreate(assetID, func() *StreamWrapper {
-		return t.newStreamWrapper(ctx, path, assetID)
-	})
+	streamWrapper, _ := t.streams.GetOrSet(assetID, t.newStreamWrapper(ctx, path, assetID))
 
 	if streamWrapper.err != nil {
 		t.streams.Remove(assetID)

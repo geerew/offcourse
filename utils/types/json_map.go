@@ -13,15 +13,27 @@ type JsonMap map[string]any
 
 // ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
 
+// String implements the `Stringer` interface
+func (m JsonMap) String() string {
+	data, err := m.MarshalJSON()
+	if err != nil {
+		return ""
+	}
+
+	return string(data)
+}
+
+// ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
+
 // MarshalJSON implements the `json.Marshaler` interface
 func (m JsonMap) MarshalJSON() ([]byte, error) {
-	type alias JsonMap // prevent recursion
 
-	// initialize an empty map to ensure that `{}` is returned as json
 	if m == nil {
 		m = JsonMap{}
 	}
 
+	// Create an alias to prevent recursion (calling this function)
+	type alias JsonMap
 	return json.Marshal(alias(m))
 }
 
@@ -30,7 +42,6 @@ func (m JsonMap) MarshalJSON() ([]byte, error) {
 // Value implements the `driver.Valuer` interface
 func (m JsonMap) Value() (driver.Value, error) {
 	data, err := json.Marshal(m)
-
 	return string(data), err
 }
 
