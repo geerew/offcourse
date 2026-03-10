@@ -149,7 +149,7 @@ func (a AssetType) Value() (driver.Value, error) {
 
 // ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
 
-// Scan implements `sql.Scanner` interface, scanning the provided value into
+// Scan implements the `sql.Scanner` interface, scanning the provided value into
 // the AssetType
 func (a *AssetType) Scan(value any) error {
 	vv := cast.ToString(value)

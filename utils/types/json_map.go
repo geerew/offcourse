@@ -47,7 +47,8 @@ func (m JsonMap) Value() (driver.Value, error) {
 
 // ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
 
-// Scan implements `sql.Scanner` interface
+// Scan implements the`sql.Scanner` interface, scanning the provided value into
+// the JsonMap
 func (m *JsonMap) Scan(value any) error {
 	var data []byte
 	switch v := value.(type) {

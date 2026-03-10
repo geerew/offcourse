@@ -99,7 +99,7 @@ func (d DateTime) Value() (driver.Value, error) {
 
 // ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
 
-// Scan implements `sql.Scanner` interface, scanning the provided value into
+// Scan implements the `sql.Scanner` interface, scanning the provided value into
 // the DateTime
 func (d *DateTime) Scan(value any) error {
 	switch v := value.(type) {

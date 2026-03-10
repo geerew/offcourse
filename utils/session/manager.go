@@ -12,8 +12,7 @@ import (
 
 // ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
 
-// Storage is an interface that is implemented by storage providers. It extends the fiber.Storage
-// interface
+// Storage extends the `fiber.Storage` interface
 type Storage interface {
 	fiber.Storage
 	DeleteUser(userId string) error
@@ -21,6 +20,8 @@ type Storage interface {
 
 // ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
 
+// SessionManager is a thin wrapper around the fiber session store that enables storing
+// sessions in a database, instead of in-memory
 type SessionManager struct {
 	dao        *dao.DAO
 	fiberStore *fs.Store
@@ -60,7 +61,6 @@ func (s *SessionManager) SetSession(c *fiber.Ctx, userId string, userRole types.
 		return err
 	}
 
-	// Prevent session fixation on login
 	if err := session.Regenerate(); err != nil {
 		return err
 	}
@@ -69,12 +69,6 @@ func (s *SessionManager) SetSession(c *fiber.Ctx, userId string, userRole types.
 	session.Set("role", userRole.String())
 
 	return session.Save()
-
-	// // Update the user_id in the session. This is an extra field that makes it easier to look up
-	// // sessions by user ID
-	// //
-	// // It must be done AFTER the session is saved, otherwise the session will not exist
-	// return s.storage.SetUser(sessionId, userId)
 }
 
 // ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
