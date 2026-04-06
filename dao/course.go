@@ -2,13 +2,16 @@ package dao
 
 import (
 	"context"
+	"fmt"
 	"slices"
 	"strings"
 
 	"github.com/Masterminds/squirrel"
 	"github.com/geerew/off-course/models"
 	"github.com/geerew/off-course/utils"
+	"github.com/geerew/off-course/utils/queryparser"
 	"github.com/geerew/off-course/utils/types"
+	"github.com/spf13/cast"
 )
 
 // ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
@@ -108,6 +111,10 @@ func (dao *DAO) GetCourse(ctx context.Context, dbOpts *Options) (*models.Course,
 // don't like nullable fields in the model struct or having to support a second struct with
 // nullable fields. So for now, this function can make up to 2 additional db queries
 func (dao *DAO) ListCourses(ctx context.Context, dbOpts *Options) ([]*models.Course, error) {
+	if err := parseCourseStringQuery(ctx, dbOpts); err != nil {
+		return nil, err
+	}
+
 	builderOpts := newBuilderOptions(models.COURSE_TABLE).
 		WithColumns(models.CourseColumns()...).
 		SetDbOpts(dbOpts)
@@ -326,4 +333,182 @@ func attachCourseRelations(ctx context.Context, dao *DAO, userID string, courses
 	}
 
 	return nil
+}
+
+// ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
+
+// parseCourseStringQuery parses dbOpts.StringQuery to build a more advanced WHERE/ORDER BY
+// expression
+func parseCourseStringQuery(ctx context.Context, dbOpts *Options) error {
+	if dbOpts == nil || dbOpts.StringQuery == nil || dbOpts.StringQuery.Query == "" {
+		return nil
+	}
+
+	parsed, err := queryparser.Parse(dbOpts.StringQuery.Query, dbOpts.StringQuery.AllowedFilters)
+	if err != nil {
+		return fmt.Errorf("%w: %w", ErrStringQueryParse, err)
+	}
+
+	if parsed == nil {
+		return nil
+	}
+
+	if len(parsed.Sort) > 0 {
+		dbOpts.OverrideOrderBy(parsed.Sort...)
+	}
+
+	userID := ""
+	if parsed.FoundFilters["progress"] || parsed.FoundFilters["favourite"] {
+		principal, err := principalFromCtx(ctx)
+		if err != nil {
+			return err
+		}
+
+		userID = principal.UserID
+	}
+
+	dbOpts.WithWhere(courseWhereBuilder(parsed.Expr, userID))
+
+	return nil
+}
+
+// ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
+
+// coursesWhereBuilder builds a squirrel WHERE expression from a queryparser.QueryExpr
+func courseWhereBuilder(expr queryparser.QueryExpr, userID string) squirrel.Sqlizer {
+	switch node := expr.(type) {
+	case *queryparser.ValueExpr:
+		return squirrel.Like{models.COURSE_TABLE_TITLE: "%" + node.Value + "%"}
+	case *queryparser.FilterExpr:
+		switch node.Key {
+		case "available":
+			value, err := cast.ToBoolE(node.Value)
+			if err != nil {
+				return squirrel.Expr("1=0")
+			}
+			return squirrel.Eq{models.COURSE_TABLE_AVAILABLE: value}
+		case "tag":
+			return courseTagsBuilder([]string{node.Value})
+		case "progress":
+			return courseProgressFilterBuilder(node.Value, userID)
+		case "favourite":
+			return courseFavouriteFilterBuilder(node.Value, userID)
+		default:
+			return nil
+		}
+	case *queryparser.AndExpr:
+		var andSlice []squirrel.Sqlizer
+		var tags []string
+		onlyTags := true
+
+		for _, child := range node.Children {
+			if queryparser.IsFilterWithKey(child, "tag") {
+				tags = append(tags, child.(*queryparser.FilterExpr).Value)
+			} else {
+				onlyTags = false
+				andSlice = append(andSlice, courseWhereBuilder(child, userID))
+			}
+		}
+
+		var tagCond squirrel.Sqlizer
+		if len(tags) > 0 {
+			tagCond = courseTagsBuilder(tags)
+
+			if onlyTags {
+				return tagCond
+			} else if tagCond != nil {
+				andSlice = append(andSlice, tagCond)
+			}
+		}
+
+		return squirrel.And(andSlice)
+	case *queryparser.OrExpr:
+		var orSlice []squirrel.Sqlizer
+		for _, child := range node.Children {
+			orSlice = append(orSlice, courseWhereBuilder(child, userID))
+		}
+
+		return squirrel.Or(orSlice)
+	default:
+		return nil
+	}
+}
+
+// ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
+
+// courseProgressFilterBuilder builds a squirrel WHERE expression for the progress filter
+func courseProgressFilterBuilder(value, userID string) squirrel.Sqlizer {
+	baseWhere := squirrel.And{
+		squirrel.Expr(models.COURSE_PROGRESS_TABLE_COURSE_ID + " = " + models.COURSE_TABLE_ID),
+		squirrel.Eq{models.COURSE_PROGRESS_TABLE_USER_ID: userID},
+	}
+
+	switch strings.ToLower(value) {
+	case "not started":
+		noProgress := squirrel.Expr("NOT EXISTS (?)",
+			squirrel.Select("1").From(models.COURSE_PROGRESS_TABLE).Where(baseWhere))
+		startedFalse := squirrel.Expr("EXISTS (?)",
+			squirrel.Select("1").From(models.COURSE_PROGRESS_TABLE).
+				Where(baseWhere).
+				Where(squirrel.Eq{models.COURSE_PROGRESS_TABLE_STARTED: false}))
+		return squirrel.Or{noProgress, startedFalse}
+	case "started":
+		return squirrel.Expr("EXISTS (?)",
+			squirrel.Select("1").From(models.COURSE_PROGRESS_TABLE).
+				Where(baseWhere).
+				Where(squirrel.Eq{models.COURSE_PROGRESS_TABLE_STARTED: true}).
+				Where(squirrel.NotEq{models.COURSE_PROGRESS_TABLE_PERCENT: 100}))
+	case "completed":
+		return squirrel.Expr("EXISTS (?)",
+			squirrel.Select("1").From(models.COURSE_PROGRESS_TABLE).
+				Where(baseWhere).
+				Where(squirrel.Eq{models.COURSE_PROGRESS_TABLE_PERCENT: 100}))
+	default:
+		return nil
+	}
+}
+
+// ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
+
+func courseFavouriteFilterBuilder(value, userID string) squirrel.Sqlizer {
+	where := squirrel.And{
+		squirrel.Expr(models.COURSE_FAVOURITE_TABLE_COURSE_ID + " = " + models.COURSE_TABLE_ID),
+		squirrel.Eq{models.COURSE_FAVOURITE_TABLE_USER_ID: userID},
+	}
+	existsSubq := squirrel.Select("1").From(models.COURSE_FAVOURITE_TABLE).Where(where)
+
+	switch strings.ToLower(value) {
+	case "true":
+		return squirrel.Expr("EXISTS (?)", existsSubq)
+	case "false":
+		return squirrel.Expr("NOT EXISTS (?)", existsSubq)
+	default:
+		return nil
+	}
+}
+
+// ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
+
+// courseTagsBuilder builds a squirrel WHERE expression for the tags filter
+func courseTagsBuilder(tags []string) squirrel.Sqlizer {
+	if len(tags) == 0 {
+		return squirrel.Expr("1=1")
+	}
+
+	baseQuery := squirrel.
+		Select("1").
+		From(models.COURSE_TAG_TABLE).
+		Join(models.TAG_TABLE + " ON " + models.TAG_TABLE_ID + " = " + models.COURSE_TAG_TABLE_TAG_ID).
+		Where(models.COURSE_TAG_TABLE_COURSE_ID + " = " + models.COURSE_TABLE_ID)
+
+	if len(tags) == 1 {
+		baseQuery = baseQuery.Where(squirrel.Eq{models.TAG_TABLE_TAG: tags[0]})
+	} else if len(tags) > 1 {
+		baseQuery = baseQuery.
+			Where(squirrel.Eq{models.TAG_TABLE_TAG: tags}).
+			GroupBy(models.COURSE_TAG_TABLE_COURSE_ID).
+			Having("COUNT(DISTINCT "+models.TAG_TABLE_TAG+") = ?", len(tags))
+	}
+
+	return squirrel.Expr("EXISTS (?)", baseQuery)
 }

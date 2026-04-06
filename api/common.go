@@ -8,11 +8,8 @@ import (
 	"strconv"
 	"strings"
 
-	"github.com/geerew/off-course/dao"
 	"github.com/geerew/off-course/models"
 	"github.com/geerew/off-course/utils/appfs"
-	"github.com/geerew/off-course/utils/pagination"
-	"github.com/geerew/off-course/utils/queryparser"
 	"github.com/geerew/off-course/utils/types"
 	"github.com/gofiber/fiber/v2"
 	"github.com/gofiber/fiber/v2/middleware/filesystem"
@@ -65,64 +62,6 @@ func validatePassword(password string) error {
 	}
 
 	return nil
-}
-
-// ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
-
-// builderOptions is a struct to hold the options for the optionsBuilder
-type builderOptions struct {
-	// A default order by clause to use if none is found in the query
-	DefaultOrderBy []string
-
-	// A slice of allowed filters to match on in the query
-	AllowedFilters []string
-
-	// Whether to paginate the results
-	Paginate bool
-
-	// A function to run after the query has been parsed. It will only run if the query is not nil
-	AfterParseHook func(*queryparser.QueryResult, *dao.Options, string)
-}
-
-// ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
-
-// optionsBuilder builds a dao.Options based on a `q` query parameter
-func optionsBuilder(c *fiber.Ctx, builderOptions builderOptions, userId string) (*dao.Options, error) {
-	dbOpts := dao.NewOptions()
-
-	orderBy := []string{models.BASE_CREATED_AT + " desc"}
-	if len(builderOptions.DefaultOrderBy) > 0 {
-		orderBy = builderOptions.DefaultOrderBy
-	}
-	dbOpts.WithOrderBy(orderBy...)
-
-	if builderOptions.Paginate {
-		dbOpts.WithPagination(pagination.NewFromApi(c))
-	}
-
-	q := c.Query("q", "")
-	if q == "" {
-		return dbOpts, nil
-	}
-
-	parsed, err := queryparser.Parse(q, builderOptions.AllowedFilters)
-	if err != nil {
-		return nil, err
-	}
-
-	if parsed == nil {
-		return dbOpts, nil
-	}
-
-	if len(parsed.Sort) > 0 {
-		dbOpts.OverrideOrderBy(parsed.Sort...)
-	}
-
-	if builderOptions.AfterParseHook != nil {
-		builderOptions.AfterParseHook(parsed, dbOpts, userId)
-	}
-
-	return dbOpts, nil
 }
 
 // ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~

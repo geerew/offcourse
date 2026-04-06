@@ -2,7 +2,7 @@ package queryparser
 
 // ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
 
-// QueryResult represents the result of parsing.=
+// QueryResult represents the result of a query parse
 type QueryResult struct {
 	Expr         QueryExpr
 	Sort         []string

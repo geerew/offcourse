@@ -72,6 +72,10 @@ func (dao *DAO) GetAttachment(ctx context.Context, dbOpts *Options) (*models.Att
 // ListAttachments gets all records from the attachments table based upon the where clause and pagination
 // in the options
 func (dao *DAO) ListAttachments(ctx context.Context, dbOpts *Options) ([]*models.Attachment, error) {
+	if err := applyStringQuerySortOnly(dbOpts); err != nil {
+		return nil, err
+	}
+
 	builderOpts := newBuilderOptions(models.ATTACHMENT_TABLE).
 		WithColumns(models.AttachmentColumns()...).
 		SetDbOpts(dbOpts)

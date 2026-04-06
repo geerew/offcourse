@@ -72,7 +72,7 @@ func TestMap_BasicOps(t *testing.T) {
 	require.Equal(t, 5, b)
 	require.Equal(t, 6, c)
 
-	// Test running a function against each key/value pair using Range
+	// Test Range stops when the callback returns false
 	m3 := NewMap[string, *int]()
 	a = 1
 	b = 2
@@ -80,17 +80,13 @@ func TestMap_BasicOps(t *testing.T) {
 	m3.Set("a", &a)
 	m3.Set("b", &b)
 	m3.Set("c", &c)
+	n := 0
 	m3.Range(func(k string, v *int) bool {
-		if k == "c" {
-			return false
-		}
+		n++
 		*v += 3
-		return true
+		return n < 2
 	})
-	require.Equal(t, 4, a)
-	require.Equal(t, 5, b)
-	require.Equal(t, 3, c)
-
+	require.Equal(t, 12, a+b+c)
 }
 
 // ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~

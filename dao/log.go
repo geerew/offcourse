@@ -2,10 +2,12 @@ package dao
 
 import (
 	"context"
+	"fmt"
 
 	"github.com/Masterminds/squirrel"
 	"github.com/geerew/off-course/models"
 	"github.com/geerew/off-course/utils"
+	"github.com/geerew/off-course/utils/queryparser"
 )
 
 // ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
@@ -60,6 +62,10 @@ func (dao *DAO) GetLog(ctx context.Context, dbOpts *Options) (*models.Log, error
 // ListLogs gets all records from the logs table based upon the where clause and pagination
 // in the options
 func (dao *DAO) ListLogs(ctx context.Context, dbOpts *Options) ([]*models.Log, error) {
+	if err := parseLogStringQuery(dbOpts); err != nil {
+		return nil, err
+	}
+
 	builderOpts := newBuilderOptions(models.LOG_TABLE).
 		WithColumns(models.LogColumns()...).
 		SetDbOpts(dbOpts)
@@ -124,4 +130,66 @@ func (dao *DAO) CreateLogsBatch(ctx context.Context, logs []*models.Log) error {
 
 	_, err = dao.db.ExecContext(ctx, sqlStr, args...)
 	return err
+}
+
+// ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
+
+// parseLogStringQuery parses dbOpts.StringQuery when Query is non-empty and sets Where / OrderBy
+func parseLogStringQuery(dbOpts *Options) error {
+	if dbOpts == nil || dbOpts.StringQuery == nil || dbOpts.StringQuery.Query == "" {
+		return nil
+	}
+
+	parsed, err := queryparser.Parse(dbOpts.StringQuery.Query, dbOpts.StringQuery.AllowedFilters)
+	if err != nil {
+		return fmt.Errorf("%w: %w", ErrStringQueryParse, err)
+	}
+
+	if parsed == nil {
+		return nil
+	}
+
+	if len(parsed.Sort) > 0 {
+		dbOpts.OverrideOrderBy(parsed.Sort...)
+	}
+
+	dbOpts.WithWhere(logWhereBuilder(parsed.Expr))
+	return nil
+}
+
+// ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
+
+// logWhereBuilder builds a squirrel WHERE expression from a queryparser.QueryExpr
+func logWhereBuilder(expr queryparser.QueryExpr) squirrel.Sqlizer {
+	switch node := expr.(type) {
+	case *queryparser.ValueExpr:
+		return squirrel.Like{models.LOG_TABLE_MESSAGE: "%" + node.Value + "%"}
+	case *queryparser.FilterExpr:
+		switch node.Key {
+		case "level":
+			return squirrel.Eq{models.LOG_TABLE_LEVEL: node.Value}
+		case "type":
+			return squirrel.Eq{"JSON_EXTRACT(" + models.LOG_TABLE_DATA + ", '$.type')": node.Value}
+		case "component":
+			return squirrel.Eq{"JSON_EXTRACT(" + models.LOG_TABLE_DATA + ", '$.component')": node.Value}
+		default:
+			return nil
+		}
+	case *queryparser.AndExpr:
+		var andSlice []squirrel.Sqlizer
+		for _, child := range node.Children {
+			andSlice = append(andSlice, logWhereBuilder(child))
+		}
+
+		return squirrel.And(andSlice)
+	case *queryparser.OrExpr:
+		var orSlice []squirrel.Sqlizer
+		for _, child := range node.Children {
+			orSlice = append(orSlice, logWhereBuilder(child))
+		}
+
+		return squirrel.Or(orSlice)
+	default:
+		return nil
+	}
 }

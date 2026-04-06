@@ -95,12 +95,15 @@ func (dao *DAO) GetLesson(ctx context.Context, dbOpts *Options) (*models.Lesson,
 // Note: Something can definitely be done to reduce the number of db queries whether via
 // JOINS, parallelisation, or something else
 func (dao *DAO) ListLessons(ctx context.Context, dbOpts *Options) ([]*models.Lesson, error) {
+	if err := applyStringQuerySortOnly(dbOpts); err != nil {
+		return nil, err
+	}
+
 	// Fetch lessons
 	builderOpts := newBuilderOptions(models.LESSON_TABLE).
 		WithColumns(models.LessonColumns()...).
 		SetDbOpts(dbOpts)
 
-	// Override order by
 	builderOpts.DbOpts.WithOrderBy(
 		models.LESSON_TABLE_PREFIX+" ASC ",
 		models.LESSON_TABLE_MODULE+" ASC",

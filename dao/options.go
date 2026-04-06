@@ -12,7 +12,7 @@ import (
 // This will passed to the internal DAO builder options struct for use in the query
 // building process
 type Options struct {
-	// OrderBy cab be used to order the results
+	// OrderBy can be used to order the results
 	//
 	// Example: []string{"id DESC", "title ASC"}
 	OrderBy []string
@@ -21,7 +21,7 @@ type Options struct {
 	// when using a case expression
 	OrderByClause squirrel.Sqlizer
 
-	// Any valid squirrel WHERE expression
+	// Where is any valid squirrel WHERE expression
 	//
 	// Examples:
 	//
@@ -48,6 +48,24 @@ type Options struct {
 	//
 	// Example: &pagination.Pagination{Page: 1, Limit: 10}
 	Pagination *pagination.Pagination
+
+	// StringQuery can be used to better filter the results. This will mainly only ever being used in the
+	// API, which takes the query param from the client and parses it into a StringQuery struct
+	//
+	// Example:
+	//   &StringQuery{
+	//     Query: "tag:foo and progress:started or progress:completed",
+	//     AllowedFilters: []string{"tag", "progress"},
+	//   }
+	StringQuery *StringQuery
+}
+
+// ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
+
+// StringQuery represents a list query, for example `q="tag:foo and progress:started or progress:completed"`
+type StringQuery struct {
+	Query          string
+	AllowedFilters []string
 }
 
 // ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
@@ -95,6 +113,14 @@ func (o *Options) WithWhere(pred squirrel.Sqlizer) *Options {
 // WithPagination sets the pagination options
 func (o *Options) WithPagination(p *pagination.Pagination) *Options {
 	o.Pagination = p
+	return o
+}
+
+// ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
+
+// WithStringQuery sets a string query
+func (o *Options) WithStringQuery(spec *StringQuery) *Options {
+	o.StringQuery = spec
 	return o
 }
 

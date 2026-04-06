@@ -3,10 +3,13 @@ package dao
 import (
 	"context"
 	"fmt"
+	"slices"
+	"strings"
 
 	"github.com/Masterminds/squirrel"
 	"github.com/geerew/off-course/models"
 	"github.com/geerew/off-course/utils"
+	"github.com/geerew/off-course/utils/queryparser"
 )
 
 // ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
@@ -61,6 +64,10 @@ func (dao *DAO) GetTag(ctx context.Context, dbOpts *Options) (*models.Tag, error
 // ListTags gets all records from the tags table based upon the where clause and pagination
 // in the options
 func (dao *DAO) ListTags(ctx context.Context, dbOpts *Options) ([]*models.Tag, error) {
+	if err := parseTagStringQuery(dbOpts); err != nil {
+		return nil, err
+	}
+
 	builderOpts := newBuilderOptions(models.TAG_TABLE).
 		WithColumns(models.TagColumns()...).
 		WithLeftJoin(models.COURSE_TAG_TABLE, fmt.Sprintf("%s = %s", models.COURSE_TAG_TABLE_TAG_ID, models.TAG_TABLE_ID)).
@@ -76,6 +83,10 @@ func (dao *DAO) ListTags(ctx context.Context, dbOpts *Options) ([]*models.Tag, e
 //
 // TODO add tests
 func (dao *DAO) ListTagNames(ctx context.Context, dbOpts *Options) ([]string, error) {
+	if err := parseTagStringQuery(dbOpts); err != nil {
+		return nil, err
+	}
+
 	builderOpts := newBuilderOptions(models.TAG_TABLE).
 		WithColumns(models.TAG_TABLE + "." + models.TAG_TAG).
 		SetDbOpts(dbOpts)
@@ -131,4 +142,81 @@ func (dao *DAO) DeleteTags(ctx context.Context, dbOpts *Options) error {
 
 	_, err := dao.db.ExecContext(ctx, sqlStr, args...)
 	return err
+}
+
+// ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
+
+// defaultTagsOrderBy is the default ORDER BY clause for tags
+var defaultTagsOrderBy = []string{models.TAG_TABLE_TAG + " asc"}
+
+// ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
+
+// parseTagStringQuery parses dbOpts.StringQuery when Query is non-empty and sets Where / OrderBy
+func parseTagStringQuery(dbOpts *Options) error {
+	if dbOpts == nil || dbOpts.StringQuery == nil || dbOpts.StringQuery.Query == "" {
+		return nil
+	}
+
+	parsed, err := queryparser.Parse(dbOpts.StringQuery.Query, dbOpts.StringQuery.AllowedFilters)
+	if err != nil {
+		return fmt.Errorf("%w: %w", ErrStringQueryParse, err)
+	}
+
+	if parsed == nil {
+		return nil
+	}
+
+	if len(parsed.Sort) > 0 {
+		dbOpts.OverrideOrderBy(parsed.Sort...)
+	}
+
+	if len(parsed.FreeText) == 0 {
+		return nil
+	}
+
+	if slices.Contains(parsed.Sort, "special") {
+		filter := strings.ToLower(parsed.FreeText[0])
+
+		dbOpts.WithWhere(squirrel.Like{models.TAG_TABLE_TAG: "%" + filter + "%"})
+
+		caseExpr := squirrel.Case().
+			When(squirrel.Eq{"LOWER(" + models.TAG_TABLE_TAG + ")": filter}, "0").
+			When(squirrel.Like{"LOWER(" + models.TAG_TABLE_TAG + ")": filter + "%"}, "1").
+			When(squirrel.Like{"LOWER(" + models.TAG_TABLE_TAG + ")": "%" + filter + "%"}, "2")
+
+		sql, args, _ := caseExpr.ToSql()
+		dbOpts.OrderByClause = squirrel.Expr(sql+", "+defaultTagsOrderBy[0], args...)
+
+		dbOpts.OrderBy = []string{}
+	} else {
+		dbOpts.WithWhere(tagWhereBuilder(parsed.Expr))
+	}
+
+	return nil
+}
+
+// ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
+
+// tagWhereBuilder builds a squirrel WHERE expression from a queryparser.QueryExpr
+func tagWhereBuilder(expr queryparser.QueryExpr) squirrel.Sqlizer {
+	switch node := expr.(type) {
+	case *queryparser.ValueExpr:
+		return squirrel.Like{models.TAG_TABLE_TAG: "%" + node.Value + "%"}
+	case *queryparser.AndExpr:
+		var andSlice []squirrel.Sqlizer
+		for _, child := range node.Children {
+			andSlice = append(andSlice, tagWhereBuilder(child))
+		}
+
+		return squirrel.And(andSlice)
+	case *queryparser.OrExpr:
+		var orSlice []squirrel.Sqlizer
+		for _, child := range node.Children {
+			orSlice = append(orSlice, tagWhereBuilder(child))
+		}
+
+		return squirrel.Or(orSlice)
+	default:
+		return nil
+	}
 }
