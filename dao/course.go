@@ -364,7 +364,7 @@ func parseCourseApiQuery(ctx context.Context, dbOpts *Options) error {
 
 	// When filtering by progress or favourite, get the principal user ID
 	userID := ""
-	if parsed.FoundFilters["progress"] || parsed.FoundFilters["favourite"] {
+	if parsed.FoundFilter("progress") || parsed.FoundFilter("favourite") {
 		principal, err := principalFromCtx(ctx)
 		if err != nil {
 			return err
@@ -408,8 +408,8 @@ func courseWhereBuilder(expr queryparser.QueryExpr, userID string) squirrel.Sqli
 		onlyTags := true
 
 		for _, child := range node.Children {
-			if queryparser.IsFilterWithKey(child, "tag") {
-				tags = append(tags, child.(*queryparser.FilterExpr).Value)
+			if f, ok := child.(*queryparser.FilterExpr); ok && f.Key == "tag" {
+				tags = append(tags, f.Value)
 			} else {
 				onlyTags = false
 				andSlice = append(andSlice, courseWhereBuilder(child, userID))

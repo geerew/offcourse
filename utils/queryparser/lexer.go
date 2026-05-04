@@ -1,6 +1,7 @@
 package queryparser
 
 import (
+	"errors"
 	"fmt"
 	"strings"
 	"unicode"
@@ -27,14 +28,6 @@ type token struct {
 // ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
 
 // tokenize tokenizes an input string while respecting quoted substrings
-//
-// Example
-//   - "tag:go 1" -> ["tag:go 1"]
-//   - "tag:'go 1'" -> ["tag:go 1"]
-//   - "tag:'go 1' OR tag:'go 2'" -> ["tag:go 1", "OR", "tag:go 2"]
-//   - "tag:'go 1' AND tag:'go 2'" -> ["tag:go 1", "AND", "tag:go 2"]
-//   - "tag:'go 1' OR tag:'go 2' AND tag:'go 3'" -> ["tag:go 1", "OR", "tag:go 2", "AND", "tag:go 3"]
-//   - "tag:'go 1' OR tag:'go 2' AND tag:'go 3'" -> ["tag:go 1", "OR", "tag:go 2", "AND", "tag:go 3"]
 //
 // Unterminated quoted input returns an error
 func tokenize(input string) ([]token, error) {
@@ -105,7 +98,7 @@ func tokenize(input string) ([]token, error) {
 	}
 
 	if q != qNone {
-		return nil, fmt.Errorf("unterminated quoted string")
+		return nil, errors.Join(ErrInvalidSyntax, fmt.Errorf("%w: unterminated quoted string", ErrUnterminatedQuote))
 	}
 
 	if current.Len() > 0 {

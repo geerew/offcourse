@@ -1,42 +1,53 @@
 package queryparser
 
+import "strings"
+
 // ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
 
 // QueryResult represents the result of a query parse
 type QueryResult struct {
 	Expr         QueryExpr
-	FoundFilters map[string]bool
+	foundFilters map[string]bool
 }
 
 // ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
 
-// Parse a query string into an AST of key:value filters combined with AND/OR and parentheses.
-// Tokens must be allowed filter keys (see allowedFilters). There is no free-text mode.
-func Parse(q string, allowedFilters []string) (*QueryResult, error) {
+// FoundFilter returns true when a filter was found at least once
+func (r *QueryResult) FoundFilter(key string) bool {
+	if r == nil || r.foundFilters == nil {
+		return false
+	}
+
+	k := strings.ToLower(strings.TrimSpace(key))
+	if k == "" {
+		return false
+	}
+
+	return r.foundFilters[k]
+}
+
+// ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
+
+// Parse a query string into an AST of key:value filters combined with AND/OR and parentheses
+
+func Parse(q string, allowedKeys []string) (*QueryResult, error) {
 	allTokens, err := tokenize(q)
 	if err != nil {
 		return nil, err
 	}
 
-	ast := newASTParser(allTokens, allowedFilters)
-	expr, err := ast.parseOr()
+	p := newParser(allTokens, allowedKeys)
+	expr, err := p.parseOr()
 	if err != nil {
+		return nil, err
+	}
+
+	if err := p.assertFullyConsumed(); err != nil {
 		return nil, err
 	}
 
 	return &QueryResult{
 		Expr:         expr,
-		FoundFilters: ast.FoundFilters,
+		foundFilters: p.FoundFilters,
 	}, nil
-}
-
-// ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
-
-// IsFilterWithKey checks if the given expression is a filter with the given key
-func IsFilterWithKey(expr QueryExpr, key string) bool {
-	if f, ok := expr.(*FilterExpr); ok {
-		return f.Key == key
-	}
-
-	return false
 }
