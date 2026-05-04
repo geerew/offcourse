@@ -98,6 +98,10 @@ func (dao *DAO) GetCourseTag(ctx context.Context, dbOpts *Options) (*models.Cour
 // ListCourseTags gets all records from the course tags table based upon the where clause and pagination
 // in the options
 func (dao *DAO) ListCourseTags(ctx context.Context, dbOpts *Options) ([]*models.CourseTag, error) {
+	if dbOpts != nil && dbOpts.OrderByClause == nil && len(dbOpts.OrderBy) == 0 {
+		dbOpts.WithOrderBy(models.TAG_TABLE_TAG + " asc")
+	}
+
 	builderOpts := newBuilderOptions(models.COURSE_TAG_TABLE).
 		WithColumns(models.CourseTagColumns()...).
 		WithJoin(models.COURSE_TABLE, fmt.Sprintf("%s = %s", models.COURSE_TABLE_ID, models.COURSE_TAG_TABLE_COURSE_ID)).

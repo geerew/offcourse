@@ -64,7 +64,7 @@ func (dao *DAO) GetTag(ctx context.Context, dbOpts *Options) (*models.Tag, error
 // ListTags gets all records from the tags table based upon the where clause and pagination
 // in the options
 func (dao *DAO) ListTags(ctx context.Context, dbOpts *Options) ([]*models.Tag, error) {
-	if err := parseTagStringQuery(dbOpts); err != nil {
+	if err := parseTagApiQuery(dbOpts); err != nil {
 		return nil, err
 	}
 
@@ -83,7 +83,7 @@ func (dao *DAO) ListTags(ctx context.Context, dbOpts *Options) ([]*models.Tag, e
 //
 // TODO add tests
 func (dao *DAO) ListTagNames(ctx context.Context, dbOpts *Options) ([]string, error) {
-	if err := parseTagStringQuery(dbOpts); err != nil {
+	if err := parseTagApiQuery(dbOpts); err != nil {
 		return nil, err
 	}
 
@@ -151,15 +151,29 @@ var defaultTagsOrderBy = []string{models.TAG_TABLE_TAG + " asc"}
 
 // ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
 
-// parseTagStringQuery parses dbOpts.StringQuery when Query is non-empty and sets Where / OrderBy
-func parseTagStringQuery(dbOpts *Options) error {
-	if dbOpts == nil || dbOpts.StringQuery == nil || dbOpts.StringQuery.Query == "" {
+// parseTagApiQuery parses dbOpts.ApiQuery and sets Where / OrderBy for tag lists.
+func parseTagApiQuery(dbOpts *Options) (err error) {
+	if dbOpts == nil {
 		return nil
 	}
 
-	parsed, err := queryparser.Parse(dbOpts.StringQuery.Query, dbOpts.StringQuery.AllowedFilters)
-	if err != nil {
-		return fmt.Errorf("%w: %w", ErrStringQueryParse, err)
+	defer func() {
+		if err != nil || dbOpts.OrderByClause != nil {
+			return
+		}
+		if len(dbOpts.OrderBy) > 0 {
+			return
+		}
+		dbOpts.WithOrderBy(defaultTagsOrderBy...)
+	}()
+
+	if dbOpts.ApiQuery == "" {
+		return nil
+	}
+
+	parsed, parseErr := queryparser.Parse(dbOpts.ApiQuery, nil)
+	if parseErr != nil {
+		return fmt.Errorf("%w: %w", utils.ErrApiQueryParse, parseErr)
 	}
 
 	if parsed == nil {
@@ -167,7 +181,7 @@ func parseTagStringQuery(dbOpts *Options) error {
 	}
 
 	if len(parsed.Sort) > 0 {
-		dbOpts.OverrideOrderBy(parsed.Sort...)
+		dbOpts.WithOrderBy(parsed.Sort...)
 	}
 
 	if len(parsed.FreeText) == 0 {

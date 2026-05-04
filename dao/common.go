@@ -4,12 +4,9 @@ import (
 	"context"
 	"database/sql"
 	"errors"
-	"fmt"
-	"strings"
 
 	"github.com/geerew/off-course/database"
 	"github.com/geerew/off-course/utils"
-	"github.com/geerew/off-course/utils/queryparser"
 	"github.com/geerew/off-course/utils/types"
 )
 
@@ -170,53 +167,4 @@ func principalFromCtx(ctx context.Context) (types.Principal, error) {
 	}
 
 	return principal, nil
-}
-
-// ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
-
-func sanitizeIDs(in []string) []string {
-	out := make([]string, 0, len(in))
-	seen := make(map[string]struct{}, len(in))
-	for _, id := range in {
-		id = strings.TrimSpace(id)
-		if id == "" {
-			continue
-		}
-		if _, ok := seen[id]; ok {
-			continue
-		}
-		seen[id] = struct{}{}
-		out = append(out, id)
-	}
-	return out
-}
-
-// ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
-
-// ErrStringQueryParse is returned when the `q` parameter fails to parse
-var ErrStringQueryParse = errors.New("list query parse error")
-
-// ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
-
-// applyStringQuerySortOnly parses dbOpts.StringQuery when Query is non-empty and applies sort tokens only
-// (no WHERE from the expression). Used for lesson and attachment lists that support `q` ordering.
-func applyStringQuerySortOnly(dbOpts *Options) error {
-	if dbOpts == nil || dbOpts.StringQuery == nil || dbOpts.StringQuery.Query == "" {
-		return nil
-	}
-
-	parsed, err := queryparser.Parse(dbOpts.StringQuery.Query, dbOpts.StringQuery.AllowedFilters)
-	if err != nil {
-		return fmt.Errorf("%w: %w", ErrStringQueryParse, err)
-	}
-
-	if parsed == nil {
-		return nil
-	}
-
-	if len(parsed.Sort) > 0 {
-		dbOpts.OverrideOrderBy(parsed.Sort...)
-	}
-
-	return nil
 }

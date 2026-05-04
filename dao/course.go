@@ -16,6 +16,10 @@ import (
 
 // ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
 
+var CourseListApiAllowedFilters = []string{"available", "tag", "progress", "favourite"}
+
+// ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
+
 // CreateCourse inserts a new course record
 func (dao *DAO) CreateCourse(ctx context.Context, course *models.Course) error {
 	if err := courseValidation(course); err != nil {
@@ -111,7 +115,7 @@ func (dao *DAO) GetCourse(ctx context.Context, dbOpts *Options) (*models.Course,
 // don't like nullable fields in the model struct or having to support a second struct with
 // nullable fields. So for now, this function can make up to 2 additional db queries
 func (dao *DAO) ListCourses(ctx context.Context, dbOpts *Options) ([]*models.Course, error) {
-	if err := parseCourseStringQuery(ctx, dbOpts); err != nil {
+	if err := parseCourseApiQuery(ctx, dbOpts); err != nil {
 		return nil, err
 	}
 
@@ -337,24 +341,40 @@ func attachCourseRelations(ctx context.Context, dao *DAO, userID string, courses
 
 // ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
 
-// parseCourseStringQuery parses dbOpts.StringQuery to build a more advanced WHERE/ORDER BY
-// expression
-func parseCourseStringQuery(ctx context.Context, dbOpts *Options) error {
-	if dbOpts == nil || dbOpts.StringQuery == nil || dbOpts.StringQuery.Query == "" {
+var defaultCoursesListOrderBy = []string{models.COURSE_TABLE_CREATED_AT + " desc"}
+
+// ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
+
+// parseCourseApiQuery parses dbOpts.ApiQuery to build WHERE and ORDER BY for course lists.
+func parseCourseApiQuery(ctx context.Context, dbOpts *Options) error {
+	if dbOpts == nil {
 		return nil
 	}
 
-	parsed, err := queryparser.Parse(dbOpts.StringQuery.Query, dbOpts.StringQuery.AllowedFilters)
+	q := dbOpts.ApiQuery
+
+	if q == "" {
+		if len(dbOpts.OrderBy) == 0 && dbOpts.OrderByClause == nil {
+			dbOpts.WithOrderBy(defaultCoursesListOrderBy...)
+		}
+
+		return nil
+	}
+
+	parsed, err := queryparser.Parse(q, CourseListApiAllowedFilters)
 	if err != nil {
-		return fmt.Errorf("%w: %w", ErrStringQueryParse, err)
+		return fmt.Errorf("%w: %w", utils.ErrApiQueryParse, err)
 	}
 
 	if parsed == nil {
+		dbOpts.WithOrderBy(defaultCoursesListOrderBy...)
 		return nil
 	}
 
 	if len(parsed.Sort) > 0 {
-		dbOpts.OverrideOrderBy(parsed.Sort...)
+		dbOpts.WithOrderBy(parsed.Sort...)
+	} else {
+		dbOpts.WithOrderBy(defaultCoursesListOrderBy...)
 	}
 
 	userID := ""

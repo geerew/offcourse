@@ -49,23 +49,8 @@ type Options struct {
 	// Example: &pagination.Pagination{Page: 1, Limit: 10}
 	Pagination *pagination.Pagination
 
-	// StringQuery can be used to better filter the results. This will mainly only ever being used in the
-	// API, which takes the query param from the client and parses it into a StringQuery struct
-	//
-	// Example:
-	//   &StringQuery{
-	//     Query: "tag:foo and progress:started or progress:completed",
-	//     AllowedFilters: []string{"tag", "progress"},
-	//   }
-	StringQuery *StringQuery
-}
-
-// ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
-
-// StringQuery represents a list query, for example `q="tag:foo and progress:started or progress:completed"`
-type StringQuery struct {
-	Query          string
-	AllowedFilters []string
+	// ApiQuery is the list `q` query string from an HTTP request
+	ApiQuery string
 }
 
 // ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
@@ -77,16 +62,11 @@ func NewOptions() *Options {
 
 // ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
 
-// WithOrderBy appends ORDER BY fields
+// WithOrderBy sets the ORDER BY
+//
+// Calling multiple times will override the previous WithOrderBy call
 func (o *Options) WithOrderBy(fields ...string) *Options {
-	o.OrderBy = append(o.OrderBy, fields...)
-	return o
-}
-
-// ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
-
-func (o *Options) OverrideOrderBy(fields ...string) *Options {
-	o.OrderBy = fields
+	o.OrderBy = append([]string(nil), fields...)
 	return o
 }
 
@@ -94,7 +74,7 @@ func (o *Options) OverrideOrderBy(fields ...string) *Options {
 
 // WithOrderByClause sets a custom ORDER BY clause
 //
-// Use only if you need a complex ORDER BY that cannot be expressed with WithOrderBy
+// Calling multiple times will override the previous WithOrderByClause call
 func (o *Options) WithOrderByClause(clause squirrel.Sqlizer) *Options {
 	o.OrderByClause = clause
 	return o
@@ -103,6 +83,8 @@ func (o *Options) WithOrderByClause(clause squirrel.Sqlizer) *Options {
 // ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
 
 // WithWhere sets the WHERE clause using a squirrel.Sqlizer
+//
+// Calling multiple times will override the previous WithWhere call
 func (o *Options) WithWhere(pred squirrel.Sqlizer) *Options {
 	o.Where = pred
 	return o
@@ -111,6 +93,8 @@ func (o *Options) WithWhere(pred squirrel.Sqlizer) *Options {
 // ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
 
 // WithPagination sets the pagination options
+//
+// Calling multiple times will override the previous WithPagination call
 func (o *Options) WithPagination(p *pagination.Pagination) *Options {
 	o.Pagination = p
 	return o
@@ -118,9 +102,12 @@ func (o *Options) WithPagination(p *pagination.Pagination) *Options {
 
 // ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
 
-// WithStringQuery sets a string query
-func (o *Options) WithStringQuery(spec *StringQuery) *Options {
-	o.StringQuery = spec
+// WithApiQuery sets the API query for LIST operations, which is typically passed from
+// c.Query("q", ""). An empty string is the same as no query
+//
+// Calling multiple times will override the previous WithApiQuery call
+func (o *Options) WithApiQuery(q string) *Options {
+	o.ApiQuery = q
 	return o
 }
 

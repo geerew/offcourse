@@ -2,10 +2,12 @@ package dao
 
 import (
 	"context"
+	"fmt"
 
 	"github.com/Masterminds/squirrel"
 	"github.com/geerew/off-course/models"
 	"github.com/geerew/off-course/utils"
+	"github.com/geerew/off-course/utils/queryparser"
 )
 
 // ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
@@ -95,7 +97,7 @@ func (dao *DAO) GetLesson(ctx context.Context, dbOpts *Options) (*models.Lesson,
 // Note: Something can definitely be done to reduce the number of db queries whether via
 // JOINS, parallelisation, or something else
 func (dao *DAO) ListLessons(ctx context.Context, dbOpts *Options) ([]*models.Lesson, error) {
-	if err := applyStringQuerySortOnly(dbOpts); err != nil {
+	if err := parseLessonApiQuery(dbOpts); err != nil {
 		return nil, err
 	}
 
@@ -103,11 +105,6 @@ func (dao *DAO) ListLessons(ctx context.Context, dbOpts *Options) ([]*models.Les
 	builderOpts := newBuilderOptions(models.LESSON_TABLE).
 		WithColumns(models.LessonColumns()...).
 		SetDbOpts(dbOpts)
-
-	builderOpts.DbOpts.WithOrderBy(
-		models.LESSON_TABLE_PREFIX+" ASC ",
-		models.LESSON_TABLE_MODULE+" ASC",
-	)
 
 	lessons, err := listGeneric[models.Lesson](ctx, dao, *builderOpts)
 	if err != nil || len(lessons) == 0 {
@@ -195,6 +192,50 @@ func lessonValidation(ag *models.Lesson) error {
 
 // ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
 
+var defaultLessonsListOrderBy = []string{
+	models.LESSON_TABLE_MODULE + " asc",
+	models.LESSON_TABLE_PREFIX + " asc",
+}
+
+// ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
+
+// parseLessonApiQuery parses dbOpts.ApiQuery and applies sort only (no WHERE from `q`).
+func parseLessonApiQuery(dbOpts *Options) error {
+	if dbOpts == nil {
+		return nil
+	}
+
+	q := dbOpts.ApiQuery
+
+	if q == "" {
+		if len(dbOpts.OrderBy) == 0 && dbOpts.OrderByClause == nil {
+			dbOpts.WithOrderBy(defaultLessonsListOrderBy...)
+		}
+
+		return nil
+	}
+
+	parsed, err := queryparser.Parse(q, nil)
+	if err != nil {
+		return fmt.Errorf("%w: %w", utils.ErrApiQueryParse, err)
+	}
+
+	if parsed == nil {
+		dbOpts.WithOrderBy(defaultLessonsListOrderBy...)
+		return nil
+	}
+
+	if len(parsed.Sort) > 0 {
+		dbOpts.WithOrderBy(parsed.Sort...)
+	} else {
+		dbOpts.WithOrderBy(defaultLessonsListOrderBy...)
+	}
+
+	return nil
+}
+
+// ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
+
 // attachLessonRelations attaches attachments and assets to the given lessons
 //
 // It will also optionally attach asset progress and metadata to the assets
@@ -230,9 +271,13 @@ func attachLessonRelations(ctx context.Context, dao *DAO, lessons []*models.Less
 			models.ASSET_TABLE_LESSON_ID+" ASC",
 			models.ASSET_TABLE_PREFIX+" ASC",
 			models.ASSET_TABLE_SUB_PREFIX+" ASC",
-		).
-		WithUserProgress().
-		WithAssetMetadata()
+		)
+	if includeProgress {
+		dbOpts.WithUserProgress()
+	}
+	if includeMetadata {
+		dbOpts.WithAssetMetadata()
+	}
 
 	assetRecords, err := dao.ListAssets(ctx, dbOpts)
 	if err != nil {

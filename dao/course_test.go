@@ -261,7 +261,9 @@ func Test_ListCourses(t *testing.T) {
 			time.Sleep(1 * time.Millisecond)
 		}
 
-		dbOpts := NewOptions().WithUserProgress()
+		dbOpts := NewOptions().
+			WithUserProgress().
+			WithOrderBy(models.COURSE_TABLE_CREATED_AT + " ASC")
 
 		records, err := dao.ListCourses(ctx, dbOpts)
 		require.Nil(t, err)
@@ -442,7 +444,10 @@ func Test_ListCourses(t *testing.T) {
 		}
 
 		// First page with 10 records
-		p := NewOptions().WithPagination(pagination.New(1, 10))
+		p := NewOptions().
+			WithOrderBy(models.COURSE_TABLE_CREATED_AT + " ASC").
+			WithPagination(pagination.New(1, 10))
+
 		records, err := dao.ListCourses(ctx, p)
 		require.Nil(t, err)
 		require.Len(t, records, 10)
@@ -450,7 +455,10 @@ func Test_ListCourses(t *testing.T) {
 		require.Equal(t, courses[9].ID, records[9].ID)
 
 		// Second page with remaining 7 records
-		p = NewOptions().WithPagination(pagination.New(2, 10))
+		p = NewOptions().
+			WithOrderBy(models.COURSE_TABLE_CREATED_AT + " ASC").
+			WithPagination(pagination.New(2, 10))
+
 		records, err = dao.ListCourses(ctx, p)
 		require.Nil(t, err)
 		require.Len(t, records, 7)

@@ -8,6 +8,7 @@ import (
 	"github.com/Masterminds/squirrel"
 	"github.com/geerew/off-course/dao"
 	"github.com/geerew/off-course/models"
+	"github.com/geerew/off-course/utils"
 	"github.com/geerew/off-course/utils/coursemetadata"
 	"github.com/geerew/off-course/utils/pagination"
 	"github.com/gofiber/fiber/v2"
@@ -46,13 +47,12 @@ func (api *tagsAPI) getTags(c *fiber.Ctx) error {
 	}
 
 	dbOpts := dao.NewOptions().
-		WithOrderBy(defaultTagsOrderBy...).
 		WithPagination(pagination.NewFromApi(c)).
-		WithStringQuery(&dao.StringQuery{Query: c.Query("q", "")})
+		WithApiQuery(c.Query("q", ""))
 
 	tags, err := api.r.appDao.ListTags(ctx, dbOpts)
 	if err != nil {
-		if errors.Is(err, dao.ErrStringQueryParse) {
+		if errors.Is(err, utils.ErrApiQueryParse) {
 			return errorResponse(c, fiber.StatusBadRequest, "Error parsing query", err)
 		}
 
@@ -76,12 +76,11 @@ func (api *tagsAPI) getTagNames(c *fiber.Ctx) error {
 	}
 
 	dbOpts := dao.NewOptions().
-		WithOrderBy(defaultTagsOrderBy...).
-		WithStringQuery(&dao.StringQuery{Query: c.Query("q", "")})
+		WithApiQuery(c.Query("q", ""))
 
 	tags, err := api.r.appDao.ListTagNames(ctx, dbOpts)
 	if err != nil {
-		if errors.Is(err, dao.ErrStringQueryParse) {
+		if errors.Is(err, utils.ErrApiQueryParse) {
 			return errorResponse(c, fiber.StatusBadRequest, "Error parsing query", err)
 		}
 

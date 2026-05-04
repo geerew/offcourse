@@ -7,6 +7,7 @@ import (
 	"github.com/Masterminds/squirrel"
 	"github.com/geerew/off-course/dao"
 	"github.com/geerew/off-course/models"
+	"github.com/geerew/off-course/utils"
 	"github.com/geerew/off-course/utils/auth"
 	"github.com/geerew/off-course/utils/pagination"
 	"github.com/geerew/off-course/utils/types"
@@ -46,16 +47,12 @@ func (api userAPI) getUsers(c *fiber.Ctx) error {
 	}
 
 	dbOpts := dao.NewOptions().
-		WithOrderBy(defaultUsersOrderBy...).
 		WithPagination(pagination.NewFromApi(c)).
-		WithStringQuery(&dao.StringQuery{
-			Query:          c.Query("q", ""),
-			AllowedFilters: []string{"role"},
-		})
+		WithApiQuery(c.Query("q", ""))
 
 	users, err := api.r.appDao.ListUsers(ctx, dbOpts)
 	if err != nil {
-		if errors.Is(err, dao.ErrStringQueryParse) {
+		if errors.Is(err, utils.ErrApiQueryParse) {
 			return errorResponse(c, fiber.StatusBadRequest, "Error parsing query", err)
 		}
 

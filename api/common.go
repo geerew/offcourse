@@ -17,16 +17,6 @@ import (
 )
 
 // ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
-var (
-	defaultCoursesOrderBy                 = []string{models.COURSE_TABLE_CREATED_AT + " desc"}
-	defaultCourseLessonsOrderBy           = []string{models.LESSON_TABLE_MODULE + " asc", models.LESSON_TABLE_PREFIX + " asc"}
-	defaultCourseLessonAttachmentsOrderBy = []string{models.ATTACHMENT_TABLE_TITLE + " asc"}
-	defaultTagsOrderBy                    = []string{models.TAG_TABLE_TAG + " asc"}
-	defaultUsersOrderBy                   = []string{models.USER_TABLE_CREATED_AT + " desc"}
-	defaultLogsOrderBy                    = []string{models.LOG_TABLE_CREATED_AT + " desc", "rowid desc"}
-)
-
-// ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
 
 // errorResponse is a helper method to return an error response
 func errorResponse(c *fiber.Ctx, status int, message string, err error) error {

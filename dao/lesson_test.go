@@ -248,7 +248,10 @@ func Test_ListLessons(t *testing.T) {
 		}
 
 		// First page with 10 records
-		p := NewOptions().WithPagination(pagination.New(1, 10))
+		p := NewOptions().
+			WithOrderBy(models.LESSON_TABLE_CREATED_AT + " ASC").
+			WithPagination(pagination.New(1, 10))
+
 		records, err := dao.ListLessons(ctx, p)
 		require.Nil(t, err)
 		require.Len(t, records, 10)
@@ -256,7 +259,10 @@ func Test_ListLessons(t *testing.T) {
 		require.Equal(t, lessons[9].ID, records[9].ID)
 
 		// Second page with remaining 7 records
-		p = NewOptions().WithPagination(pagination.New(2, 10))
+		p = NewOptions().
+			WithOrderBy(models.LESSON_TABLE_CREATED_AT + " ASC").
+			WithPagination(pagination.New(2, 10))
+
 		records, err = dao.ListLessons(ctx, p)
 		require.Nil(t, err)
 		require.Len(t, records, 7)

@@ -2,9 +2,11 @@ package dao
 
 import (
 	"context"
+	"fmt"
 
 	"github.com/geerew/off-course/models"
 	"github.com/geerew/off-course/utils"
+	"github.com/geerew/off-course/utils/queryparser"
 )
 
 // ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
@@ -72,7 +74,7 @@ func (dao *DAO) GetAttachment(ctx context.Context, dbOpts *Options) (*models.Att
 // ListAttachments gets all records from the attachments table based upon the where clause and pagination
 // in the options
 func (dao *DAO) ListAttachments(ctx context.Context, dbOpts *Options) ([]*models.Attachment, error) {
-	if err := applyStringQuerySortOnly(dbOpts); err != nil {
+	if err := parseAttachmentApiQuery(dbOpts); err != nil {
 		return nil, err
 	}
 
@@ -98,4 +100,45 @@ func (dao *DAO) DeleteAttachments(ctx context.Context, dbOpts *Options) error {
 
 	_, err := dao.db.ExecContext(ctx, sqlStr, args...)
 	return err
+}
+
+// ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
+
+var defaultAttachmentsListOrderBy = []string{models.ATTACHMENT_TABLE_TITLE + " asc"}
+
+// ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
+
+// parseAttachmentApiQuery parses dbOpts.ApiQuery
+func parseAttachmentApiQuery(dbOpts *Options) error {
+	if dbOpts == nil {
+		return nil
+	}
+
+	q := dbOpts.ApiQuery
+
+	if q == "" {
+		if len(dbOpts.OrderBy) == 0 && dbOpts.OrderByClause == nil {
+			dbOpts.WithOrderBy(defaultAttachmentsListOrderBy...)
+		}
+
+		return nil
+	}
+
+	parsed, err := queryparser.Parse(q, nil)
+	if err != nil {
+		return fmt.Errorf("%w: %w", utils.ErrApiQueryParse, err)
+	}
+
+	if parsed == nil {
+		dbOpts.WithOrderBy(defaultAttachmentsListOrderBy...)
+		return nil
+	}
+
+	if len(parsed.Sort) > 0 {
+		dbOpts.WithOrderBy(parsed.Sort...)
+	} else {
+		dbOpts.WithOrderBy(defaultAttachmentsListOrderBy...)
+	}
+
+	return nil
 }

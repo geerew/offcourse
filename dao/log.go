@@ -12,6 +12,10 @@ import (
 
 // ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
 
+var LogListApiAllowedFilters = []string{"level", "type", "component"}
+
+// ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
+
 // CreateLog inserts a new log record
 func (dao *DAO) CreateLog(ctx context.Context, log *models.Log) error {
 	if log == nil {
@@ -62,7 +66,7 @@ func (dao *DAO) GetLog(ctx context.Context, dbOpts *Options) (*models.Log, error
 // ListLogs gets all records from the logs table based upon the where clause and pagination
 // in the options
 func (dao *DAO) ListLogs(ctx context.Context, dbOpts *Options) ([]*models.Log, error) {
-	if err := parseLogStringQuery(dbOpts); err != nil {
+	if err := parseLogApiQuery(dbOpts); err != nil {
 		return nil, err
 	}
 
@@ -134,23 +138,39 @@ func (dao *DAO) CreateLogsBatch(ctx context.Context, logs []*models.Log) error {
 
 // ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
 
-// parseLogStringQuery parses dbOpts.StringQuery when Query is non-empty and sets Where / OrderBy
-func parseLogStringQuery(dbOpts *Options) error {
-	if dbOpts == nil || dbOpts.StringQuery == nil || dbOpts.StringQuery.Query == "" {
+var defaultLogsListOrderBy = []string{models.LOG_TABLE_CREATED_AT + " desc", "rowid desc"}
+
+// ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
+
+// parseLogApiQuery parses dbOpts.ApiQuery and sets Where / OrderBy for log lists
+func parseLogApiQuery(dbOpts *Options) error {
+	if dbOpts == nil {
 		return nil
 	}
 
-	parsed, err := queryparser.Parse(dbOpts.StringQuery.Query, dbOpts.StringQuery.AllowedFilters)
+	q := dbOpts.ApiQuery
+
+	if q == "" {
+		if len(dbOpts.OrderBy) == 0 && dbOpts.OrderByClause == nil {
+			dbOpts.WithOrderBy(defaultLogsListOrderBy...)
+		}
+		return nil
+	}
+
+	parsed, err := queryparser.Parse(q, LogListApiAllowedFilters)
 	if err != nil {
-		return fmt.Errorf("%w: %w", ErrStringQueryParse, err)
+		return fmt.Errorf("%w: %w", utils.ErrApiQueryParse, err)
 	}
 
 	if parsed == nil {
+		dbOpts.WithOrderBy(defaultLogsListOrderBy...)
 		return nil
 	}
 
 	if len(parsed.Sort) > 0 {
-		dbOpts.OverrideOrderBy(parsed.Sort...)
+		dbOpts.WithOrderBy(parsed.Sort...)
+	} else {
+		dbOpts.WithOrderBy(defaultLogsListOrderBy...)
 	}
 
 	dbOpts.WithWhere(logWhereBuilder(parsed.Expr))

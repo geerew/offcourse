@@ -12,6 +12,10 @@ import (
 
 // ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
 
+var UserListApiAllowedFilters = []string{"role"}
+
+// ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
+
 // CreateUser inserts a new user record
 func (dao *DAO) CreateUser(ctx context.Context, user *models.User) error {
 	if user == nil {
@@ -75,7 +79,7 @@ func (dao *DAO) GetUser(ctx context.Context, dbOpts *Options) (*models.User, err
 // ListUsers gets all records from the user table based upon the where clause and pagination
 // in the options
 func (dao *DAO) ListUsers(ctx context.Context, dbOpts *Options) ([]*models.User, error) {
-	if err := applyUsersStringQuery(dbOpts); err != nil {
+	if err := parseUserApiQuery(dbOpts); err != nil {
 		return nil, err
 	}
 
@@ -140,23 +144,40 @@ func (dao *DAO) DeleteUsers(ctx context.Context, dbOpts *Options) error {
 
 // ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
 
-// applyUsersStringQuery parses dbOpts.StringQuery when Query is non-empty and sets Where / OrderBy.
-func applyUsersStringQuery(dbOpts *Options) error {
-	if dbOpts == nil || dbOpts.StringQuery == nil || dbOpts.StringQuery.Query == "" {
+var defaultUsersListOrderBy = []string{models.USER_TABLE_CREATED_AT + " desc"}
+
+// ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
+
+// parseUserApiQuery parses dbOpts.ApiQuery and sets Where / OrderBy for user lists
+func parseUserApiQuery(dbOpts *Options) error {
+	if dbOpts == nil {
 		return nil
 	}
 
-	parsed, err := queryparser.Parse(dbOpts.StringQuery.Query, dbOpts.StringQuery.AllowedFilters)
+	q := dbOpts.ApiQuery
+
+	if q == "" {
+		if len(dbOpts.OrderBy) == 0 && dbOpts.OrderByClause == nil {
+			dbOpts.WithOrderBy(defaultUsersListOrderBy...)
+		}
+
+		return nil
+	}
+
+	parsed, err := queryparser.Parse(q, UserListApiAllowedFilters)
 	if err != nil {
-		return fmt.Errorf("%w: %w", ErrStringQueryParse, err)
+		return fmt.Errorf("%w: %w", utils.ErrApiQueryParse, err)
 	}
 
 	if parsed == nil {
+		dbOpts.WithOrderBy(defaultUsersListOrderBy...)
 		return nil
 	}
 
 	if len(parsed.Sort) > 0 {
-		dbOpts.OverrideOrderBy(parsed.Sort...)
+		dbOpts.WithOrderBy(parsed.Sort...)
+	} else {
+		dbOpts.WithOrderBy(defaultUsersListOrderBy...)
 	}
 
 	dbOpts.WithWhere(usersWhereBuilder(parsed.Expr))

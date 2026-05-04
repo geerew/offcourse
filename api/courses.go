@@ -85,8 +85,6 @@ func (api coursesAPI) getCourses(c *fiber.Ctx) error {
 		return errorResponse(c, fiber.StatusUnauthorized, "Missing principal", nil)
 	}
 
-	allowedQueryFilters := []string{"available", "tag"}
-
 	withUserProgress := false
 	if raw := c.Query("withUserProgress"); raw != "" {
 		if v, err := strconv.ParseBool(raw); err == nil && v {
@@ -94,17 +92,9 @@ func (api coursesAPI) getCourses(c *fiber.Ctx) error {
 		}
 	}
 
-	if withUserProgress {
-		allowedQueryFilters = append(allowedQueryFilters, "progress", "favourite")
-	}
-
 	dbOpts := dao.NewOptions().
-		WithOrderBy(defaultCoursesOrderBy...).
 		WithPagination(pagination.NewFromApi(c)).
-		WithStringQuery(&dao.StringQuery{
-			Query:          c.Query("q", ""),
-			AllowedFilters: allowedQueryFilters,
-		})
+		WithApiQuery(c.Query("q", ""))
 
 	if withUserProgress {
 		dbOpts.WithUserProgress()
@@ -112,7 +102,7 @@ func (api coursesAPI) getCourses(c *fiber.Ctx) error {
 
 	courses, err := api.r.appDao.ListCourses(ctx, dbOpts)
 	if err != nil {
-		if errors.Is(err, dao.ErrStringQueryParse) {
+		if errors.Is(err, utils.ErrApiQueryParse) {
 			return errorResponse(c, fiber.StatusBadRequest, "Error parsing query", err)
 		}
 
@@ -330,9 +320,8 @@ func (api coursesAPI) getCourseLessons(c *fiber.Ctx) error {
 	}
 
 	dbOpts := dao.NewOptions().
-		WithOrderBy(defaultCourseLessonsOrderBy...).
 		WithPagination(pagination.NewFromApi(c)).
-		WithStringQuery(&dao.StringQuery{Query: c.Query("q", "")}).
+		WithApiQuery(c.Query("q", "")).
 		WithAssetMetadata().
 		WithWhere(squirrel.Eq{models.LESSON_TABLE_COURSE_ID: id})
 
@@ -344,7 +333,7 @@ func (api coursesAPI) getCourseLessons(c *fiber.Ctx) error {
 
 	lessons, err := api.r.appDao.ListLessons(ctx, dbOpts)
 	if err != nil {
-		if errors.Is(err, dao.ErrStringQueryParse) {
+		if errors.Is(err, utils.ErrApiQueryParse) {
 			return errorResponse(c, fiber.StatusBadRequest, "Error parsing query", err)
 		}
 
@@ -406,8 +395,7 @@ func (api coursesAPI) getCourseModules(c *fiber.Ctx) error {
 	}
 
 	dbOpts := dao.NewOptions().
-		WithOrderBy(defaultCourseLessonsOrderBy...).
-		WithStringQuery(&dao.StringQuery{Query: c.Query("q", "")}).
+		WithApiQuery(c.Query("q", "")).
 		WithAssetMetadata().
 		WithWhere(squirrel.Eq{models.LESSON_TABLE_COURSE_ID: id})
 
@@ -419,7 +407,7 @@ func (api coursesAPI) getCourseModules(c *fiber.Ctx) error {
 
 	lessons, err := api.r.appDao.ListLessons(ctx, dbOpts)
 	if err != nil {
-		if errors.Is(err, dao.ErrStringQueryParse) {
+		if errors.Is(err, utils.ErrApiQueryParse) {
 			return errorResponse(c, fiber.StatusBadRequest, "Error parsing query", err)
 		}
 		return errorResponse(c, fiber.StatusInternalServerError, "Error looking up lessons", err)
@@ -440,9 +428,8 @@ func (api coursesAPI) getCourseLessonAttachments(c *fiber.Ctx) error {
 	}
 
 	dbOpts := dao.NewOptions().
-		WithOrderBy(defaultCourseLessonAttachmentsOrderBy...).
 		WithPagination(pagination.NewFromApi(c)).
-		WithStringQuery(&dao.StringQuery{Query: c.Query("q", "")}).
+		WithApiQuery(c.Query("q", "")).
 		WithWhere(squirrel.And{
 			squirrel.Eq{models.ATTACHMENT_TABLE_LESSON_ID: lessonId},
 			squirrel.Eq{models.ATTACHMENT_TABLE_COURSE_ID: id},
@@ -450,7 +437,7 @@ func (api coursesAPI) getCourseLessonAttachments(c *fiber.Ctx) error {
 
 	attachments, err := api.r.appDao.ListAttachments(ctx, dbOpts)
 	if err != nil {
-		if errors.Is(err, dao.ErrStringQueryParse) {
+		if errors.Is(err, utils.ErrApiQueryParse) {
 			return errorResponse(c, fiber.StatusBadRequest, "Error parsing query", err)
 		}
 		return errorResponse(c, fiber.StatusInternalServerError, "Error looking up attachments", err)
@@ -672,7 +659,6 @@ func (api coursesAPI) getCourseTags(c *fiber.Ctx) error {
 	}
 
 	dbOpts := dao.NewOptions().
-		WithOrderBy(defaultTagsOrderBy...).
 		WithWhere(squirrel.Eq{models.COURSE_TAG_TABLE_COURSE_ID: id})
 
 	courseTags, err := api.r.appDao.ListCourseTags(ctx, dbOpts)
@@ -718,8 +704,7 @@ func (api coursesAPI) createCourseTag(c *fiber.Ctx) error {
 	}
 
 	// Check if tag already exists (case-insensitive) before creating
-	dbOpts := dao.NewOptions().
-		WithWhere(squirrel.Eq{models.COURSE_TAG_TABLE_COURSE_ID: courseId})
+	dbOpts := dao.NewOptions().WithWhere(squirrel.Eq{models.COURSE_TAG_TABLE_COURSE_ID: courseId})
 	existingCourseTags, err := api.r.appDao.ListCourseTags(ctx, dbOpts)
 	if err != nil {
 		// If reading fails, use empty list - the DB create will handle the error
