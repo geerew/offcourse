@@ -6,19 +6,14 @@ import (
 	"strings"
 )
 
-// ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
-
-// parser parses a slice of Tokens into an AST
+// parser is recursive-descent: expression → OR-chain of AND-groups → operands (filters or parens).
 type parser struct {
 	tokens       []token
 	pos          int
 	allowedKeys  map[string]struct{}
-	FoundFilters map[string]bool
+	foundFilters map[string]bool
 }
 
-// ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
-
-// newParser creates a parser
 func newParser(tokens []token, allowedKeys []string) *parser {
 	allowed := make(map[string]struct{})
 	found := make(map[string]bool)
@@ -37,13 +32,86 @@ func newParser(tokens []token, allowedKeys []string) *parser {
 		tokens:       tokens,
 		pos:          0,
 		allowedKeys:  allowed,
-		FoundFilters: found,
+		foundFilters: found,
 	}
 }
 
-// ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
+// parseExpression is the start rule (also used inside "(" ... ")").
+func (p *parser) parseExpression() (QueryExpr, error) {
+	return p.parseOr()
+}
 
-// current returns the current token
+// parseOr parses and ... OR and ...; OR binds loosest.
+func (p *parser) parseOr() (QueryExpr, error) {
+	expr, err := p.parseAnd()
+	if err != nil {
+		return nil, err
+	}
+
+	for p.pos < len(p.tokens) {
+		if !strings.EqualFold(p.peek().Text, "OR") {
+			break
+		}
+
+		p.consume()
+
+		right, err := p.parseAnd()
+		if err != nil {
+			return nil, err
+		}
+
+		if right != nil {
+			if expr == nil {
+				expr = right
+			} else {
+				expr = &OrExpr{Children: []QueryExpr{expr, right}}
+			}
+		}
+	}
+
+	return expr, nil
+}
+
+// parseAnd parses one or more operands with implicit AND; stops at OR, ")", or EOF.
+func (p *parser) parseAnd() (QueryExpr, error) {
+	var children []QueryExpr
+
+	for {
+		operand, err := p.parseOperand()
+		if err != nil {
+			return nil, err
+		}
+
+		if operand != nil {
+			children = append(children, operand)
+		}
+
+		if p.pos >= len(p.tokens) {
+			break
+		}
+
+		next := p.peek()
+
+		if strings.EqualFold(next.Text, "OR") || next.Text == ")" {
+			break
+		}
+
+		if strings.EqualFold(next.Text, "AND") {
+			p.consume()
+		}
+	}
+
+	if len(children) == 0 {
+		return nil, nil
+	}
+
+	if len(children) == 1 {
+		return children[0], nil
+	}
+
+	return &AndExpr{Children: children}, nil
+}
+
 func (p *parser) current() token {
 	if p.pos < len(p.tokens) {
 		return p.tokens[p.pos]
@@ -52,18 +120,12 @@ func (p *parser) current() token {
 	return token{Text: "", Quoted: false}
 }
 
-// ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
-
-// consume returns the current token and advances the position
 func (p *parser) consume() token {
 	tok := p.current()
 	p.pos++
 	return tok
 }
 
-// ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
-
-// peek returns the next token without consuming it
 func (p *parser) peek() token {
 	if p.pos < len(p.tokens) {
 		return p.tokens[p.pos]
@@ -72,8 +134,7 @@ func (p *parser) peek() token {
 	return token{Text: "", Quoted: false}
 }
 
-// ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
-
+// makeFilter normalizes key, checks allowedKeys, resolves value (including quoted token after "key:" alone).
 func (p *parser) makeFilter(key, val string) (*FilterExpr, error) {
 	key = strings.ToLower(strings.TrimSpace(key))
 	if _, ok := p.allowedKeys[key]; !ok {
@@ -88,12 +149,11 @@ func (p *parser) makeFilter(key, val string) (*FilterExpr, error) {
 	if val == "" {
 		return nil, errors.Join(ErrInvalidSyntax, fmt.Errorf("%w: for filter %q", ErrEmptyFilterValue, key))
 	}
-	p.FoundFilters[key] = true
+	p.foundFilters[key] = true
 	return &FilterExpr{Key: key, Value: val}, nil
 }
 
-// parseOperand parses a single operand from the token slice.
-// Every operand must be an allowed key:value filter (quoted value may follow key:).
+// parseOperand: "(", expression ")"; or key:value (possibly split across tokens); stray AND/OR consumed as empty.
 func (p *parser) parseOperand() (QueryExpr, error) {
 	if p.pos >= len(p.tokens) {
 		return nil, nil
@@ -106,7 +166,7 @@ func (p *parser) parseOperand() (QueryExpr, error) {
 	if p.current().Text == "(" {
 		p.consume()
 
-		expr, err := p.parseOr()
+		expr, err := p.parseExpression()
 		if err != nil {
 			return nil, err
 		}
@@ -175,79 +235,6 @@ func (p *parser) parseOperand() (QueryExpr, error) {
 	return f, nil
 }
 
-// ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
-
-// parseAnd parses a series of operands with an implicit AND between them
-func (p *parser) parseAnd() (QueryExpr, error) {
-	var children []QueryExpr
-
-	for {
-		operand, err := p.parseOperand()
-		if err != nil {
-			return nil, err
-		}
-		if operand != nil {
-			children = append(children, operand)
-		}
-		if p.pos >= len(p.tokens) {
-			break
-		}
-		next := p.peek()
-		if strings.EqualFold(next.Text, "OR") || next.Text == ")" {
-			break
-		}
-		if strings.EqualFold(next.Text, "AND") {
-			p.consume()
-		}
-	}
-
-	if len(children) == 0 {
-		return nil, nil
-	}
-
-	if len(children) == 1 {
-		return children[0], nil
-	}
-
-	return &AndExpr{Children: children}, nil
-}
-
-// ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
-
-// parseOr parses a series of And expressions separated by explicit OR
-func (p *parser) parseOr() (QueryExpr, error) {
-	expr, err := p.parseAnd()
-	if err != nil {
-		return nil, err
-	}
-
-	for p.pos < len(p.tokens) {
-		if !strings.EqualFold(p.peek().Text, "OR") {
-			break
-		}
-
-		p.consume()
-
-		right, err := p.parseAnd()
-		if err != nil {
-			return nil, err
-		}
-
-		if right != nil {
-			if expr == nil {
-				expr = right
-			} else {
-				expr = &OrExpr{Children: []QueryExpr{expr, right}}
-			}
-		}
-	}
-
-	return expr, nil
-}
-
-// ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
-
-// assertFullyConsumed checks if the parser has consumed all tokens.
 func (p *parser) assertFullyConsumed() error {
 	if p.pos >= len(p.tokens) {
 		return nil

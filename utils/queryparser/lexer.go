@@ -19,23 +19,19 @@ const (
 
 // ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
 
-// Token represents a token with its text and whether it was quoted
+// Token represents a lexeme after splitting on whitespace and delimiters
 type token struct {
 	Text   string
 	Quoted bool
 }
 
-// ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
-
-// tokenize tokenizes an input string while respecting quoted substrings
-//
-// Unterminated quoted input returns an error
+// tokenize splits input on whitespace and parentheses; builds quoted tokens for strings in "..."
+// or '...' when ' starts a value (empty token, or immediately after ':').
 func tokenize(input string) ([]token, error) {
 	var tokens []token
 	var current strings.Builder
 	var q quoteMode
 
-	// flushUnquoted flushes the current unquoted token to the tokens slice
 	flushUnquoted := func() {
 		if current.Len() > 0 {
 			tokens = append(tokens, token{Text: current.String(), Quoted: false})
@@ -43,7 +39,7 @@ func tokenize(input string) ([]token, error) {
 		}
 	}
 
-	// singleQuoteCanOpen checks if a single quote can open a quoted region
+	// Mid-word apostrophe stays literal (e.g. don't); leading ' or ':'+' opens a quoted value.
 	singleQuoteCanOpen := func() bool {
 		s := current.String()
 		return len(s) == 0 || strings.HasSuffix(s, ":")
@@ -70,7 +66,6 @@ func tokenize(input string) ([]token, error) {
 			current.WriteRune(r)
 
 		default:
-			// Handle unquoted tokens
 			switch {
 			case r == '"':
 				flushUnquoted()

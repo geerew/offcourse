@@ -1,10 +1,13 @@
 package queryparser
 
-import "strings"
+import (
+	"fmt"
+	"strings"
+)
 
 // ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
 
-// QueryResult represents the result of a query parse
+// QueryResult represents the result of parsing a query string
 type QueryResult struct {
 	Expr         QueryExpr
 	foundFilters map[string]bool
@@ -28,16 +31,18 @@ func (r *QueryResult) FoundFilter(key string) bool {
 
 // ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
 
-// Parse a query string into an AST of key:value filters combined with AND/OR and parentheses
-
+// Parse parses a query string into an AST of key:value filters combined with AND/OR and
+// parentheses
 func Parse(q string, allowedKeys []string) (*QueryResult, error) {
 	allTokens, err := tokenize(q)
 	if err != nil {
 		return nil, err
 	}
 
+	fmt.Printf("allTokens: %+v\n", allTokens)
+
 	p := newParser(allTokens, allowedKeys)
-	expr, err := p.parseOr()
+	expr, err := p.parseExpression()
 	if err != nil {
 		return nil, err
 	}
@@ -48,6 +53,6 @@ func Parse(q string, allowedKeys []string) (*QueryResult, error) {
 
 	return &QueryResult{
 		Expr:         expr,
-		foundFilters: p.FoundFilters,
+		foundFilters: p.foundFilters,
 	}, nil
 }
