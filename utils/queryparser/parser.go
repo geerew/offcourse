@@ -12,7 +12,6 @@ type astParser struct {
 	tokens         []token
 	pos            int
 	allowedFilters map[string]bool
-	FreeText       []string
 	FoundFilters   map[string]bool
 }
 
@@ -32,7 +31,6 @@ func newASTParser(tokens []token, allowedFilters []string) *astParser {
 		tokens:         tokens,
 		pos:            0,
 		allowedFilters: allowed,
-		FreeText:       []string{},
 		FoundFilters:   found,
 	}
 }
@@ -70,15 +68,25 @@ func (ap *astParser) peek() token {
 
 // ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
 
-// parseOperand parses a single operand from the token slice
-//
-//   - If a token is "(" then parse a parenthesized expression
-//   - If a token is "AND" or "OR", swallow it (return nil)
-//   - If a token contains ":" and its key is allowed, it becomes a FilterExpr
-//   - If a token is quoted, trim it; if after trimming it is empty, return nil; otherwise, it
-//     stands alone as a ValueExpr
-//   - For unquoted tokens, combine adjacent unquoted tokens until an operator, a parenthesis,
-//     or a token that is either quoted or a filter token is encountered
+func (ap *astParser) makeFilter(key, val string) (*FilterExpr, error) {
+	if !ap.allowedFilters[key] {
+		return nil, fmt.Errorf("%w: unknown filter key %q", ErrInvalidSyntax, key)
+	}
+	val = strings.TrimSpace(val)
+	if val == "" {
+		if ap.pos < len(ap.tokens) && ap.current().Quoted {
+			val = strings.TrimSpace(ap.consume().Text)
+		}
+	}
+	if val == "" {
+		return nil, fmt.Errorf("%w: empty value for filter %q", ErrInvalidSyntax, key)
+	}
+	ap.FoundFilters[key] = true
+	return &FilterExpr{Key: key, Value: val}, nil
+}
+
+// parseOperand parses a single operand from the token slice.
+// Every operand must be an allowed key:value filter (quoted value may follow key:).
 func (ap *astParser) parseOperand() (QueryExpr, error) {
 	if ap.pos >= len(ap.tokens) {
 		return nil, nil
@@ -109,39 +117,17 @@ func (ap *astParser) parseOperand() (QueryExpr, error) {
 	if strings.Contains(cur.Text, ":") {
 		parts := strings.SplitN(cur.Text, ":", 2)
 		key := parts[0]
-
-		if ap.allowedFilters[key] {
-			ap.FoundFilters[key] = true
-			ap.consume()
-			val := strings.TrimSpace(parts[1])
-
-			if val == "" {
-				// Check if next token exists and is quoted, then use its value.
-				if ap.pos < len(ap.tokens) && ap.current().Quoted {
-					val = strings.TrimSpace(ap.consume().Text)
-				}
-			}
-
-			if val == "" {
-				return nil, nil
-			}
-
-			return &FilterExpr{Key: key, Value: val}, nil
-		}
-
+		val := strings.TrimSpace(parts[1])
 		ap.consume()
-		ap.FreeText = append(ap.FreeText, cur.Text)
-		return &ValueExpr{Value: cur.Text}, nil
+		f, err := ap.makeFilter(key, val)
+		if err != nil {
+			return nil, err
+		}
+		return f, nil
 	}
 
 	if cur.Quoted {
-		tok := strings.TrimSpace(ap.consume().Text)
-		if tok == "" {
-			return nil, nil
-		}
-
-		ap.FreeText = append(ap.FreeText, tok)
-		return &ValueExpr{Value: tok}, nil
+		return nil, fmt.Errorf("%w: quoted text must be a filter value after key:, use e.g. title:\"...\"", ErrInvalidSyntax)
 	}
 
 	var parts []string
@@ -168,8 +154,18 @@ func (ap *astParser) parseOperand() (QueryExpr, error) {
 		return nil, nil
 	}
 
-	ap.FreeText = append(ap.FreeText, joined)
-	return &ValueExpr{Value: joined}, nil
+	if !strings.Contains(joined, ":") {
+		return nil, fmt.Errorf("%w: expected key:value filter, got %q", ErrInvalidSyntax, joined)
+	}
+
+	parts2 := strings.SplitN(joined, ":", 2)
+	key := parts2[0]
+	rest := strings.TrimSpace(parts2[1])
+	f, err := ap.makeFilter(key, rest)
+	if err != nil {
+		return nil, err
+	}
+	return f, nil
 }
 
 // ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~

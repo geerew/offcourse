@@ -87,8 +87,8 @@ func TestUsers_GetUsers(t *testing.T) {
 		}
 
 		// CREATED_AT ASC
-		q := "sort:\"" + models.USER_TABLE + "." + models.BASE_CREATED_AT + " asc\""
-		status, body, err := requestHelper(t, router, httptest.NewRequest(http.MethodGet, "/api/users/?q="+url.QueryEscape(q), nil))
+		sortAsc := models.USER_TABLE + "." + models.BASE_CREATED_AT + " asc"
+		status, body, err := requestHelper(t, router, httptest.NewRequest(http.MethodGet, "/api/users/?orderBy="+url.QueryEscape(sortAsc), nil))
 		require.NoError(t, err)
 		require.Equal(t, http.StatusOK, status)
 
@@ -98,8 +98,8 @@ func TestUsers_GetUsers(t *testing.T) {
 		require.Equal(t, users[0].ID, userResp[0].ID)
 
 		// CREATED_AT DESC
-		q = "sort:\"" + models.USER_TABLE + "." + models.BASE_CREATED_AT + " desc\""
-		status, body, err = requestHelper(t, router, httptest.NewRequest(http.MethodGet, "/api/users/?q="+url.QueryEscape(q), nil))
+		sortDesc := models.USER_TABLE + "." + models.BASE_CREATED_AT + " desc"
+		status, body, err = requestHelper(t, router, httptest.NewRequest(http.MethodGet, "/api/users/?orderBy="+url.QueryEscape(sortDesc), nil))
 		require.NoError(t, err)
 		require.Equal(t, http.StatusOK, status)
 
@@ -130,7 +130,7 @@ func TestUsers_GetUsers(t *testing.T) {
 
 		// Get the first page (10 users)
 		params := url.Values{
-			"q":                          {"sort:\"" + models.USER_TABLE + "." + models.BASE_CREATED_AT + " asc\""},
+			"orderBy":                    {models.USER_TABLE + "." + models.BASE_CREATED_AT + " asc"},
 			pagination.PageQueryParam:    {"1"},
 			pagination.PerPageQueryParam: {"10"},
 		}
@@ -147,7 +147,7 @@ func TestUsers_GetUsers(t *testing.T) {
 
 		// Get the second page (7 users)
 		params = url.Values{
-			"q":                          {"sort:\"" + models.USER_TABLE + "." + models.BASE_CREATED_AT + " asc\""},
+			"orderBy":                    {models.USER_TABLE + "." + models.BASE_CREATED_AT + " asc"},
 			pagination.PageQueryParam:    {"2"},
 			pagination.PerPageQueryParam: {"10"},
 		}
@@ -169,7 +169,7 @@ func TestUsers_GetUsers(t *testing.T) {
 		dbOpts := dao.NewOptions().WithWhere(squirrel.Eq{models.USER_TABLE_ID: "admin"})
 		require.NoError(t, router.appDao.DeleteUsers(ctx, dbOpts))
 
-		defaultSort := " sort:\"" + models.USER_TABLE_USERNAME + " asc\""
+		defaultSort := models.USER_TABLE_USERNAME + " asc"
 
 		users := []*models.User{}
 		for i := range 5 {
@@ -198,8 +198,8 @@ func TestUsers_GetUsers(t *testing.T) {
 		require.Len(t, paginationResp.Items, 5)
 
 		// Username
-		q := "user 1 OR user 4 " + defaultSort
-		status, body, err = requestHelper(t, router, httptest.NewRequest(http.MethodGet, "/api/users/?q="+url.QueryEscape(q), nil))
+		userFilter := url.Values{"q": {`name:'user 1' OR name:'user 4'`}, "orderBy": {defaultSort}}
+		status, body, err = requestHelper(t, router, httptest.NewRequest(http.MethodGet, "/api/users/?"+userFilter.Encode(), nil))
 		require.NoError(t, err)
 		require.Equal(t, http.StatusOK, status)
 
@@ -210,8 +210,8 @@ func TestUsers_GetUsers(t *testing.T) {
 		require.Equal(t, users[3].ID, usersResp[1].ID)
 
 		// Role
-		q = "role:admin " + defaultSort
-		status, body, err = requestHelper(t, router, httptest.NewRequest(http.MethodGet, "/api/users/?q="+url.QueryEscape(q), nil))
+		roleFilter := url.Values{"q": {"role:admin"}, "orderBy": {defaultSort}}
+		status, body, err = requestHelper(t, router, httptest.NewRequest(http.MethodGet, "/api/users/?"+roleFilter.Encode(), nil))
 		require.NoError(t, err)
 		require.Equal(t, http.StatusOK, status)
 
@@ -223,8 +223,8 @@ func TestUsers_GetUsers(t *testing.T) {
 		require.Equal(t, users[4].ID, usersResp[2].ID)
 
 		// Complex filter
-		q = "user 1 OR user 4 AND role:admin " + defaultSort
-		status, body, err = requestHelper(t, router, httptest.NewRequest(http.MethodGet, "/api/users/?q="+url.QueryEscape(q), nil))
+		complexFilter := url.Values{"q": {`name:'user 1' OR (name:'user 4' AND role:admin)`}, "orderBy": {defaultSort}}
+		status, body, err = requestHelper(t, router, httptest.NewRequest(http.MethodGet, "/api/users/?"+complexFilter.Encode(), nil))
 		require.NoError(t, err)
 		require.Equal(t, http.StatusOK, status)
 

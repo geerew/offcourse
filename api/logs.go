@@ -36,8 +36,9 @@ func (api *logsAPI) getLogs(c *fiber.Ctx) error {
 	}
 
 	dbOpts := dao.NewOptions().
-		WithPagination(pagination.NewFromApi(c)).
-		WithApiQuery(c.Query("q", ""))
+		WithOrderBy(utils.StringSplit(c.Query("orderBy", ""), ",")...).
+		WithApiQuery(c.Query("q", "")).
+		WithPagination(pagination.NewFromApi(c))
 
 	logs, err := api.r.logDao.ListLogs(ctx, dbOpts)
 	if err != nil {

@@ -1,7 +1,5 @@
 package queryparser
 
-// ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
-
 import "strings"
 
 // ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
@@ -9,20 +7,6 @@ import "strings"
 // QueryExpr is the interface for a boolean expression
 type QueryExpr interface {
 	String() string
-}
-
-// ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
-
-// ValueExpr represents free-text
-type ValueExpr struct {
-	Value string
-}
-
-// ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
-
-// String implements the Stringer interface for ValueExpr
-func (v *ValueExpr) String() string {
-	return v.Value
 }
 
 // ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~

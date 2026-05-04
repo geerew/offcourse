@@ -168,3 +168,14 @@ func principalFromCtx(ctx context.Context) (types.Principal, error) {
 
 	return principal, nil
 }
+
+// ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
+
+// applyDefaultOrderBy applies the default order by when the current OrderBy or OrderByClause is not set
+func applyDefaultOrderBy(dbOpts *Options, defaultOrder []string) {
+	if dbOpts == nil || dbOpts.OrderByClause != nil || len(dbOpts.OrderBy) > 0 {
+		return
+	}
+
+	dbOpts.WithOrderBy(defaultOrder...)
+}

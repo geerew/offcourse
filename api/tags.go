@@ -47,8 +47,9 @@ func (api *tagsAPI) getTags(c *fiber.Ctx) error {
 	}
 
 	dbOpts := dao.NewOptions().
-		WithPagination(pagination.NewFromApi(c)).
-		WithApiQuery(c.Query("q", ""))
+		WithOrderBy(utils.StringSplit(c.Query("orderBy", ""), ",")...).
+		WithApiQuery(c.Query("q", "")).
+		WithPagination(pagination.NewFromApi(c))
 
 	tags, err := api.r.appDao.ListTags(ctx, dbOpts)
 	if err != nil {
@@ -76,6 +77,7 @@ func (api *tagsAPI) getTagNames(c *fiber.Ctx) error {
 	}
 
 	dbOpts := dao.NewOptions().
+		WithOrderBy(utils.StringSplit(c.Query("orderBy", ""), ",")...).
 		WithApiQuery(c.Query("q", ""))
 
 	tags, err := api.r.appDao.ListTagNames(ctx, dbOpts)

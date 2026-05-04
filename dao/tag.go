@@ -3,13 +3,20 @@ package dao
 import (
 	"context"
 	"fmt"
-	"slices"
 	"strings"
 
 	"github.com/Masterminds/squirrel"
 	"github.com/geerew/off-course/models"
 	"github.com/geerew/off-course/utils"
 	"github.com/geerew/off-course/utils/queryparser"
+)
+
+// ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
+
+var (
+	TagListApiAllowedFilters = []string{"tag"}
+
+	defaultTagsOrderBy = []string{models.TAG_TABLE_TAG + " asc"}
 )
 
 // ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
@@ -67,6 +74,8 @@ func (dao *DAO) ListTags(ctx context.Context, dbOpts *Options) ([]*models.Tag, e
 	if err := parseTagApiQuery(dbOpts); err != nil {
 		return nil, err
 	}
+
+	applyDefaultOrderBy(dbOpts, defaultTagsOrderBy)
 
 	builderOpts := newBuilderOptions(models.TAG_TABLE).
 		WithColumns(models.TagColumns()...).
@@ -146,61 +155,59 @@ func (dao *DAO) DeleteTags(ctx context.Context, dbOpts *Options) error {
 
 // ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
 
-// defaultTagsOrderBy is the default ORDER BY clause for tags
-var defaultTagsOrderBy = []string{models.TAG_TABLE_TAG + " asc"}
+// tagOrderByIsSpecial checks if the order by clause is special
+func tagOrderByIsSpecial(dbOpts *Options) bool {
+	if dbOpts == nil || len(dbOpts.OrderBy) != 1 {
+		return false
+	}
+
+	return strings.EqualFold(strings.TrimSpace(dbOpts.OrderBy[0]), "special")
+}
 
 // ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
 
-// parseTagApiQuery parses dbOpts.ApiQuery and sets Where / OrderBy for tag lists.
+// parseTagApiQuery parses dbOpts.ApiQuery and sets a WHERE clause
 func parseTagApiQuery(dbOpts *Options) (err error) {
 	if dbOpts == nil {
 		return nil
 	}
 
-	defer func() {
-		if err != nil || dbOpts.OrderByClause != nil {
-			return
-		}
-		if len(dbOpts.OrderBy) > 0 {
-			return
-		}
-		dbOpts.WithOrderBy(defaultTagsOrderBy...)
-	}()
-
 	if dbOpts.ApiQuery == "" {
+		if tagOrderByIsSpecial(dbOpts) {
+			return fmt.Errorf("%w: orderBy special requires a search: filter in q", utils.ErrApiQueryParse)
+		}
+
 		return nil
 	}
 
-	parsed, parseErr := queryparser.Parse(dbOpts.ApiQuery, nil)
+	parsed, parseErr := queryparser.Parse(dbOpts.ApiQuery, TagListApiAllowedFilters)
 	if parseErr != nil {
 		return fmt.Errorf("%w: %w", utils.ErrApiQueryParse, parseErr)
 	}
 
-	if parsed == nil {
+	if parsed == nil || parsed.Expr == nil {
+		if tagOrderByIsSpecial(dbOpts) {
+			return fmt.Errorf("%w: orderBy special requires a search: filter in q", utils.ErrApiQueryParse)
+		}
+
 		return nil
 	}
 
-	if len(parsed.Sort) > 0 {
-		dbOpts.WithOrderBy(parsed.Sort...)
-	}
+	if tagOrderByIsSpecial(dbOpts) {
+		searchLower := firstSearchFilterLower(parsed.Expr)
+		if searchLower == "" {
+			return fmt.Errorf("%w: orderBy special requires a search: filter in q", utils.ErrApiQueryParse)
+		}
 
-	if len(parsed.FreeText) == 0 {
-		return nil
-	}
-
-	if slices.Contains(parsed.Sort, "special") {
-		filter := strings.ToLower(parsed.FreeText[0])
-
-		dbOpts.WithWhere(squirrel.Like{models.TAG_TABLE_TAG: "%" + filter + "%"})
+		dbOpts.WithWhere(tagWhereBuilder(parsed.Expr))
 
 		caseExpr := squirrel.Case().
-			When(squirrel.Eq{"LOWER(" + models.TAG_TABLE_TAG + ")": filter}, "0").
-			When(squirrel.Like{"LOWER(" + models.TAG_TABLE_TAG + ")": filter + "%"}, "1").
-			When(squirrel.Like{"LOWER(" + models.TAG_TABLE_TAG + ")": "%" + filter + "%"}, "2")
+			When(squirrel.Eq{"LOWER(" + models.TAG_TABLE_TAG + ")": searchLower}, "0").
+			When(squirrel.Like{"LOWER(" + models.TAG_TABLE_TAG + ")": searchLower + "%"}, "1").
+			When(squirrel.Like{"LOWER(" + models.TAG_TABLE_TAG + ")": "%" + searchLower + "%"}, "2")
 
 		sql, args, _ := caseExpr.ToSql()
 		dbOpts.OrderByClause = squirrel.Expr(sql+", "+defaultTagsOrderBy[0], args...)
-
 		dbOpts.OrderBy = []string{}
 	} else {
 		dbOpts.WithWhere(tagWhereBuilder(parsed.Expr))
@@ -211,11 +218,44 @@ func parseTagApiQuery(dbOpts *Options) (err error) {
 
 // ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
 
+// firstSearchFilterLower returns the first tag in the expression
+func firstSearchFilterLower(expr queryparser.QueryExpr) string {
+	if expr == nil {
+		return ""
+	}
+
+	switch n := expr.(type) {
+	case *queryparser.FilterExpr:
+		if n.Key == "tag" {
+			return strings.ToLower(n.Value)
+		}
+	case *queryparser.AndExpr:
+		for _, c := range n.Children {
+			if s := firstSearchFilterLower(c); s != "" {
+				return s
+			}
+		}
+	case *queryparser.OrExpr:
+		for _, c := range n.Children {
+			if s := firstSearchFilterLower(c); s != "" {
+				return s
+			}
+		}
+	}
+	return ""
+}
+
+// ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
+
 // tagWhereBuilder builds a squirrel WHERE expression from a queryparser.QueryExpr
 func tagWhereBuilder(expr queryparser.QueryExpr) squirrel.Sqlizer {
 	switch node := expr.(type) {
-	case *queryparser.ValueExpr:
-		return squirrel.Like{models.TAG_TABLE_TAG: "%" + node.Value + "%"}
+	case *queryparser.FilterExpr:
+		if node.Key == "tag" {
+			return squirrel.Like{"LOWER(" + models.TAG_TABLE_TAG + ")": "%" + strings.ToLower(node.Value) + "%"}
+		}
+
+		return nil
 	case *queryparser.AndExpr:
 		var andSlice []squirrel.Sqlizer
 		for _, child := range node.Children {

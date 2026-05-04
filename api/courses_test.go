@@ -76,8 +76,8 @@ func TestCourses_GetCourses(t *testing.T) {
 		}
 
 		// CREATED_AT ASC
-		q := "sort:\"" + models.COURSE_TABLE_CREATED_AT + " asc\""
-		status, body, err := requestHelper(t, router, httptest.NewRequest(http.MethodGet, "/api/courses/?q="+url.QueryEscape(q), nil))
+		sortAsc := models.COURSE_TABLE_CREATED_AT + " asc"
+		status, body, err := requestHelper(t, router, httptest.NewRequest(http.MethodGet, "/api/courses/?orderBy="+url.QueryEscape(sortAsc), nil))
 		require.NoError(t, err)
 		require.Equal(t, http.StatusOK, status)
 
@@ -87,8 +87,8 @@ func TestCourses_GetCourses(t *testing.T) {
 		require.Equal(t, courses[0].ID, coursesResp[0].ID)
 
 		// CREATED_AT DESC
-		q = "sort:\"" + models.COURSE_TABLE_CREATED_AT + " desc\""
-		status, body, err = requestHelper(t, router, httptest.NewRequest(http.MethodGet, "/api/courses/?q="+url.QueryEscape(q), nil))
+		sortDesc := models.COURSE_TABLE_CREATED_AT + " desc"
+		status, body, err = requestHelper(t, router, httptest.NewRequest(http.MethodGet, "/api/courses/?orderBy="+url.QueryEscape(sortDesc), nil))
 		require.NoError(t, err)
 		require.Equal(t, http.StatusOK, status)
 
@@ -115,7 +115,7 @@ func TestCourses_GetCourses(t *testing.T) {
 
 		// Page 1 (10 courses)
 		params := url.Values{
-			"q":                          {"sort:\"" + models.COURSE_TABLE_CREATED_AT + " asc\""},
+			"orderBy":                    {models.COURSE_TABLE_CREATED_AT + " asc"},
 			pagination.PageQueryParam:    {"1"},
 			pagination.PerPageQueryParam: {"10"},
 		}
@@ -132,7 +132,7 @@ func TestCourses_GetCourses(t *testing.T) {
 
 		// Page 2 (7 courses)
 		params = url.Values{
-			"q":                          {"sort:\"" + models.COURSE_TABLE_CREATED_AT + " asc\""},
+			"orderBy":                    {models.COURSE_TABLE_CREATED_AT + " asc"},
 			pagination.PageQueryParam:    {"2"},
 			pagination.PerPageQueryParam: {"10"},
 		}
@@ -150,7 +150,7 @@ func TestCourses_GetCourses(t *testing.T) {
 	t.Run("200 (filter)", func(t *testing.T) {
 		router, ctx := setupAdmin(t)
 
-		defaultSort := " sort:\"" + models.COURSE_TABLE_CREATED_AT + " asc\""
+		defaultSort := models.COURSE_TABLE_CREATED_AT + " asc"
 
 		courses := []*models.Course{}
 		for i := range 6 {
@@ -232,8 +232,8 @@ func TestCourses_GetCourses(t *testing.T) {
 
 		// Title
 		{
-			q := "course AND (1 OR 2) OR course 5" + defaultSort
-			status, body, err := requestHelper(t, router, httptest.NewRequest(http.MethodGet, "/api/courses/?q="+url.QueryEscape(q), nil))
+			qvals := url.Values{"q": {`title:'course 1' OR title:'course 2' OR title:'course 5'`}, "orderBy": {defaultSort}}
+			status, body, err := requestHelper(t, router, httptest.NewRequest(http.MethodGet, "/api/courses/?"+qvals.Encode(), nil))
 			require.NoError(t, err)
 			require.Equal(t, http.StatusOK, status)
 
@@ -247,8 +247,8 @@ func TestCourses_GetCourses(t *testing.T) {
 
 		// Tags
 		{
-			q := "(tag:tag1 AND (tag:tag2 OR tag:tag3)) OR tag:tag4" + defaultSort
-			status, body, err := requestHelper(t, router, httptest.NewRequest(http.MethodGet, "/api/courses/?q="+url.QueryEscape(q), nil))
+			qvals := url.Values{"q": {"(tag:tag1 AND (tag:tag2 OR tag:tag3)) OR tag:tag4"}, "orderBy": {defaultSort}}
+			status, body, err := requestHelper(t, router, httptest.NewRequest(http.MethodGet, "/api/courses/?"+qvals.Encode(), nil))
 			require.NoError(t, err)
 			require.Equal(t, http.StatusOK, status)
 
@@ -262,8 +262,8 @@ func TestCourses_GetCourses(t *testing.T) {
 
 		// Available
 		{
-			q := "available:true" + defaultSort
-			status, body, err := requestHelper(t, router, httptest.NewRequest(http.MethodGet, "/api/courses/?q="+url.QueryEscape(q), nil))
+			qvals := url.Values{"q": {"available:true"}, "orderBy": {defaultSort}}
+			status, body, err := requestHelper(t, router, httptest.NewRequest(http.MethodGet, "/api/courses/?"+qvals.Encode(), nil))
 			require.NoError(t, err)
 			require.Equal(t, http.StatusOK, status)
 
@@ -277,8 +277,9 @@ func TestCourses_GetCourses(t *testing.T) {
 
 		// Progress
 		{
-			q := `progress:started OR progress:completed OR progress:"not started"` + defaultSort
-			status, body, err := requestHelper(t, router, httptest.NewRequest(http.MethodGet, "/api/courses/?withUserProgress=true&q="+url.QueryEscape(q), nil))
+			q := `progress:started OR progress:completed OR progress:"not started"`
+			qvals := url.Values{"q": {q}, "orderBy": {defaultSort}}
+			status, body, err := requestHelper(t, router, httptest.NewRequest(http.MethodGet, "/api/courses/?withUserProgress=true&"+qvals.Encode(), nil))
 			require.NoError(t, err)
 			require.Equal(t, http.StatusOK, status)
 
@@ -289,8 +290,8 @@ func TestCourses_GetCourses(t *testing.T) {
 
 		// Favourite
 		{
-			q := `favourite:true` + defaultSort
-			status, body, err := requestHelper(t, router, httptest.NewRequest(http.MethodGet, "/api/courses/?withUserProgress=true&q="+url.QueryEscape(q), nil))
+			qvals := url.Values{"q": {`favourite:true`}, "orderBy": {defaultSort}}
+			status, body, err := requestHelper(t, router, httptest.NewRequest(http.MethodGet, "/api/courses/?withUserProgress=true&"+qvals.Encode(), nil))
 			require.NoError(t, err)
 			require.Equal(t, http.StatusOK, status)
 
@@ -307,8 +308,8 @@ func TestCourses_GetCourses(t *testing.T) {
 
 		// Unfavourite
 		{
-			q := `favourite:false` + defaultSort
-			status, body, err := requestHelper(t, router, httptest.NewRequest(http.MethodGet, "/api/courses/?withUserProgress=true&q="+url.QueryEscape(q), nil))
+			qvals := url.Values{"q": {`favourite:false`}, "orderBy": {defaultSort}}
+			status, body, err := requestHelper(t, router, httptest.NewRequest(http.MethodGet, "/api/courses/?withUserProgress=true&"+qvals.Encode(), nil))
 			require.NoError(t, err)
 			require.Equal(t, http.StatusOK, status)
 
@@ -325,8 +326,9 @@ func TestCourses_GetCourses(t *testing.T) {
 
 		// Complex filter
 		{
-			q := "(course AND (1 OR 2) OR course 4) AND available:true AND (tag:tag1 OR tag:tag4) OR progress:completed" + defaultSort
-			status, body, err := requestHelper(t, router, httptest.NewRequest(http.MethodGet, "/api/courses/?withUserProgress=true&q="+url.QueryEscape(q), nil))
+			q := `((title:'course 1' OR title:'course 2') AND available:true AND (tag:tag1 OR tag:tag4)) OR progress:completed`
+			qvals := url.Values{"q": {q}, "orderBy": {defaultSort}}
+			status, body, err := requestHelper(t, router, httptest.NewRequest(http.MethodGet, "/api/courses/?withUserProgress=true&"+qvals.Encode(), nil))
 			require.NoError(t, err)
 			require.Equal(t, http.StatusOK, status)
 
@@ -878,8 +880,8 @@ func TestCourses_GetLessons(t *testing.T) {
 		}
 
 		// CREATED_AT ASC
-		q := "sort:\"" + models.LESSON_TABLE_CREATED_AT + " asc\""
-		status, body, err := requestHelper(t, router, httptest.NewRequest(http.MethodGet, "/api/courses/"+courses[1].ID+"/lessons/?q="+url.QueryEscape(q), nil))
+		sortAsc := models.LESSON_TABLE_CREATED_AT + " asc"
+		status, body, err := requestHelper(t, router, httptest.NewRequest(http.MethodGet, "/api/courses/"+courses[1].ID+"/lessons/?orderBy="+url.QueryEscape(sortAsc), nil))
 		require.NoError(t, err)
 		require.Equal(t, http.StatusOK, status)
 
@@ -890,8 +892,8 @@ func TestCourses_GetLessons(t *testing.T) {
 		require.Equal(t, lessons[3].ID, lessonsResp[1].ID)
 
 		// CREATED_AT DESC
-		q = "sort:\"" + models.LESSON_TABLE_CREATED_AT + " desc\""
-		status, body, err = requestHelper(t, router, httptest.NewRequest(http.MethodGet, "/api/courses/"+courses[1].ID+"/lessons/?q="+url.QueryEscape(q), nil))
+		sortDesc := models.LESSON_TABLE_CREATED_AT + " desc"
+		status, body, err = requestHelper(t, router, httptest.NewRequest(http.MethodGet, "/api/courses/"+courses[1].ID+"/lessons/?orderBy="+url.QueryEscape(sortDesc), nil))
 		require.NoError(t, err)
 		require.Equal(t, http.StatusOK, status)
 
@@ -923,7 +925,7 @@ func TestCourses_GetLessons(t *testing.T) {
 
 		// Get the first page (10 lessons)
 		params := url.Values{
-			"q":                          {"sort:\"" + models.LESSON_TABLE_CREATED_AT + " asc\""},
+			"orderBy":                    {models.LESSON_TABLE_CREATED_AT + " asc"},
 			pagination.PageQueryParam:    {"1"},
 			pagination.PerPageQueryParam: {"10"},
 		}
@@ -941,7 +943,7 @@ func TestCourses_GetLessons(t *testing.T) {
 
 		// Get the second page (7 lessons)
 		params = url.Values{
-			"q":                          {"sort:\"" + models.LESSON_TABLE_CREATED_AT + " asc\""},
+			"orderBy":                    {models.LESSON_TABLE_CREATED_AT + " asc"},
 			pagination.PageQueryParam:    {"2"},
 			pagination.PerPageQueryParam: {"10"},
 		}
@@ -1496,8 +1498,8 @@ func TestCourses_GetAttachments(t *testing.T) {
 		}
 
 		// CREATED_AT ASC
-		q := "sort:\"" + models.ATTACHMENT_TABLE_CREATED_AT + " asc\""
-		status, body, err := requestHelper(t, router, httptest.NewRequest(http.MethodGet, "/api/courses/"+course.ID+"/lessons/"+lesson.ID+"/attachments?q="+url.QueryEscape(q), nil))
+		sortAsc := models.ATTACHMENT_TABLE_CREATED_AT + " asc"
+		status, body, err := requestHelper(t, router, httptest.NewRequest(http.MethodGet, "/api/courses/"+course.ID+"/lessons/"+lesson.ID+"/attachments?orderBy="+url.QueryEscape(sortAsc), nil))
 		require.NoError(t, err)
 		require.Equal(t, http.StatusOK, status)
 
@@ -1508,8 +1510,8 @@ func TestCourses_GetAttachments(t *testing.T) {
 		require.Equal(t, attachments[1].ID, attachmentResp[1].ID)
 
 		// CREATED_AT DESC
-		q = "sort:\"" + models.ATTACHMENT_TABLE_CREATED_AT + " desc\""
-		status, body, err = requestHelper(t, router, httptest.NewRequest(http.MethodGet, "/api/courses/"+course.ID+"/lessons/"+lesson.ID+"/attachments?q="+url.QueryEscape(q), nil))
+		sortDesc := models.ATTACHMENT_TABLE_CREATED_AT + " desc"
+		status, body, err = requestHelper(t, router, httptest.NewRequest(http.MethodGet, "/api/courses/"+course.ID+"/lessons/"+lesson.ID+"/attachments?orderBy="+url.QueryEscape(sortDesc), nil))
 		require.NoError(t, err)
 		require.Equal(t, http.StatusOK, status)
 
@@ -1550,7 +1552,7 @@ func TestCourses_GetAttachments(t *testing.T) {
 
 		// Get the first page (10 attachments)
 		params := url.Values{
-			"q":                          {"sort:\"" + models.ATTACHMENT_TABLE_CREATED_AT + " asc\""},
+			"orderBy":                    {models.ATTACHMENT_TABLE_CREATED_AT + " asc"},
 			pagination.PageQueryParam:    {"1"},
 			pagination.PerPageQueryParam: {"10"},
 		}
@@ -1568,7 +1570,7 @@ func TestCourses_GetAttachments(t *testing.T) {
 
 		// Get the second page (7 attachments)
 		params = url.Values{
-			"q":                          {"sort:\"" + models.ATTACHMENT_TABLE_CREATED_AT + " asc\""},
+			"orderBy":                    {models.ATTACHMENT_TABLE_CREATED_AT + " asc"},
 			pagination.PageQueryParam:    {"2"},
 			pagination.PerPageQueryParam: {"10"},
 		}

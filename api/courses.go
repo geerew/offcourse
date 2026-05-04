@@ -93,8 +93,9 @@ func (api coursesAPI) getCourses(c *fiber.Ctx) error {
 	}
 
 	dbOpts := dao.NewOptions().
-		WithPagination(pagination.NewFromApi(c)).
-		WithApiQuery(c.Query("q", ""))
+		WithOrderBy(utils.StringSplit(c.Query("orderBy", ""), ",")...).
+		WithApiQuery(c.Query("q", "")).
+		WithPagination(pagination.NewFromApi(c))
 
 	if withUserProgress {
 		dbOpts.WithUserProgress()
@@ -320,9 +321,9 @@ func (api coursesAPI) getCourseLessons(c *fiber.Ctx) error {
 	}
 
 	dbOpts := dao.NewOptions().
-		WithPagination(pagination.NewFromApi(c)).
-		WithApiQuery(c.Query("q", "")).
+		WithOrderBy(utils.StringSplit(c.Query("orderBy", ""), ",")...).
 		WithAssetMetadata().
+		WithPagination(pagination.NewFromApi(c)).
 		WithWhere(squirrel.Eq{models.LESSON_TABLE_COURSE_ID: id})
 
 	if withUserProgress := c.Query("withUserProgress"); withUserProgress != "" {
@@ -333,10 +334,6 @@ func (api coursesAPI) getCourseLessons(c *fiber.Ctx) error {
 
 	lessons, err := api.r.appDao.ListLessons(ctx, dbOpts)
 	if err != nil {
-		if errors.Is(err, utils.ErrApiQueryParse) {
-			return errorResponse(c, fiber.StatusBadRequest, "Error parsing query", err)
-		}
-
 		return errorResponse(c, fiber.StatusInternalServerError, "Error looking up lessons", err)
 	}
 
@@ -395,7 +392,7 @@ func (api coursesAPI) getCourseModules(c *fiber.Ctx) error {
 	}
 
 	dbOpts := dao.NewOptions().
-		WithApiQuery(c.Query("q", "")).
+		WithOrderBy(utils.StringSplit(c.Query("orderBy", ""), ",")...).
 		WithAssetMetadata().
 		WithWhere(squirrel.Eq{models.LESSON_TABLE_COURSE_ID: id})
 
@@ -407,9 +404,6 @@ func (api coursesAPI) getCourseModules(c *fiber.Ctx) error {
 
 	lessons, err := api.r.appDao.ListLessons(ctx, dbOpts)
 	if err != nil {
-		if errors.Is(err, utils.ErrApiQueryParse) {
-			return errorResponse(c, fiber.StatusBadRequest, "Error parsing query", err)
-		}
 		return errorResponse(c, fiber.StatusInternalServerError, "Error looking up lessons", err)
 	}
 
@@ -428,8 +422,8 @@ func (api coursesAPI) getCourseLessonAttachments(c *fiber.Ctx) error {
 	}
 
 	dbOpts := dao.NewOptions().
+		WithOrderBy(utils.StringSplit(c.Query("orderBy", ""), ",")...).
 		WithPagination(pagination.NewFromApi(c)).
-		WithApiQuery(c.Query("q", "")).
 		WithWhere(squirrel.And{
 			squirrel.Eq{models.ATTACHMENT_TABLE_LESSON_ID: lessonId},
 			squirrel.Eq{models.ATTACHMENT_TABLE_COURSE_ID: id},
@@ -437,9 +431,6 @@ func (api coursesAPI) getCourseLessonAttachments(c *fiber.Ctx) error {
 
 	attachments, err := api.r.appDao.ListAttachments(ctx, dbOpts)
 	if err != nil {
-		if errors.Is(err, utils.ErrApiQueryParse) {
-			return errorResponse(c, fiber.StatusBadRequest, "Error parsing query", err)
-		}
 		return errorResponse(c, fiber.StatusInternalServerError, "Error looking up attachments", err)
 	}
 

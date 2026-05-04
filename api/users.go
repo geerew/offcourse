@@ -47,8 +47,9 @@ func (api userAPI) getUsers(c *fiber.Ctx) error {
 	}
 
 	dbOpts := dao.NewOptions().
-		WithPagination(pagination.NewFromApi(c)).
-		WithApiQuery(c.Query("q", ""))
+		WithOrderBy(utils.StringSplit(c.Query("orderBy", ""), ",")...).
+		WithApiQuery(c.Query("q", "")).
+		WithPagination(pagination.NewFromApi(c))
 
 	users, err := api.r.appDao.ListUsers(ctx, dbOpts)
 	if err != nil {

@@ -16,7 +16,11 @@ import (
 
 // ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
 
-var CourseListApiAllowedFilters = []string{"available", "tag", "progress", "favourite"}
+var (
+	CourseListApiAllowedFilters = []string{"title", "available", "tag", "progress", "favourite"}
+
+	defaultCoursesListOrderBy = []string{models.COURSE_TABLE_CREATED_AT + " desc"}
+)
 
 // ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
 
@@ -118,6 +122,8 @@ func (dao *DAO) ListCourses(ctx context.Context, dbOpts *Options) ([]*models.Cou
 	if err := parseCourseApiQuery(ctx, dbOpts); err != nil {
 		return nil, err
 	}
+
+	applyDefaultOrderBy(dbOpts, defaultCoursesListOrderBy)
 
 	builderOpts := newBuilderOptions(models.COURSE_TABLE).
 		WithColumns(models.CourseColumns()...).
@@ -341,42 +347,22 @@ func attachCourseRelations(ctx context.Context, dao *DAO, userID string, courses
 
 // ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
 
-var defaultCoursesListOrderBy = []string{models.COURSE_TABLE_CREATED_AT + " desc"}
-
-// ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
-
-// parseCourseApiQuery parses dbOpts.ApiQuery to build WHERE and ORDER BY for course lists.
+// parseCourseApiQuery parses dbOpts.ApiQuery and sets a WHERE clause
 func parseCourseApiQuery(ctx context.Context, dbOpts *Options) error {
-	if dbOpts == nil {
+	if dbOpts == nil || dbOpts.ApiQuery == "" {
 		return nil
 	}
 
-	q := dbOpts.ApiQuery
-
-	if q == "" {
-		if len(dbOpts.OrderBy) == 0 && dbOpts.OrderByClause == nil {
-			dbOpts.WithOrderBy(defaultCoursesListOrderBy...)
-		}
-
-		return nil
-	}
-
-	parsed, err := queryparser.Parse(q, CourseListApiAllowedFilters)
+	parsed, err := queryparser.Parse(dbOpts.ApiQuery, CourseListApiAllowedFilters)
 	if err != nil {
 		return fmt.Errorf("%w: %w", utils.ErrApiQueryParse, err)
 	}
 
 	if parsed == nil {
-		dbOpts.WithOrderBy(defaultCoursesListOrderBy...)
 		return nil
 	}
 
-	if len(parsed.Sort) > 0 {
-		dbOpts.WithOrderBy(parsed.Sort...)
-	} else {
-		dbOpts.WithOrderBy(defaultCoursesListOrderBy...)
-	}
-
+	// When filtering by progress or favourite, get the principal user ID
 	userID := ""
 	if parsed.FoundFilters["progress"] || parsed.FoundFilters["favourite"] {
 		principal, err := principalFromCtx(ctx)
@@ -394,13 +380,13 @@ func parseCourseApiQuery(ctx context.Context, dbOpts *Options) error {
 
 // ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
 
-// coursesWhereBuilder builds a squirrel WHERE expression from a queryparser.QueryExpr
+// courseWhereBuilder builds a squirrel WHERE expression from a queryparser.QueryExpr
 func courseWhereBuilder(expr queryparser.QueryExpr, userID string) squirrel.Sqlizer {
 	switch node := expr.(type) {
-	case *queryparser.ValueExpr:
-		return squirrel.Like{models.COURSE_TABLE_TITLE: "%" + node.Value + "%"}
 	case *queryparser.FilterExpr:
 		switch node.Key {
+		case "title":
+			return squirrel.Like{models.COURSE_TABLE_TITLE: "%" + node.Value + "%"}
 		case "available":
 			value, err := cast.ToBoolE(node.Value)
 			if err != nil {

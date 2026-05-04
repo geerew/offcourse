@@ -12,7 +12,11 @@ import (
 
 // ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
 
-var LogListApiAllowedFilters = []string{"level", "type", "component"}
+var (
+	LogListApiAllowedFilters = []string{"message", "level", "type", "component"}
+
+	defaultLogsListOrderBy = []string{models.LOG_TABLE_CREATED_AT + " desc", "rowid desc"}
+)
 
 // ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
 
@@ -69,6 +73,8 @@ func (dao *DAO) ListLogs(ctx context.Context, dbOpts *Options) ([]*models.Log, e
 	if err := parseLogApiQuery(dbOpts); err != nil {
 		return nil, err
 	}
+
+	applyDefaultOrderBy(dbOpts, defaultLogsListOrderBy)
 
 	builderOpts := newBuilderOptions(models.LOG_TABLE).
 		WithColumns(models.LogColumns()...).
@@ -138,42 +144,23 @@ func (dao *DAO) CreateLogsBatch(ctx context.Context, logs []*models.Log) error {
 
 // ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
 
-var defaultLogsListOrderBy = []string{models.LOG_TABLE_CREATED_AT + " desc", "rowid desc"}
-
-// ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
-
-// parseLogApiQuery parses dbOpts.ApiQuery and sets Where / OrderBy for log lists
+// parseLogApiQuery parses dbOpts.ApiQuery and sets a WHERE clause
 func parseLogApiQuery(dbOpts *Options) error {
-	if dbOpts == nil {
+	if dbOpts == nil || dbOpts.ApiQuery == "" {
 		return nil
 	}
 
-	q := dbOpts.ApiQuery
-
-	if q == "" {
-		if len(dbOpts.OrderBy) == 0 && dbOpts.OrderByClause == nil {
-			dbOpts.WithOrderBy(defaultLogsListOrderBy...)
-		}
-		return nil
-	}
-
-	parsed, err := queryparser.Parse(q, LogListApiAllowedFilters)
+	parsed, err := queryparser.Parse(dbOpts.ApiQuery, LogListApiAllowedFilters)
 	if err != nil {
 		return fmt.Errorf("%w: %w", utils.ErrApiQueryParse, err)
 	}
 
 	if parsed == nil {
-		dbOpts.WithOrderBy(defaultLogsListOrderBy...)
 		return nil
 	}
 
-	if len(parsed.Sort) > 0 {
-		dbOpts.WithOrderBy(parsed.Sort...)
-	} else {
-		dbOpts.WithOrderBy(defaultLogsListOrderBy...)
-	}
-
 	dbOpts.WithWhere(logWhereBuilder(parsed.Expr))
+
 	return nil
 }
 
@@ -182,10 +169,10 @@ func parseLogApiQuery(dbOpts *Options) error {
 // logWhereBuilder builds a squirrel WHERE expression from a queryparser.QueryExpr
 func logWhereBuilder(expr queryparser.QueryExpr) squirrel.Sqlizer {
 	switch node := expr.(type) {
-	case *queryparser.ValueExpr:
-		return squirrel.Like{models.LOG_TABLE_MESSAGE: "%" + node.Value + "%"}
 	case *queryparser.FilterExpr:
 		switch node.Key {
+		case "message":
+			return squirrel.Like{models.LOG_TABLE_MESSAGE: "%" + node.Value + "%"}
 		case "level":
 			return squirrel.Eq{models.LOG_TABLE_LEVEL: node.Value}
 		case "type":

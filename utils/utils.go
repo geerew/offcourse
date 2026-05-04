@@ -107,3 +107,20 @@ func IsCard(filename string) bool {
 		return false
 	}
 }
+
+// ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
+
+// StringSplit splits a string into a slice of strings, trimming each string and removing
+// empty strings
+func StringSplit(s string, sep string) []string {
+	var out []string
+
+	for _, p := range strings.Split(s, sep) {
+		p = strings.TrimSpace(p)
+		if p != "" {
+			out = append(out, p)
+		}
+	}
+
+	return out
+}

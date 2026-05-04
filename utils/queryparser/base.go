@@ -5,20 +5,20 @@ package queryparser
 // QueryResult represents the result of a query parse
 type QueryResult struct {
 	Expr         QueryExpr
-	Sort         []string
-	FreeText     []string
 	FoundFilters map[string]bool
 }
 
 // ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
 
-// Parse a query string into an AST of sort tokens, free-text and allowed filters
-// TODO support single quotes too
+// Parse a query string into an AST of key:value filters combined with AND/OR and parentheses.
+// Tokens must be allowed filter keys (see allowedFilters). There is no free-text mode.
 func Parse(q string, allowedFilters []string) (*QueryResult, error) {
-	allTokens := tokenize(q)
-	remainingTokens, sortTokens := extractSortTokens(allTokens)
+	allTokens, err := tokenize(q)
+	if err != nil {
+		return nil, err
+	}
 
-	ast := newASTParser(remainingTokens, allowedFilters)
+	ast := newASTParser(allTokens, allowedFilters)
 	expr, err := ast.parseOr()
 	if err != nil {
 		return nil, err
@@ -26,8 +26,6 @@ func Parse(q string, allowedFilters []string) (*QueryResult, error) {
 
 	return &QueryResult{
 		Expr:         expr,
-		Sort:         sortTokens,
-		FreeText:     ast.FreeText,
 		FoundFilters: ast.FoundFilters,
 	}, nil
 }

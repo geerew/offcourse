@@ -2,13 +2,18 @@ package dao
 
 import (
 	"context"
-	"fmt"
 
 	"github.com/Masterminds/squirrel"
 	"github.com/geerew/off-course/models"
 	"github.com/geerew/off-course/utils"
-	"github.com/geerew/off-course/utils/queryparser"
 )
+
+// ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
+
+var defaultLessonsListOrderBy = []string{
+	models.LESSON_TABLE_MODULE + " asc",
+	models.LESSON_TABLE_PREFIX + " asc",
+}
 
 // ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
 
@@ -97,9 +102,7 @@ func (dao *DAO) GetLesson(ctx context.Context, dbOpts *Options) (*models.Lesson,
 // Note: Something can definitely be done to reduce the number of db queries whether via
 // JOINS, parallelisation, or something else
 func (dao *DAO) ListLessons(ctx context.Context, dbOpts *Options) ([]*models.Lesson, error) {
-	if err := parseLessonApiQuery(dbOpts); err != nil {
-		return nil, err
-	}
+	applyDefaultOrderBy(dbOpts, defaultLessonsListOrderBy)
 
 	// Fetch lessons
 	builderOpts := newBuilderOptions(models.LESSON_TABLE).
@@ -185,50 +188,6 @@ func lessonValidation(ag *models.Lesson) error {
 
 	if !ag.Prefix.Valid || ag.Prefix.Int16 < 0 {
 		return utils.ErrPrefix
-	}
-
-	return nil
-}
-
-// ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
-
-var defaultLessonsListOrderBy = []string{
-	models.LESSON_TABLE_MODULE + " asc",
-	models.LESSON_TABLE_PREFIX + " asc",
-}
-
-// ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
-
-// parseLessonApiQuery parses dbOpts.ApiQuery and applies sort only (no WHERE from `q`).
-func parseLessonApiQuery(dbOpts *Options) error {
-	if dbOpts == nil {
-		return nil
-	}
-
-	q := dbOpts.ApiQuery
-
-	if q == "" {
-		if len(dbOpts.OrderBy) == 0 && dbOpts.OrderByClause == nil {
-			dbOpts.WithOrderBy(defaultLessonsListOrderBy...)
-		}
-
-		return nil
-	}
-
-	parsed, err := queryparser.Parse(q, nil)
-	if err != nil {
-		return fmt.Errorf("%w: %w", utils.ErrApiQueryParse, err)
-	}
-
-	if parsed == nil {
-		dbOpts.WithOrderBy(defaultLessonsListOrderBy...)
-		return nil
-	}
-
-	if len(parsed.Sort) > 0 {
-		dbOpts.WithOrderBy(parsed.Sort...)
-	} else {
-		dbOpts.WithOrderBy(defaultLessonsListOrderBy...)
 	}
 
 	return nil

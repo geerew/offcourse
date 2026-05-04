@@ -12,7 +12,11 @@ import (
 
 // ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
 
-var UserListApiAllowedFilters = []string{"role"}
+var (
+	UserListApiAllowedFilters = []string{"name", "role"}
+
+	defaultUsersListOrderBy = []string{models.USER_TABLE_CREATED_AT + " desc"}
+)
 
 // ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
 
@@ -83,6 +87,8 @@ func (dao *DAO) ListUsers(ctx context.Context, dbOpts *Options) ([]*models.User,
 		return nil, err
 	}
 
+	applyDefaultOrderBy(dbOpts, defaultUsersListOrderBy)
+
 	builderOpts := newBuilderOptions(models.USER_TABLE).
 		WithColumns(models.UserColumns()...).
 		SetDbOpts(dbOpts)
@@ -144,40 +150,19 @@ func (dao *DAO) DeleteUsers(ctx context.Context, dbOpts *Options) error {
 
 // ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
 
-var defaultUsersListOrderBy = []string{models.USER_TABLE_CREATED_AT + " desc"}
-
-// ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
-
-// parseUserApiQuery parses dbOpts.ApiQuery and sets Where / OrderBy for user lists
+// parseUserApiQuery parses dbOpts.ApiQuery and sets a WHERE clause
 func parseUserApiQuery(dbOpts *Options) error {
-	if dbOpts == nil {
+	if dbOpts == nil || dbOpts.ApiQuery == "" {
 		return nil
 	}
 
-	q := dbOpts.ApiQuery
-
-	if q == "" {
-		if len(dbOpts.OrderBy) == 0 && dbOpts.OrderByClause == nil {
-			dbOpts.WithOrderBy(defaultUsersListOrderBy...)
-		}
-
-		return nil
-	}
-
-	parsed, err := queryparser.Parse(q, UserListApiAllowedFilters)
+	parsed, err := queryparser.Parse(dbOpts.ApiQuery, UserListApiAllowedFilters)
 	if err != nil {
 		return fmt.Errorf("%w: %w", utils.ErrApiQueryParse, err)
 	}
 
 	if parsed == nil {
-		dbOpts.WithOrderBy(defaultUsersListOrderBy...)
 		return nil
-	}
-
-	if len(parsed.Sort) > 0 {
-		dbOpts.WithOrderBy(parsed.Sort...)
-	} else {
-		dbOpts.WithOrderBy(defaultUsersListOrderBy...)
 	}
 
 	dbOpts.WithWhere(usersWhereBuilder(parsed.Expr))
@@ -190,13 +175,13 @@ func parseUserApiQuery(dbOpts *Options) error {
 // usersWhereBuilder builds a squirrel WHERE expression from a queryparser.QueryExpr
 func usersWhereBuilder(expr queryparser.QueryExpr) squirrel.Sqlizer {
 	switch node := expr.(type) {
-	case *queryparser.ValueExpr:
-		return squirrel.Or{
-			squirrel.Like{"LOWER(" + models.USER_TABLE_USERNAME + ")": "%" + node.Value + "%"},
-			squirrel.Like{"LOWER(" + models.USER_TABLE_DISPLAY_NAME + ")": "%" + node.Value + "%"},
-		}
 	case *queryparser.FilterExpr:
 		switch node.Key {
+		case "name":
+			return squirrel.Or{
+				squirrel.Like{"LOWER(" + models.USER_TABLE_USERNAME + ")": "%" + node.Value + "%"},
+				squirrel.Like{"LOWER(" + models.USER_TABLE_DISPLAY_NAME + ")": "%" + node.Value + "%"},
+			}
 		case "role":
 			return squirrel.Eq{models.USER_TABLE_ROLE: node.Value}
 

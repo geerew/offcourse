@@ -1,8 +1,19 @@
 package queryparser
 
 import (
+	"fmt"
 	"strings"
 	"unicode"
+)
+
+// ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
+
+type quoteMode byte
+
+const (
+	qNone quoteMode = iota
+	qDouble
+	qSingle
 )
 
 // ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
@@ -16,81 +27,90 @@ type token struct {
 // ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
 
 // tokenize tokenizes an input string while respecting quoted substrings
-func tokenize(input string) []token {
+//
+// Example
+//   - "tag:go 1" -> ["tag:go 1"]
+//   - "tag:'go 1'" -> ["tag:go 1"]
+//   - "tag:'go 1' OR tag:'go 2'" -> ["tag:go 1", "OR", "tag:go 2"]
+//   - "tag:'go 1' AND tag:'go 2'" -> ["tag:go 1", "AND", "tag:go 2"]
+//   - "tag:'go 1' OR tag:'go 2' AND tag:'go 3'" -> ["tag:go 1", "OR", "tag:go 2", "AND", "tag:go 3"]
+//   - "tag:'go 1' OR tag:'go 2' AND tag:'go 3'" -> ["tag:go 1", "OR", "tag:go 2", "AND", "tag:go 3"]
+//
+// Unterminated quoted input returns an error
+func tokenize(input string) ([]token, error) {
 	var tokens []token
 	var current strings.Builder
-	inQuotes := false
-	for i, r := range input {
-		if r == '"' {
-			if inQuotes {
+	var q quoteMode
+
+	// flushUnquoted flushes the current unquoted token to the tokens slice
+	flushUnquoted := func() {
+		if current.Len() > 0 {
+			tokens = append(tokens, token{Text: current.String(), Quoted: false})
+			current.Reset()
+		}
+	}
+
+	// singleQuoteCanOpen checks if a single quote can open a quoted region
+	singleQuoteCanOpen := func() bool {
+		s := current.String()
+		return len(s) == 0 || strings.HasSuffix(s, ":")
+	}
+
+	for _, r := range input {
+		switch q {
+		case qDouble:
+			if r == '"' {
 				tokens = append(tokens, token{Text: current.String(), Quoted: true})
 				current.Reset()
-				inQuotes = false
-			} else {
-				if current.Len() > 0 {
-					tokens = append(tokens, token{Text: current.String(), Quoted: false})
-					current.Reset()
-				}
-				inQuotes = true
-			}
-		} else if unicode.IsSpace(r) && !inQuotes {
-			if current.Len() > 0 {
-				tokens = append(tokens, token{Text: current.String(), Quoted: false})
-				current.Reset()
-			}
-		} else if (r == '(' || r == ')') && !inQuotes {
-			if current.Len() > 0 {
-				tokens = append(tokens, token{Text: current.String(), Quoted: false})
-				current.Reset()
-			}
-			tokens = append(tokens, token{Text: string(r), Quoted: false})
-		} else {
-			current.WriteRune(r)
-		}
-
-		if i == len(input)-1 && current.Len() > 0 {
-			tokens = append(tokens, token{Text: current.String(), Quoted: inQuotes})
-		}
-	}
-
-	return tokens
-}
-
-// ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
-
-// extractSortTokens extracts sort tokens, which is a token with in the format
-// "sort:created_at asc"
-func extractSortTokens(tokens []token) ([]token, []string) {
-	var sortTokens []string
-	var remaining []token
-	i := 0
-
-	for i < len(tokens) {
-		tok := tokens[i]
-		if strings.Contains(tok.Text, ":") {
-			parts := strings.SplitN(tok.Text, ":", 2)
-			key := parts[0]
-
-			if strings.EqualFold(key, "sort") && !tok.Quoted {
-				val := strings.TrimSpace(parts[1])
-
-				if val == "" && i+1 < len(tokens) && tokens[i+1].Quoted {
-					val = strings.TrimSpace(tokens[i+1].Text)
-					i++
-				}
-
-				if val != "" {
-					sortTokens = append(sortTokens, val)
-				}
-
-				i++
+				q = qNone
 				continue
 			}
-		}
+			current.WriteRune(r)
 
-		remaining = append(remaining, tok)
-		i++
+		case qSingle:
+			if r == '\'' {
+				tokens = append(tokens, token{Text: current.String(), Quoted: true})
+				current.Reset()
+				q = qNone
+				continue
+			}
+			current.WriteRune(r)
+
+		default:
+			// Handle unquoted tokens
+			switch {
+			case r == '"':
+				flushUnquoted()
+				q = qDouble
+
+			case r == '\'':
+				if singleQuoteCanOpen() {
+					flushUnquoted()
+					q = qSingle
+				} else {
+					current.WriteRune(r)
+				}
+
+			case unicode.IsSpace(r):
+				flushUnquoted()
+
+			case r == '(' || r == ')':
+				flushUnquoted()
+				tokens = append(tokens, token{Text: string(r), Quoted: false})
+
+			default:
+				current.WriteRune(r)
+			}
+		}
 	}
 
-	return remaining, sortTokens
+	if q != qNone {
+		return nil, fmt.Errorf("unterminated quoted string")
+	}
+
+	if current.Len() > 0 {
+		tokens = append(tokens, token{Text: current.String(), Quoted: false})
+	}
+
+	return tokens, nil
 }
