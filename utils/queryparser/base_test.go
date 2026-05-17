@@ -59,6 +59,7 @@ func TestParse_Success(t *testing.T) {
 		require.True(t, result.FoundFilter("tag"))
 	})
 
+	// Test successfully parsing a query with normalized keys
 	t.Run("normalized keys", func(t *testing.T) {
 		q := "Available:true AND Progress:completed"
 		result, err := Parse(q, allowedFilters)
@@ -67,6 +68,22 @@ func TestParse_Success(t *testing.T) {
 		require.Equal(t, "(available:true AND progress:completed)", result.Expr.String())
 		require.True(t, result.FoundFilter("available"))
 		require.True(t, result.FoundFilter("progress"))
+	})
+
+	// Test successfully parsing a query with escaped quotes in value
+	t.Run("escaped quotes in value", func(t *testing.T) {
+		q := `tag:"say \"hi\"" AND available:true`
+		result, err := Parse(q, allowedFilters)
+		require.NoError(t, err)
+		require.Equal(t, "(tag:say \"hi\" AND available:true)", result.Expr.String())
+	})
+
+	// Test successfully parsing a query with lowercase and/or from lexer
+	t.Run("lowercase and/or from lexer", func(t *testing.T) {
+		q := "available:true or tag:x"
+		result, err := Parse(q, allowedFilters)
+		require.NoError(t, err)
+		require.Equal(t, "(available:true OR tag:x)", result.Expr.String())
 	})
 }
 
@@ -115,5 +132,20 @@ func TestParse_Errors(t *testing.T) {
 		require.Error(t, err)
 		require.ErrorIs(t, err, ErrInvalidSyntax)
 		require.ErrorIs(t, err, ErrUnterminatedQuote)
+	})
+
+	// Test error due to sand is not AND keyword
+	t.Run("sand is not AND keyword", func(t *testing.T) {
+		_, err := Parse("sand:x AND available:true", allowedFilters)
+		require.Error(t, err)
+		require.ErrorIs(t, err, ErrUnknownFilterKey)
+	})
+
+	// Test error due to android is not AND keyword
+	t.Run("android is not AND keyword", func(t *testing.T) {
+		_, err := Parse("progress:completed android available:true", allowedFilters)
+		require.Error(t, err)
+		require.ErrorIs(t, err, ErrInvalidSyntax)
+		require.ErrorIs(t, err, ErrExpectedKeyValue)
 	})
 }

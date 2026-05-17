@@ -6,7 +6,9 @@ import (
 	"strings"
 )
 
-// parser is recursive-descent: expression → OR-chain of AND-groups → operands (filters or parens).
+// ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
+
+// parser represents a parsed query
 type parser struct {
 	tokens       []token
 	pos          int
@@ -14,6 +16,9 @@ type parser struct {
 	foundFilters map[string]bool
 }
 
+// ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
+
+// newParser creates a new parser with the given tokens and allowed keys
 func newParser(tokens []token, allowedKeys []string) *parser {
 	allowed := make(map[string]struct{})
 	found := make(map[string]bool)
@@ -36,12 +41,9 @@ func newParser(tokens []token, allowedKeys []string) *parser {
 	}
 }
 
-// parseExpression is the start rule (also used inside "(" ... ")").
-func (p *parser) parseExpression() (QueryExpr, error) {
-	return p.parseOr()
-}
+// ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
 
-// parseOr parses and ... OR and ...; OR binds loosest.
+// parseOr parses an OR expression
 func (p *parser) parseOr() (QueryExpr, error) {
 	expr, err := p.parseAnd()
 	if err != nil {
@@ -49,7 +51,7 @@ func (p *parser) parseOr() (QueryExpr, error) {
 	}
 
 	for p.pos < len(p.tokens) {
-		if !strings.EqualFold(p.peek().Text, "OR") {
+		if p.current().kind != tokOr {
 			break
 		}
 
@@ -72,7 +74,9 @@ func (p *parser) parseOr() (QueryExpr, error) {
 	return expr, nil
 }
 
-// parseAnd parses one or more operands with implicit AND; stops at OR, ")", or EOF.
+// ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
+
+// parseAnd parses an AND expression
 func (p *parser) parseAnd() (QueryExpr, error) {
 	var children []QueryExpr
 
@@ -90,13 +94,13 @@ func (p *parser) parseAnd() (QueryExpr, error) {
 			break
 		}
 
-		next := p.peek()
+		next := p.current()
 
-		if strings.EqualFold(next.Text, "OR") || next.Text == ")" {
+		if next.kind == tokOr || next.kind == tokRParen {
 			break
 		}
 
-		if strings.EqualFold(next.Text, "AND") {
+		if next.kind == tokAnd {
 			p.consume()
 		}
 	}
@@ -112,134 +116,90 @@ func (p *parser) parseAnd() (QueryExpr, error) {
 	return &AndExpr{Children: children}, nil
 }
 
+// ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
+
+// current returns the token at pos, or tokInvalid if past the end.
 func (p *parser) current() token {
 	if p.pos < len(p.tokens) {
 		return p.tokens[p.pos]
 	}
 
-	return token{Text: "", Quoted: false}
+	return token{kind: tokInvalid}
 }
 
+// ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
+
+// consume advances pos and returns the token that was at pos before advancing.
 func (p *parser) consume() token {
 	tok := p.current()
 	p.pos++
 	return tok
 }
 
-func (p *parser) peek() token {
-	if p.pos < len(p.tokens) {
-		return p.tokens[p.pos]
-	}
+// ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
 
-	return token{Text: "", Quoted: false}
-}
-
-// makeFilter normalizes key, checks allowedKeys, resolves value (including quoted token after "key:" alone).
+// makeFilter creates a new FilterExpr with the given key and value, if the key is allowed
 func (p *parser) makeFilter(key, val string) (*FilterExpr, error) {
 	key = strings.ToLower(strings.TrimSpace(key))
 	if _, ok := p.allowedKeys[key]; !ok {
 		return nil, errors.Join(ErrInvalidSyntax, fmt.Errorf("%w: %q", ErrUnknownFilterKey, key))
 	}
+
 	val = strings.TrimSpace(val)
-	if val == "" {
-		if p.pos < len(p.tokens) && p.current().Quoted {
-			val = strings.TrimSpace(p.consume().Text)
-		}
-	}
 	if val == "" {
 		return nil, errors.Join(ErrInvalidSyntax, fmt.Errorf("%w: for filter %q", ErrEmptyFilterValue, key))
 	}
+
 	p.foundFilters[key] = true
+
 	return &FilterExpr{Key: key, Value: val}, nil
 }
 
-// parseOperand: "(", expression ")"; or key:value (possibly split across tokens); stray AND/OR consumed as empty.
+// ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
+
+// parseOperand parses an operand (filter or parentheses)
 func (p *parser) parseOperand() (QueryExpr, error) {
 	if p.pos >= len(p.tokens) {
 		return nil, nil
 	}
 
-	if p.current().Text == "AND" || p.current().Text == "OR" {
+	switch p.current().kind {
+	case tokAnd, tokOr:
 		p.consume()
 		return nil, nil
-	}
-	if p.current().Text == "(" {
+	case tokLParen:
 		p.consume()
 
-		expr, err := p.parseExpression()
+		expr, err := p.parseOr()
 		if err != nil {
 			return nil, err
 		}
 
-		if p.pos >= len(p.tokens) || p.current().Text != ")" {
+		if p.pos >= len(p.tokens) || p.current().kind != tokRParen {
 			return nil, errors.Join(ErrInvalidSyntax, fmt.Errorf("%w", ErrExpectedClosingParen))
 		}
 
 		p.consume()
 		return expr, nil
+	case tokFilter:
+		t := p.consume()
+		return p.makeFilter(t.key, t.value)
+	case tokLiteral:
+		t := p.consume()
+		return nil, errors.Join(ErrInvalidSyntax, fmt.Errorf("%w: got %q", ErrExpectedKeyValue, t.raw))
+	default:
+		t := p.consume()
+		return nil, errors.Join(ErrInvalidSyntax, fmt.Errorf("%w: unexpected token %q", ErrTrailingInput, t.String()))
 	}
-
-	cur := p.current()
-
-	if strings.Contains(cur.Text, ":") {
-		parts := strings.SplitN(cur.Text, ":", 2)
-		key := parts[0]
-		val := strings.TrimSpace(parts[1])
-		p.consume()
-		f, err := p.makeFilter(key, val)
-		if err != nil {
-			return nil, err
-		}
-		return f, nil
-	}
-
-	if cur.Quoted {
-		return nil, errors.Join(ErrInvalidSyntax, fmt.Errorf("%w: use e.g. title:\"...\"", ErrUnexpectedQuotedToken))
-	}
-
-	var parts []string
-	parts = append(parts, p.consume().Text)
-	for p.pos < len(p.tokens) {
-		next := p.peek()
-
-		if next.Quoted || next.Text == "(" || next.Text == ")" || next.Text == "AND" || next.Text == "OR" {
-			break
-		}
-
-		if strings.Contains(next.Text, ":") {
-			candidate := strings.ToLower(strings.TrimSpace(strings.SplitN(next.Text, ":", 2)[0]))
-			if _, ok := p.allowedKeys[candidate]; ok {
-				break
-			}
-		}
-
-		parts = append(parts, p.consume().Text)
-	}
-
-	joined := strings.TrimSpace(strings.Join(parts, " "))
-	if joined == "" {
-		return nil, nil
-	}
-
-	if !strings.Contains(joined, ":") {
-		return nil, errors.Join(ErrInvalidSyntax, fmt.Errorf("%w: got %q", ErrExpectedKeyValue, joined))
-	}
-
-	parts2 := strings.SplitN(joined, ":", 2)
-	key := parts2[0]
-	rest := strings.TrimSpace(parts2[1])
-	f, err := p.makeFilter(key, rest)
-	if err != nil {
-		return nil, err
-	}
-	return f, nil
 }
 
+// ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
+
+// assertFullyConsumed checks if the parser has consumed all tokens
 func (p *parser) assertFullyConsumed() error {
 	if p.pos >= len(p.tokens) {
 		return nil
 	}
 
-	t := p.tokens[p.pos]
-	return errors.Join(ErrInvalidSyntax, fmt.Errorf("%w: unexpected token %q", ErrTrailingInput, t.Text))
+	return errors.Join(ErrInvalidSyntax, fmt.Errorf("%w: unexpected token %q", ErrTrailingInput, p.tokens[p.pos].String()))
 }
