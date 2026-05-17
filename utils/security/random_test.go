@@ -9,49 +9,40 @@ import (
 
 // ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
 
+// Test successfully generating a random string using the default alphanumeric
+// charset
 func Test_RandomString(t *testing.T) {
-	testRandomString(t, RandomString)
+	generated := make([]string, 0, 1000)
+	reg := regexp.MustCompile(`[a-zA-Z0-9]+`)
+	length := 10
+
+	for i := 0; i < 1000; i++ {
+		res := RandomString(length)
+		require.Len(t, res, length)
+		require.True(t, reg.MatchString(res))
+
+		for _, str := range generated {
+			require.NotEqual(t, res, str)
+		}
+
+		generated = append(generated, res)
+	}
 }
 
 // ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
 
 func Test_RandomStringWithAlphabet(t *testing.T) {
-	testRandomStringWithAlphabet(t, RandomStringWithAlphabet)
-}
-
-// ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
-
-func Test_PseudorandomString(t *testing.T) {
-	testRandomString(t, PseudorandomString)
-}
-
-// ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
-
-func Test_PseudorandomStringWithAlphabet(t *testing.T) {
-	testRandomStringWithAlphabet(t, PseudorandomStringWithAlphabet)
-}
-
-// ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
-
-func testRandomStringWithAlphabet(t *testing.T, randomFunc func(n int, alphabet string) string) {
-	tests := []struct {
-		alphabet      string
-		expectPattern string
-	}{
-		{"0123456789_", `[0-9_]+`},
-		{"abcdef123", `[abcdef123]+`},
-		{"!@#$%^&*()", `[\!\@\#\$\%\^\&\*\(\)]+`},
-	}
-
-	for _, tt := range tests {
+	// Test successfully generating a random string using a custom alphabet with only
+	// digits and underscore
+	t.Run("only digits and underscore", func(t *testing.T) {
 		generated := make([]string, 0, 1000)
 		length := 10
+		alphabet := "0123456789_"
+		reg := regexp.MustCompile(`[0-9_]+`)
 
 		for j := 0; j < 1000; j++ {
-			res := randomFunc(length, tt.alphabet)
+			res := RandomStringWithAlphabet(length, alphabet)
 			require.Len(t, res, length)
-
-			reg := regexp.MustCompile(tt.expectPattern)
 			require.True(t, reg.MatchString(res))
 
 			for _, str := range generated {
@@ -60,26 +51,92 @@ func testRandomStringWithAlphabet(t *testing.T, randomFunc func(n int, alphabet 
 
 			generated = append(generated, res)
 		}
-	}
+	})
+
+	// Test successfully generating a random string using a custom alphabet with only special
+	// characters
+	t.Run("special characters", func(t *testing.T) {
+		generated := make([]string, 0, 1000)
+		length := 10
+		alphabet := "!@#$%^&*()"
+		reg := regexp.MustCompile(`[\!\@\#\$\%\^\&\*\(\)]+`)
+
+		for j := 0; j < 1000; j++ {
+			res := RandomStringWithAlphabet(length, alphabet)
+			require.Len(t, res, length)
+			require.True(t, reg.MatchString(res))
+
+			for _, str := range generated {
+				require.NotEqual(t, res, str)
+			}
+
+			generated = append(generated, res)
+		}
+	})
 }
 
 // ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
 
-func testRandomString(t *testing.T, randomFunc func(n int) string) {
+// Test successfully generating a pseudorandom string using the default alphanumeric charset
+func Test_PseudorandomString(t *testing.T) {
 	generated := make([]string, 0, 1000)
 	reg := regexp.MustCompile(`[a-zA-Z0-9]+`)
 	length := 10
 
 	for i := 0; i < 1000; i++ {
-		res := randomFunc(length)
+		res := PseudorandomString(length)
 		require.Len(t, res, length)
 		require.True(t, reg.MatchString(res))
 
 		for _, str := range generated {
 			require.NotEqual(t, res, str)
-
 		}
 
 		generated = append(generated, res)
 	}
+}
+
+// ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
+
+func Test_PseudorandomStringWithAlphabet(t *testing.T) {
+	// Test successfully generating a pseudorandom string using a custom alphabet with only
+	// digits and underscore
+	t.Run("digits and underscore", func(t *testing.T) {
+		generated := make([]string, 0, 1000)
+		length := 10
+		alphabet := "0123456789_"
+		reg := regexp.MustCompile(`[0-9_]+`)
+
+		for j := 0; j < 1000; j++ {
+			res := PseudorandomStringWithAlphabet(length, alphabet)
+			require.Len(t, res, length)
+			require.True(t, reg.MatchString(res))
+
+			for _, str := range generated {
+				require.NotEqual(t, res, str)
+			}
+
+			generated = append(generated, res)
+		}
+	})
+
+	// Test successfully generating a pseudorandom string using a custom alphabet with only special
+	// characters
+	t.Run("special characters", func(t *testing.T) {
+		generated := make([]string, 0, 1000)
+		length := 10
+		alphabet := "!@#$%^&*()"
+		reg := regexp.MustCompile(`[\!\@\#\$\%\^\&\*\(\)]+`)
+
+		for j := 0; j < 1000; j++ {
+			res := PseudorandomStringWithAlphabet(length, alphabet)
+			require.Len(t, res, length)
+			require.True(t, reg.MatchString(res))
+
+			for _, str := range generated {
+				require.NotEqual(t, res, str)
+			}
+			generated = append(generated, res)
+		}
+	})
 }

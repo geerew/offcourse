@@ -1,7 +1,6 @@
 package auth
 
 import (
-	"crypto/rand"
 	"encoding/json"
 	"fmt"
 	"os"
@@ -28,12 +27,7 @@ type RecoveryToken struct {
 
 // GenerateRecoveryToken creates a recovery token file for admin password reset
 func GenerateRecoveryToken(appFs *appfs.AppFs, username, password, dataDir string) (*RecoveryToken, error) {
-	// Generate secure random token
-	tokenBytes := make([]byte, 32)
-	if _, err := rand.Read(tokenBytes); err != nil {
-		return nil, fmt.Errorf("failed to generate token: %w", err)
-	}
-	token := security.PseudorandomString(32)
+	token := security.RandomString(32)
 
 	// Create recovery token
 	recoveryToken := &RecoveryToken{

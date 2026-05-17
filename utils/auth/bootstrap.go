@@ -1,7 +1,6 @@
 package auth
 
 import (
-	"crypto/rand"
 	"encoding/json"
 	"fmt"
 	"path/filepath"
@@ -24,12 +23,7 @@ type BootstrapToken struct {
 
 // GenerateBootstrapToken creates a bootstrap token file for initial admin setup
 func GenerateBootstrapToken(dataDir string, appFs afero.Fs) (*BootstrapToken, error) {
-	// Generate secure random token
-	tokenBytes := make([]byte, 32)
-	if _, err := rand.Read(tokenBytes); err != nil {
-		return nil, fmt.Errorf("failed to generate token: %w", err)
-	}
-	token := security.PseudorandomString(32)
+	token := security.RandomString(32)
 
 	// Create bootstrap token
 	bootstrapToken := &BootstrapToken{
