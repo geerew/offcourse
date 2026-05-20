@@ -178,7 +178,6 @@ func NewApp(ctx context.Context, config *Config) (*App, error) {
 		CachePath: config.DataDir,
 		AppFs:     appFs,
 		Logger:    appLogger.WithCardCache(),
-		FFmpeg:    ffmpeg,
 	}
 
 	cardCache, err := cardcache.New(cardCacheConfig)

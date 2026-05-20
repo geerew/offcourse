@@ -21,7 +21,9 @@ organizing them into structured lessons with progress tracking capabilities.
 ### Backend
 
 - **Go** application with RESTful API
-- **SQLite** database for data persistence
+- **SQLite** (`data.db`, `logs.db`) via [`github.com/mattn/go-sqlite3`](https://github.com/mattn/go-sqlite3) and
+  [`github.com/jmoiron/sqlx`](https://github.com/jmoiron/sqlx)
+- **CGO** for SQLite and course card WebP encoding (see [Prerequisites](#prerequisites))
 
 #### Data Directory
 
@@ -50,7 +52,10 @@ The transcoded videos will be placed in the data directory under `hls`
 
 `offcourse` automatically optimizes course card images during course scanning
 
-Card images are converted to WebP format, scaled to 800px width (maintaining aspect ratio), and compressed with 85% quality for optimal web performance
+Card images (`card.jpg`, `card.jpeg`, `card.png`, `card.webp`, `card.tiff`) are converted to WebP using libwebp, scaled to a
+maximum width of 800px (aspect ratio preserved), and encoded at 85% quality
+
+The optimized card is only kept when the WebP file is smaller than the original; otherwise the original file is served
 
 The optimized card images will be placed in the data directory under `cards`
 
@@ -67,8 +72,14 @@ The optimized card images will be placed in the data directory under `cards`
 - Node.js >= 22.12.0
 - pnpm >= 8
 - Go >= 1.22.4
-- FFmpeg and FFProbe (for video processing, HLS transcoding, and card image optimization)
 - Make
+- A C toolchain (required for CGO; Xcode Command Line Tools on macOS, `build-essential` on Debian/Ubuntu)
+- **SQLite** development libraries (for `mattn/go-sqlite3`; e.g. `libsqlite3-dev` on Debian, `sqlite` via Homebrew on macOS)
+- **libwebp** development headers (for course card encoding; e.g. `libwebp-dev` on Debian, `webp` via Homebrew on macOS)
+- **FFmpeg** and **FFprobe** (for video processing and HLS transcoding only; not used for course cards)
+
+The backend must be built with CGO enabled (`CGO_ENABLED=1`, which is the default on most systems). Without CGO or the libraries
+above, `go build` and `go test` will fail when linking SQLite or WebP support
 
 #### Build
 
@@ -112,6 +123,9 @@ GOOS=linux GOARCH=amd64 make build
 
 ### Docker
 
+The Docker image builds the backend with `CGO_ENABLED=1` and installs SQLite and libwebp development packages. The runtime
+image includes FFmpeg, libwebp, and SQLite libraries
+
 #### Prerequisites
 
 - Docker
@@ -135,6 +149,7 @@ backend or frontend code will result in automatic reloading/rebuilding
 ### Prerequisites
 
 - [air](https://github.com/air-verse/air)
+- The same [native build prerequisites](#prerequisites) as a manual build (CGO, SQLite, libwebp). FFmpeg is only required for video features
 
 ### Run
 
@@ -186,15 +201,18 @@ backend or frontend code will result in automatic reloading/rebuilding
 
 ### Go Tests
 
-The go application includes a suite of tests that can be run using the `go test` command
+The Go application includes a suite of tests that can be run using the `go test` command
 
-From the root of the project, run the following command
-
-Note: The `-tags dev` flag is used so that the tests can run without the need to build the ui
+From the root of the project:
 
 ```bash
 go test -tags dev -v ./...
 ```
+
+- **`-tags dev`** — uses a stub UI embed so tests do not require building `ui/build` first (see [Build](#build))
+- **CGO** — same requirements as a normal build (SQLite + libwebp). CI installs `libsqlite3-dev` and `libwebp-dev` alongside FFmpeg
+
+If you already have `ui/build` from a frontend build, `go test ./...` without `-tags dev` also works.
 
 ## CLI Commands
 

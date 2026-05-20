@@ -46,7 +46,6 @@ func setup(t *testing.T) (*CourseScan, context.Context) {
 		CachePath: dataDir,
 		AppFs:     appFs,
 		Logger:    testLogger.WithCardCache(),
-		FFmpeg:    ffmpeg,
 	})
 	require.NoError(t, err)
 

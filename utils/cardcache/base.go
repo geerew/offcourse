@@ -5,14 +5,12 @@ import (
 	"errors"
 	"fmt"
 	"os"
-	"os/exec"
 	"path/filepath"
 	"strings"
 
 	"github.com/geerew/off-course/utils/appfs"
 	"github.com/geerew/off-course/utils/concurrency"
 	"github.com/geerew/off-course/utils/logger"
-	"github.com/geerew/off-course/utils/media"
 	"github.com/spf13/afero"
 )
 
@@ -37,7 +35,6 @@ type CardCacheConfig struct {
 	CachePath string
 	AppFs     *appfs.AppFs
 	Logger    *logger.Logger
-	FFmpeg    *media.FFmpeg
 }
 
 // ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
@@ -100,10 +97,6 @@ func (c *CardCache) OptimizeCard(ctx context.Context, courseID, originalPath str
 		return ctx.Err()
 	}
 
-	if c.config.FFmpeg == nil {
-		return fmt.Errorf("ffmpeg is not configured")
-	}
-
 	optimizedCardPath, err := c.optimizedCardPath(courseID)
 	if err != nil {
 		return err
@@ -116,62 +109,31 @@ func (c *CardCache) OptimizeCard(ctx context.Context, courseID, originalPath str
 	}
 
 	outputDir := filepath.Dir(optimizedCardPath)
-	err = c.config.AppFs.Fs.MkdirAll(outputDir, 0o755)
-	if err != nil {
+	if err := c.config.AppFs.Fs.MkdirAll(outputDir, 0o755); err != nil {
 		return fmt.Errorf("failed to create output directory: %w", err)
 	}
 
-	args := []string{
-		"-nostats",
-		"-hide_banner",
-		"-loglevel", "warning",
-		"-i", originalPath,
-		"-vf", "scale=800:-1",
-		"-c:v", "libwebp",
-		"-quality", "85",
-		"-y",
-		optimizedCardPath,
-	}
-
-	cmd := exec.CommandContext(ctx, c.config.FFmpeg.GetFFmpegPath(), args...)
-
-	c.config.Logger.Debug().
-		Str("original_path", originalPath).
-		Str("output_path", optimizedCardPath).
-		Str("command", strings.Join(cmd.Args, " ")).
-		Msg("Running FFmpeg for card optimization")
-
-	var stderr strings.Builder
-	cmd.Stderr = &stderr
-
-	err = cmd.Run()
+	originalData, err := afero.ReadFile(c.config.AppFs.Fs, originalPath)
 	if err != nil {
-		_ = c.deleteCard(optimizedCardPath)
-
-		if ctx.Err() != nil {
-			return ctx.Err()
-		}
-
-		c.config.Logger.Error().
-			Err(err).
-			Str("course_id", courseID).
-			Str("original_path", originalPath).
-			Str("output_path", optimizedCardPath).
-			Str("stderr", stderr.String()).
-			Msg("Failed to generate optimized card")
-
 		c.setServeOriginalOrFallback(courseID, originalPath)
-		return fmt.Errorf("ffmpeg failed: %w", err)
+		return fmt.Errorf("failed to read original card: %w", err)
 	}
 
-	optimizedInfo, err := c.config.AppFs.Fs.Stat(optimizedCardPath)
+	if ctx.Err() != nil {
+		return ctx.Err()
+	}
+
+	webpData, err := encodeImageToWebP(originalData)
 	if err != nil {
-		_ = c.deleteCard(optimizedCardPath)
 		c.setServeOriginalOrFallback(courseID, originalPath)
-		return fmt.Errorf("failed to stat optimized card: %w", err)
+		return fmt.Errorf("failed to encode card: %w", err)
 	}
 
-	if optimizedInfo.Size() >= originalInfo.Size() {
+	if ctx.Err() != nil {
+		return ctx.Err()
+	}
+
+	if int64(len(webpData)) >= originalInfo.Size() {
 		_ = c.deleteCard(optimizedCardPath)
 
 		c.config.Logger.Info().
@@ -179,11 +141,16 @@ func (c *CardCache) OptimizeCard(ctx context.Context, courseID, originalPath str
 			Str("original_path", originalPath).
 			Str("output_path", optimizedCardPath).
 			Int64("original_bytes", originalInfo.Size()).
-			Int64("optimized_bytes", optimizedInfo.Size()).
+			Int64("optimized_bytes", int64(len(webpData))).
 			Msg("Skipped card cache; optimized file is not smaller than original")
 
 		c.setServeOriginal(courseID, originalPath)
 		return nil
+	}
+
+	if err := afero.WriteFile(c.config.AppFs.Fs, optimizedCardPath, webpData, 0o644); err != nil {
+		c.setServeOriginalOrFallback(courseID, originalPath)
+		return fmt.Errorf("failed to write optimized card: %w", err)
 	}
 
 	c.config.Logger.Info().
@@ -191,7 +158,7 @@ func (c *CardCache) OptimizeCard(ctx context.Context, courseID, originalPath str
 		Str("original_path", originalPath).
 		Str("output_path", optimizedCardPath).
 		Int64("original_bytes", originalInfo.Size()).
-		Int64("optimized_bytes", optimizedInfo.Size()).
+		Int64("optimized_bytes", int64(len(webpData))).
 		Msg("Generated optimized card")
 
 	if err := c.setServeOptimized(courseID); err != nil {

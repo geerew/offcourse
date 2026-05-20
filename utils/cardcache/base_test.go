@@ -2,14 +2,15 @@ package cardcache
 
 import (
 	"context"
+	"image"
+	"image/color"
+	"image/jpeg"
 	"os"
-	"os/exec"
 	"path/filepath"
 	"testing"
 
 	"github.com/geerew/off-course/utils/appfs"
 	"github.com/geerew/off-course/utils/logger"
-	"github.com/geerew/off-course/utils/media"
 	"github.com/spf13/afero"
 	"github.com/stretchr/testify/require"
 )
@@ -18,7 +19,7 @@ import (
 
 func TestNew(t *testing.T) {
 	// Test successfully creating a new card cache
-	t.Run("creates cache directory", func(t *testing.T) {
+	t.Run("create cache directory", func(t *testing.T) {
 		appFs := appfs.New(afero.NewMemMapFs())
 		testLogger := logger.NilLogger()
 
@@ -38,7 +39,7 @@ func TestNew(t *testing.T) {
 	})
 
 	// Test successfully writing a fallback card
-	t.Run("writes fallback card", func(t *testing.T) {
+	t.Run("fallback card", func(t *testing.T) {
 		appFs := appfs.New(afero.NewMemMapFs())
 		tmpDir := t.TempDir()
 
@@ -57,13 +58,13 @@ func TestNew(t *testing.T) {
 	})
 
 	// Test erroring when the config is nil
-	t.Run("rejects nil config", func(t *testing.T) {
+	t.Run("nil config", func(t *testing.T) {
 		_, err := New(nil)
 		require.Error(t, err)
 	})
 
 	// Test erroring when the cache path is empty
-	t.Run("rejects empty cache path", func(t *testing.T) {
+	t.Run("empty cache path", func(t *testing.T) {
 		_, err := New(&CardCacheConfig{
 			AppFs:  appfs.New(afero.NewMemMapFs()),
 			Logger: logger.NilLogger(),
@@ -76,110 +77,76 @@ func TestNew(t *testing.T) {
 
 func TestOptimizeCard(t *testing.T) {
 	// Test successfully generating an optimized card from a JPEG image
-	t.Run("generates optimized card from JPEG", func(t *testing.T) {
-		appFs := appfs.New(afero.NewOsFs())
-		testLogger := logger.NilLogger()
-
-		ffmpeg, err := media.NewFFmpeg()
-		if err != nil {
-			t.Skip("FFmpeg not available for testing")
-		}
-
+	t.Run("generates optimized card", func(t *testing.T) {
+		appFs := appfs.New(afero.NewMemMapFs())
 		tmpDir := t.TempDir()
 
 		cache, err := New(&CardCacheConfig{
 			CachePath: tmpDir,
 			AppFs:     appFs,
-			Logger:    testLogger,
-			FFmpeg:    ffmpeg,
+			Logger:    logger.NilLogger(),
 		})
 		require.NoError(t, err)
 
 		testImagePath := filepath.Join(tmpDir, "test.jpg")
-		ffmpegPath := ffmpeg.GetFFmpegPath()
-		createImageCmd := exec.Command(ffmpegPath,
-			"-f", "lavfi",
-			"-i", "color=c=red:s=100x100:d=1",
-			"-frames:v", "1",
-			"-y",
-			testImagePath,
-		)
-		err = createImageCmd.Run()
-		if err != nil {
-			t.Skipf("Failed to create test image: %v", err)
-		}
+		writeTestJPEG(t, appFs.Fs, testImagePath, 1200, 800)
 
 		courseID := "testcourse"
 		outputPath, err := cache.optimizedCardPath(courseID)
 		require.NoError(t, err)
-		ctx := context.Background()
 
-		require.NoError(t, cache.OptimizeCard(ctx, courseID, testImagePath))
+		require.NoError(t, cache.OptimizeCard(context.Background(), courseID, testImagePath))
 
 		serve, err := cache.Get(courseID)
 		require.NoError(t, err)
-		require.NotEmpty(t, serve.Path)
+		require.Equal(t, outputPath, serve.Path)
 
 		exists, err := cache.cardExists(outputPath)
 		require.NoError(t, err)
-		if exists {
-			optimizedInfo, err := appFs.Fs.Stat(outputPath)
-			require.NoError(t, err)
-			originalInfo, err := appFs.Fs.Stat(testImagePath)
-			require.NoError(t, err)
-			require.Less(t, optimizedInfo.Size(), originalInfo.Size())
-			require.Equal(t, outputPath, serve.Path)
-		} else {
-			require.Equal(t, testImagePath, serve.Path)
-		}
+		require.True(t, exists)
+
+		optimizedInfo, err := appFs.Fs.Stat(outputPath)
+		require.NoError(t, err)
+		originalInfo, err := appFs.Fs.Stat(testImagePath)
+		require.NoError(t, err)
+		require.Less(t, optimizedInfo.Size(), originalInfo.Size())
 		require.Equal(t, ".webp", filepath.Ext(outputPath))
 	})
 
-	// Test erroring when FFmpeg is not configured
-	t.Run("requires ffmpeg", func(t *testing.T) {
-		cache := &CardCache{
-			config:    &CardCacheConfig{Logger: logger.NilLogger()},
-			cachePath: filepath.Join(t.TempDir(), "cards"),
-		}
-
-		err := cache.OptimizeCard(context.Background(), "testcourse", "in.jpg")
-		require.Error(t, err)
-		require.Contains(t, err.Error(), "ffmpeg is not configured")
-	})
-
-	// Test successfully handling context cancellation
-	t.Run("handles context cancellation", func(t *testing.T) {
-		appFs := appfs.New(afero.NewOsFs())
-		testLogger := logger.NilLogger()
-
-		ffmpeg, err := media.NewFFmpeg()
-		if err != nil {
-			t.Skip("FFmpeg not available for testing")
-		}
-
+	// Test erroring when the image data is invalid
+	t.Run("invalid image data", func(t *testing.T) {
+		appFs := appfs.New(afero.NewMemMapFs())
 		tmpDir := t.TempDir()
 
 		cache, err := New(&CardCacheConfig{
 			CachePath: tmpDir,
 			AppFs:     appFs,
-			Logger:    testLogger,
-			FFmpeg:    ffmpeg,
+			Logger:    logger.NilLogger(),
+		})
+		require.NoError(t, err)
+
+		badPath := filepath.Join(tmpDir, "bad.jpg")
+		require.NoError(t, afero.WriteFile(appFs.Fs, badPath, []byte("not an image"), os.ModePerm))
+
+		err = cache.OptimizeCard(context.Background(), "testcourse", badPath)
+		require.Error(t, err)
+		require.Contains(t, err.Error(), "failed to encode card")
+	})
+
+	// Test erroring when the context is cancelled
+	t.Run("context cancellation", func(t *testing.T) {
+		appFs := appfs.New(afero.NewMemMapFs())
+		tmpDir := t.TempDir()
+
+		cache, err := New(&CardCacheConfig{
+			CachePath: tmpDir,
+			AppFs:     appFs,
+			Logger:    logger.NilLogger(),
 		})
 		require.NoError(t, err)
 
 		testImagePath := filepath.Join(tmpDir, "test.jpg")
-		ffmpegPath := ffmpeg.GetFFmpegPath()
-		createImageCmd := exec.Command(ffmpegPath,
-			"-f", "lavfi",
-			"-i", "color=c=red:s=100x100:d=1",
-			"-frames:v", "1",
-			"-y",
-			testImagePath,
-		)
-		err = createImageCmd.Run()
-		if err != nil {
-			t.Skipf("Failed to create test image: %v", err)
-		}
+		writeTestJPEG(t, appFs.Fs, testImagePath, 100, 100)
 
 		ctx, cancel := context.WithCancel(context.Background())
 		cancel()
@@ -194,7 +161,7 @@ func TestOptimizeCard(t *testing.T) {
 
 func TestDelete(t *testing.T) {
 	// Test successfully deleting an existing card
-	t.Run("deletes existing card", func(t *testing.T) {
+	t.Run("success", func(t *testing.T) {
 		appFs := appfs.New(afero.NewOsFs())
 		testLogger := logger.NilLogger()
 		tmpDir := t.TempDir()
@@ -219,7 +186,7 @@ func TestDelete(t *testing.T) {
 	})
 
 	// Test successfully handling a non-existent card
-	t.Run("handles non-existent card gracefully", func(t *testing.T) {
+	t.Run("non-existent card", func(t *testing.T) {
 		appFs := appfs.New(afero.NewOsFs())
 		testLogger := logger.NilLogger()
 		tmpDir := t.TempDir()
@@ -276,4 +243,29 @@ func TestOptimizedPath(t *testing.T) {
 		_, err := cache.optimizedCardPath(`a/b`)
 		require.ErrorIs(t, err, ErrInvalidCourseID)
 	})
+}
+
+// ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
+
+func writeTestJPEG(t *testing.T, fs afero.Fs, path string, width, height int) {
+	t.Helper()
+
+	img := image.NewRGBA(image.Rect(0, 0, width, height))
+	for y := range height {
+		for x := range width {
+			img.Set(x, y, color.RGBA{
+				R: uint8(x % 256),
+				G: uint8(y % 256),
+				B: 128,
+				A: 255,
+			})
+		}
+	}
+
+	require.NoError(t, fs.MkdirAll(filepath.Dir(path), os.ModePerm))
+
+	f, err := fs.Create(path)
+	require.NoError(t, err)
+	require.NoError(t, jpeg.Encode(f, img, &jpeg.Options{Quality: 90}))
+	require.NoError(t, f.Close())
 }
