@@ -511,7 +511,7 @@ func handleCourseCard(
 	}
 
 	scanState.UpdateMessage("Optimizing course card")
-	err = s.cardCache.OptimizeCard(ctx, course.ID, scannedCardPath)
+	err = s.cardCache.OptimizeCard(ctx, course.ID, scannedCardPath, cardHash)
 	if err != nil {
 		if err == context.Canceled || err == context.DeadlineExceeded {
 			return true, err

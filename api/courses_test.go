@@ -17,6 +17,7 @@ import (
 	"github.com/Masterminds/squirrel"
 	"github.com/geerew/off-course/dao"
 	"github.com/geerew/off-course/models"
+	"github.com/geerew/off-course/utils/cardcache"
 	"github.com/geerew/off-course/utils/pagination"
 	"github.com/geerew/off-course/utils/security"
 	"github.com/geerew/off-course/utils/types"
@@ -592,7 +593,7 @@ func TestCourses_GetCard(t *testing.T) {
 
 		require.NoError(t, router.app.AppFs.Fs.MkdirAll(filepath.Dir(course.CardPath), os.ModePerm))
 		require.NoError(t, afero.WriteFile(router.app.AppFs.Fs, course.CardPath, []byte("test card"), os.ModePerm))
-		_ = router.app.CardCache.OptimizeCard(context.Background(), course.ID, course.CardPath)
+		_ = router.app.CardCache.OptimizeCard(context.Background(), course.ID, course.CardPath, "")
 
 		status, body, err := requestHelper(t, router, httptest.NewRequest(http.MethodGet, "/api/courses/"+course.ID+"/card", nil))
 		require.NoError(t, err)
@@ -635,7 +636,7 @@ func TestCourses_GetCard(t *testing.T) {
 		require.NoError(t, router.appDao.CreateCourse(ctx, course))
 		require.NoError(t, router.app.AppFs.Fs.MkdirAll(filepath.Dir(course.CardPath), os.ModePerm))
 		require.NoError(t, afero.WriteFile(router.app.AppFs.Fs, course.CardPath, []byte("original card"), os.ModePerm))
-		_ = router.app.CardCache.OptimizeCard(context.Background(), course.ID, course.CardPath)
+		_ = router.app.CardCache.OptimizeCard(context.Background(), course.ID, course.CardPath, "")
 
 		serve, err := router.app.CardCache.Get(course.ID)
 		require.NoError(t, err)
@@ -658,11 +659,61 @@ func TestCourses_GetCard(t *testing.T) {
 		}
 		require.NoError(t, router.appDao.CreateCourse(ctx, course))
 
-		_ = router.app.CardCache.OptimizeCard(context.Background(), course.ID, course.CardPath)
+		_ = router.app.CardCache.OptimizeCard(context.Background(), course.ID, course.CardPath, "")
 
 		status, _, err := requestHelper(t, router, httptest.NewRequest(http.MethodGet, "/api/courses/"+course.ID+"/card", nil))
 		require.NoError(t, err)
 		require.Equal(t, http.StatusOK, status)
+	})
+
+	t.Run("304 (etag)", func(t *testing.T) {
+		router, ctx := setupAdmin(t)
+
+		cardHash := "abc123deadbeef"
+		course := &models.Course{
+			Title:    "course etag",
+			Path:     "/course etag",
+			CardPath: "/course etag/card.png",
+			CardHash: cardHash,
+		}
+		require.NoError(t, router.appDao.CreateCourse(ctx, course))
+		require.NoError(t, router.app.AppFs.Fs.MkdirAll(filepath.Dir(course.CardPath), os.ModePerm))
+		require.NoError(t, afero.WriteFile(router.app.AppFs.Fs, course.CardPath, []byte("etag card"), os.ModePerm))
+		router.app.CardCache.Warm([]cardcache.CourseCardRef{{
+			ID: course.ID, CardPath: course.CardPath, CardHash: cardHash,
+		}})
+
+		req := httptest.NewRequest(http.MethodGet, "/api/courses/"+course.ID+"/card", nil)
+		req.Header.Set(fiber.HeaderIfNoneMatch, cardcache.FormatETag(cardHash))
+
+		status, body, err := requestHelper(t, router, req)
+		require.NoError(t, err)
+		require.Equal(t, http.StatusNotModified, status)
+		require.Empty(t, body)
+	})
+
+	t.Run("200 (etag cache headers)", func(t *testing.T) {
+		router, ctx := setupAdmin(t)
+
+		cardHash := "feedfacecafe"
+		course := &models.Course{
+			Title:    "course cache",
+			Path:     "/course cache",
+			CardPath: "/course cache/card.png",
+			CardHash: cardHash,
+		}
+		require.NoError(t, router.appDao.CreateCourse(ctx, course))
+		require.NoError(t, router.app.AppFs.Fs.MkdirAll(filepath.Dir(course.CardPath), os.ModePerm))
+		require.NoError(t, afero.WriteFile(router.app.AppFs.Fs, course.CardPath, []byte("cache card"), os.ModePerm))
+		router.app.CardCache.Warm([]cardcache.CourseCardRef{{
+			ID: course.ID, CardPath: course.CardPath, CardHash: cardHash,
+		}})
+
+		resp, err := router.Test(httptest.NewRequest(http.MethodGet, "/api/courses/"+course.ID+"/card", nil))
+		require.NoError(t, err)
+		require.Equal(t, http.StatusOK, resp.StatusCode)
+		require.Equal(t, cardcache.FormatETag(cardHash), resp.Header.Get(fiber.HeaderETag))
+		require.Contains(t, resp.Header.Get(fiber.HeaderCacheControl), "immutable")
 	})
 
 	t.Run("404 (fallback not found)", func(t *testing.T) {

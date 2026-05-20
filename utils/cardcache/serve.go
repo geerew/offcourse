@@ -2,6 +2,8 @@ package cardcache
 
 import (
 	"errors"
+	"fmt"
+	"io"
 	"mime"
 	"path/filepath"
 
@@ -15,10 +17,11 @@ var ErrFallbackNotFound = errors.New("fallback card not found")
 
 // ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
 
-// CardServe is a resolved card path and metadata for HTTP serving
+// CardServe is resolved card metadata for HTTP serving
 type CardServe struct {
 	Path        string
 	ContentType string
+	CardHash    string
 	Fallback    bool
 }
 
@@ -28,6 +31,7 @@ type CardServe struct {
 type CourseCardRef struct {
 	ID       string
 	CardPath string
+	CardHash string
 }
 
 // ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
@@ -72,6 +76,23 @@ func (c *CardCache) Delete(courseID string) error {
 
 // ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
 
+// OpenCard resolves the card for a course and returns a reader for its bytes.
+func (c *CardCache) OpenCard(courseID string) (io.ReadCloser, CardServe, error) {
+	serve, err := c.Get(courseID)
+	if err != nil {
+		return nil, CardServe{}, err
+	}
+
+	f, err := c.config.AppFs.Fs.Open(serve.Path)
+	if err != nil {
+		return nil, CardServe{}, fmt.Errorf("failed to open card: %w", err)
+	}
+
+	return f, serve, nil
+}
+
+// ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
+
 // Warm rebuilds the in-memory serve index from disk for each course (optimized WebP,
 // original source, or fallback). Call on startup so Get works before the next scan.
 func (c *CardCache) Warm(refs []CourseCardRef) int {
@@ -82,7 +103,7 @@ func (c *CardCache) Warm(refs []CourseCardRef) int {
 			continue
 		}
 
-		serve, err := c.resolveServeFromDisk(ref.ID, ref.CardPath)
+		serve, err := c.resolveServeFromDisk(ref.ID, ref.CardPath, ref.CardHash)
 		if err != nil {
 			continue
 		}
@@ -97,7 +118,7 @@ func (c *CardCache) Warm(refs []CourseCardRef) int {
 // ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
 
 // setServeOptimized sets the serve entry to the optimized card
-func (c *CardCache) setServeOptimized(courseID string) error {
+func (c *CardCache) setServeOptimized(courseID, cardHash string) error {
 	optimizedPath, err := c.optimizedCardPath(courseID)
 	if err != nil {
 		return err
@@ -106,6 +127,7 @@ func (c *CardCache) setServeOptimized(courseID string) error {
 	c.serveIndex.Set(courseID, CardServe{
 		Path:        optimizedPath,
 		ContentType: "image/webp",
+		CardHash:    cardHash,
 	})
 
 	return nil
@@ -114,14 +136,14 @@ func (c *CardCache) setServeOptimized(courseID string) error {
 // ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
 
 // setServeOriginal sets the serve entry to the original card
-func (c *CardCache) setServeOriginal(courseID, originalPath string) {
-	c.serveIndex.Set(courseID, c.cardServeOriginal(originalPath))
+func (c *CardCache) setServeOriginal(courseID, originalPath, cardHash string) {
+	c.serveIndex.Set(courseID, c.cardServeOriginal(originalPath, cardHash))
 }
 
 // ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
 
 // cardServeOriginal returns a CardServe entry for the original card
-func (c *CardCache) cardServeOriginal(originalPath string) CardServe {
+func (c *CardCache) cardServeOriginal(originalPath, cardHash string) CardServe {
 	contentType := mime.TypeByExtension(filepath.Ext(originalPath))
 	if contentType == "" {
 		contentType = "application/octet-stream"
@@ -130,6 +152,7 @@ func (c *CardCache) cardServeOriginal(originalPath string) CardServe {
 	return CardServe{
 		Path:        originalPath,
 		ContentType: contentType,
+		CardHash:    cardHash,
 	}
 }
 
@@ -147,7 +170,7 @@ func (c *CardCache) setServeFallback(courseID string) {
 
 // ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
 
-func (c *CardCache) resolveServeFromDisk(courseID, originalPath string) (CardServe, error) {
+func (c *CardCache) resolveServeFromDisk(courseID, originalPath, cardHash string) (CardServe, error) {
 	if _, err := c.optimizedCardPath(courseID); err != nil {
 		return c.fallbackServe()
 	}
@@ -162,6 +185,7 @@ func (c *CardCache) resolveServeFromDisk(courseID, originalPath string) (CardSer
 			return CardServe{
 				Path:        optimizedPath,
 				ContentType: "image/webp",
+				CardHash:    cardHash,
 			}, nil
 		}
 	}
@@ -173,7 +197,7 @@ func (c *CardCache) resolveServeFromDisk(courseID, originalPath string) (CardSer
 		}
 
 		if exists {
-			return c.cardServeOriginal(originalPath), nil
+			return c.cardServeOriginal(originalPath, cardHash), nil
 		}
 	}
 
@@ -184,11 +208,11 @@ func (c *CardCache) resolveServeFromDisk(courseID, originalPath string) (CardSer
 
 // setServeOriginalOrFallback sets the serve entry to the original card or the
 // fallback card
-func (c *CardCache) setServeOriginalOrFallback(courseID, originalPath string) {
+func (c *CardCache) setServeOriginalOrFallback(courseID, originalPath, cardHash string) {
 	if originalPath != "" {
 		exists, err := afero.Exists(c.config.AppFs.Fs, originalPath)
 		if err == nil && exists {
-			c.setServeOriginal(courseID, originalPath)
+			c.setServeOriginal(courseID, originalPath, cardHash)
 			return
 		}
 	}

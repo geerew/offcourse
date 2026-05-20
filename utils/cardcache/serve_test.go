@@ -1,6 +1,7 @@
 package cardcache
 
 import (
+	"io"
 	"os"
 	"testing"
 
@@ -34,7 +35,7 @@ func TestGet(t *testing.T) {
 		optimizedPath, err := cache.optimizedCardPath(courseID)
 		require.NoError(t, err)
 		require.NoError(t, afero.WriteFile(appFs.Fs, optimizedPath, []byte("webp"), os.ModePerm))
-		require.NoError(t, cache.setServeOptimized(courseID))
+		require.NoError(t, cache.setServeOptimized(courseID, "hash-opt"))
 
 		serve, err := cache.Get(courseID)
 		require.NoError(t, err)
@@ -49,7 +50,7 @@ func TestGet(t *testing.T) {
 		originalPath := "/course-1/card-original.png"
 		require.NoError(t, appFs.Fs.MkdirAll("/course-1", os.ModePerm))
 		require.NoError(t, afero.WriteFile(appFs.Fs, originalPath, []byte("original"), os.ModePerm))
-		cache.setServeOriginal(courseID, originalPath)
+		cache.setServeOriginal(courseID, originalPath, "hash-orig")
 
 		serve, err := cache.Get(courseID)
 		require.NoError(t, err)
@@ -123,7 +124,7 @@ func TestDeleteCardForCourse(t *testing.T) {
 	optimizedPath, err := cache.optimizedCardPath(courseID)
 	require.NoError(t, err)
 	require.NoError(t, afero.WriteFile(appFs.Fs, optimizedPath, []byte("webp"), os.ModePerm))
-	cache.setServeOriginal(courseID, "/card.png")
+	cache.setServeOriginal(courseID, "/card.png", "")
 
 	require.NoError(t, cache.Delete(courseID))
 
@@ -134,4 +135,34 @@ func TestDeleteCardForCourse(t *testing.T) {
 	serve, err := cache.Get(courseID)
 	require.NoError(t, err)
 	require.True(t, serve.Fallback)
+}
+
+// ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
+
+func TestOpenCard(t *testing.T) {
+	appFs := appfs.New(afero.NewMemMapFs())
+	tmpDir := t.TempDir()
+
+	cache, err := New(&CardCacheConfig{
+		CachePath: tmpDir,
+		AppFs:     appFs,
+		Logger:    logger.NilLogger(),
+	})
+	require.NoError(t, err)
+
+	courseID := "course-open"
+	optimizedPath, err := cache.optimizedCardPath(courseID)
+	require.NoError(t, err)
+	require.NoError(t, afero.WriteFile(appFs.Fs, optimizedPath, []byte("webp-bytes"), os.ModePerm))
+	require.NoError(t, cache.setServeOptimized(courseID, "open-hash"))
+
+	rc, serve, err := cache.OpenCard(courseID)
+	require.NoError(t, err)
+	require.Equal(t, "open-hash", serve.CardHash)
+	require.Equal(t, optimizedPath, serve.Path)
+
+	data, err := io.ReadAll(rc)
+	require.NoError(t, err)
+	require.NoError(t, rc.Close())
+	require.Equal(t, "webp-bytes", string(data))
 }

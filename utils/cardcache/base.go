@@ -92,7 +92,7 @@ func New(config *CardCacheConfig) (*CardCache, error) {
 
 // OptimizeCard generates an optimized WebP when smaller than the source and updates the in-memory
 // serve index to point at the optimized file, the original, or the fallback image
-func (c *CardCache) OptimizeCard(ctx context.Context, courseID, originalPath string) error {
+func (c *CardCache) OptimizeCard(ctx context.Context, courseID, originalPath, cardHash string) error {
 	if ctx.Err() != nil {
 		return ctx.Err()
 	}
@@ -104,7 +104,7 @@ func (c *CardCache) OptimizeCard(ctx context.Context, courseID, originalPath str
 
 	originalInfo, err := c.config.AppFs.Fs.Stat(originalPath)
 	if err != nil {
-		c.setServeOriginalOrFallback(courseID, originalPath)
+		c.setServeOriginalOrFallback(courseID, originalPath, cardHash)
 		return fmt.Errorf("failed to stat original card: %w", err)
 	}
 
@@ -115,7 +115,7 @@ func (c *CardCache) OptimizeCard(ctx context.Context, courseID, originalPath str
 
 	originalData, err := afero.ReadFile(c.config.AppFs.Fs, originalPath)
 	if err != nil {
-		c.setServeOriginalOrFallback(courseID, originalPath)
+		c.setServeOriginalOrFallback(courseID, originalPath, cardHash)
 		return fmt.Errorf("failed to read original card: %w", err)
 	}
 
@@ -125,7 +125,7 @@ func (c *CardCache) OptimizeCard(ctx context.Context, courseID, originalPath str
 
 	webpData, err := encodeImageToWebP(originalData)
 	if err != nil {
-		c.setServeOriginalOrFallback(courseID, originalPath)
+		c.setServeOriginalOrFallback(courseID, originalPath, cardHash)
 		return fmt.Errorf("failed to encode card: %w", err)
 	}
 
@@ -144,12 +144,12 @@ func (c *CardCache) OptimizeCard(ctx context.Context, courseID, originalPath str
 			Int64("optimized_bytes", int64(len(webpData))).
 			Msg("Skipped card cache; optimized file is not smaller than original")
 
-		c.setServeOriginal(courseID, originalPath)
+		c.setServeOriginal(courseID, originalPath, cardHash)
 		return nil
 	}
 
 	if err := afero.WriteFile(c.config.AppFs.Fs, optimizedCardPath, webpData, 0o644); err != nil {
-		c.setServeOriginalOrFallback(courseID, originalPath)
+		c.setServeOriginalOrFallback(courseID, originalPath, cardHash)
 		return fmt.Errorf("failed to write optimized card: %w", err)
 	}
 
@@ -161,7 +161,7 @@ func (c *CardCache) OptimizeCard(ctx context.Context, courseID, originalPath str
 		Int64("optimized_bytes", int64(len(webpData))).
 		Msg("Generated optimized card")
 
-	if err := c.setServeOptimized(courseID); err != nil {
+	if err := c.setServeOptimized(courseID, cardHash); err != nil {
 		return err
 	}
 

@@ -5,7 +5,6 @@ import (
 	"database/sql"
 	"errors"
 	"fmt"
-	"net/http"
 	"strconv"
 	"strings"
 
@@ -279,7 +278,7 @@ func (api coursesAPI) getCourseCard(c *fiber.Ctx) error {
 		return errorResponse(c, fiber.StatusUnauthorized, "Missing principal", nil)
 	}
 
-	serve, err := api.r.app.CardCache.Get(id)
+	rc, serve, err := api.r.app.CardCache.OpenCard(id)
 	if err != nil {
 		if errors.Is(err, cardcache.ErrFallbackNotFound) {
 			return errorResponse(c, fiber.StatusNotFound, "Fallback card not found", nil)
@@ -288,20 +287,22 @@ func (api coursesAPI) getCourseCard(c *fiber.Ctx) error {
 		return errorResponse(c, fiber.StatusInternalServerError, "Error resolving card", err)
 	}
 
-	info, err := api.r.app.AppFs.Fs.Stat(serve.Path)
-	if err != nil {
-		return errorResponse(c, fiber.StatusInternalServerError, "Error reading card", err)
-	}
-
 	c.Set(fiber.HeaderContentType, serve.ContentType)
 	if serve.Fallback {
 		c.Set(fiber.HeaderCacheControl, "public, max-age=86400")
-	} else {
+	} else if serve.CardHash == "" {
 		c.Set(fiber.HeaderCacheControl, "public, max-age=0, must-revalidate")
-		c.Set(fiber.HeaderLastModified, info.ModTime().UTC().Format(http.TimeFormat))
+	} else {
+		c.Set(fiber.HeaderETag, cardcache.FormatETag(serve.CardHash))
+		c.Set(fiber.HeaderCacheControl, "public, max-age=31536000, immutable")
 	}
 
-	return filesystem.SendFile(c, afero.NewHttpFs(api.r.app.AppFs.Fs), serve.Path)
+	if cardcache.MatchIfNoneMatch(c.Get(fiber.HeaderIfNoneMatch), serve.CardHash) {
+		_ = rc.Close()
+		return c.SendStatus(fiber.StatusNotModified)
+	}
+
+	return c.SendStream(rc)
 }
 
 // ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~

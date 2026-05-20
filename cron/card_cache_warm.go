@@ -51,6 +51,7 @@ func (w *cardCacheWarm) run() error {
 			refs[i] = cardcache.CourseCardRef{
 				ID:       course.ID,
 				CardPath: course.CardPath,
+				CardHash: course.CardHash,
 			}
 		}
 

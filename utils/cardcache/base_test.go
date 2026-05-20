@@ -95,7 +95,7 @@ func TestOptimizeCard(t *testing.T) {
 		outputPath, err := cache.optimizedCardPath(courseID)
 		require.NoError(t, err)
 
-		require.NoError(t, cache.OptimizeCard(context.Background(), courseID, testImagePath))
+		require.NoError(t, cache.OptimizeCard(context.Background(), courseID, testImagePath, "jpeg-hash"))
 
 		serve, err := cache.Get(courseID)
 		require.NoError(t, err)
@@ -128,7 +128,7 @@ func TestOptimizeCard(t *testing.T) {
 		badPath := filepath.Join(tmpDir, "bad.jpg")
 		require.NoError(t, afero.WriteFile(appFs.Fs, badPath, []byte("not an image"), os.ModePerm))
 
-		err = cache.OptimizeCard(context.Background(), "testcourse", badPath)
+		err = cache.OptimizeCard(context.Background(), "testcourse", badPath, "")
 		require.Error(t, err)
 		require.Contains(t, err.Error(), "failed to encode card")
 	})
@@ -151,7 +151,7 @@ func TestOptimizeCard(t *testing.T) {
 		ctx, cancel := context.WithCancel(context.Background())
 		cancel()
 
-		err = cache.OptimizeCard(ctx, "testcourse", testImagePath)
+		err = cache.OptimizeCard(ctx, "testcourse", testImagePath, "")
 		require.Error(t, err)
 		require.Equal(t, context.Canceled, err)
 	})
