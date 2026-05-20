@@ -12,9 +12,18 @@ import (
 	"github.com/spf13/afero"
 )
 
+// Recovery resets a lost admin password when the operator has shell access to the data directory.
+//
+// Flow:
+//  1. The admin reset-password CLI hashes the new password and writes .recovery-token (username, password hash, short-lived secret).
+//  2. The CLI POSTs only the secret to POST /api/admin/recovery on the running server.
+//  3. The API validates the token and updates the admin row via the DAO (the running app owns DB access); the token file is then deleted.
+//
+// Password material never goes over HTTP—only the one-time token. The API endpoint is unauthenticated but useless without a valid .recovery-token on disk.
+
 // ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
 
-// RecoveryToken represents a recovery token for admin password reset
+// RecoveryToken represents a recovery token for password reset
 type RecoveryToken struct {
 	Username     string    `json:"username"`
 	PasswordHash string    `json:"password_hash"`
@@ -25,14 +34,18 @@ type RecoveryToken struct {
 
 // ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
 
-// GenerateRecoveryToken creates a recovery token file for admin password reset
+// GenerateRecoveryToken creates a .recovery-token file in the data directory
 func GenerateRecoveryToken(appFs *appfs.AppFs, username, password, dataDir string) (*RecoveryToken, error) {
 	token := security.RandomString(32)
 
-	// Create recovery token
+	hash, err := GeneratePassword(password)
+	if err != nil {
+		return nil, fmt.Errorf("failed to hash password: %w", err)
+	}
+
 	recoveryToken := &RecoveryToken{
 		Username:     username,
-		PasswordHash: GeneratePassword(password),
+		PasswordHash: hash,
 		Token:        token,
 		ExpiresAt:    time.Now().Add(5 * time.Minute),
 		CreatedAt:    time.Now(),
@@ -54,33 +67,30 @@ func GenerateRecoveryToken(appFs *appfs.AppFs, username, password, dataDir strin
 
 // ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
 
-// ValidateRecoveryToken validates a recovery token and returns the token data
+// ValidateRecoveryToken checks the recovery token against the token in the .recovery-token
+//
+// It returns the token data when the token is valid, else it returns an error
 func ValidateRecoveryToken(appFs *appfs.AppFs, token, dataDir string) (*RecoveryToken, error) {
 	tokenPath := filepath.Join(dataDir, ".recovery-token")
 
-	// Check if token file exists
 	if _, err := appFs.Fs.Stat(tokenPath); os.IsNotExist(err) {
 		return nil, fmt.Errorf("recovery token file not found")
 	}
 
-	// Read token file
 	tokenData, err := afero.ReadFile(appFs.Fs, tokenPath)
 	if err != nil {
 		return nil, fmt.Errorf("failed to read token file: %w", err)
 	}
 
-	// Parse token
 	var recoveryToken RecoveryToken
 	if err := json.Unmarshal(tokenData, &recoveryToken); err != nil {
 		return nil, fmt.Errorf("failed to parse token: %w", err)
 	}
 
-	// Validate token
 	if recoveryToken.Token != token {
 		return nil, fmt.Errorf("invalid token")
 	}
 
-	// Check expiration
 	if time.Now().After(recoveryToken.ExpiresAt) {
 		return nil, fmt.Errorf("token expired")
 	}
@@ -90,7 +100,7 @@ func ValidateRecoveryToken(appFs *appfs.AppFs, token, dataDir string) (*Recovery
 
 // ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
 
-// DeleteRecoveryToken removes the recovery token file
+// DeleteRecoveryToken deletes the .recovery-token file
 func DeleteRecoveryToken(appFs *appfs.AppFs, dataDir string) error {
 	tokenPath := filepath.Join(dataDir, ".recovery-token")
 

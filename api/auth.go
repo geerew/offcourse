@@ -2,6 +2,7 @@ package api
 
 import (
 	"context"
+	"fmt"
 	"strings"
 
 	"github.com/Masterminds/squirrel"
@@ -49,6 +50,36 @@ func (api authAPI) signupStatus(c *fiber.Ctx) error {
 
 // ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
 
+func (api authAPI) bootstrap(c *fiber.Ctx) error {
+	token := c.Params("token")
+	if token == "" {
+		return errorResponse(c, fiber.StatusBadRequest, "Bootstrap token is required", nil)
+	}
+
+	fmt.Println("token", token)
+
+	// Check if already bootstrapped first
+	if api.r.app.IsBootstrapped() {
+		return errorResponse(c, fiber.StatusForbidden, "Application is already bootstrapped", nil)
+	}
+
+	// Validate bootstrap token
+	if err := auth.ValidateBootstrapToken(token, api.r.app.Config.DataDir, api.r.app.AppFs.Fs); err != nil {
+		return errorResponse(c, fiber.StatusUnauthorized, "Invalid or expired bootstrap token", nil)
+	}
+
+	// Create admin user using existing register logic
+	err := api.register(c)
+	if err == nil {
+		api.r.app.SetBootstrapped()
+		auth.DeleteBootstrapToken(api.r.app.Config.DataDir, api.r.app.AppFs.Fs)
+	}
+
+	return err
+}
+
+// ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
+
 func (api authAPI) register(c *fiber.Ctx) error {
 	if api.r.app.IsBootstrapped() && !api.r.app.Config.EnableSignup {
 		return errorResponse(c, fiber.StatusForbidden, "Sign-up is disabled", nil)
@@ -68,10 +99,15 @@ func (api authAPI) register(c *fiber.Ctx) error {
 		return errorResponse(c, fiber.StatusBadRequest, err.Error(), nil)
 	}
 
+	passwordHash, err := auth.GeneratePassword(registerReq.Password)
+	if err != nil {
+		return errorResponse(c, fiber.StatusInternalServerError, "Error hashing password", err)
+	}
+
 	user := &models.User{
 		Username:     registerReq.Username,
 		DisplayName:  registerReq.Username, // Set the display name to the username by default
-		PasswordHash: auth.GeneratePassword(registerReq.Password),
+		PasswordHash: passwordHash,
 	}
 
 	// The first user will always be an admin
@@ -81,7 +117,7 @@ func (api authAPI) register(c *fiber.Ctx) error {
 		user.Role = types.UserRoleUser
 	}
 
-	err := api.r.appDao.CreateUser(c.UserContext(), user)
+	err = api.r.appDao.CreateUser(c.UserContext(), user)
 	if err != nil {
 		if strings.HasPrefix(err.Error(), "UNIQUE constraint failed") {
 			return errorResponse(c, fiber.StatusBadRequest, "Username already exists", nil)
@@ -95,35 +131,6 @@ func (api authAPI) register(c *fiber.Ctx) error {
 		return errorResponse(c, fiber.StatusInternalServerError, "Error setting session", err)
 	}
 	return c.SendStatus(fiber.StatusCreated)
-}
-
-// ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
-
-func (api authAPI) bootstrap(c *fiber.Ctx) error {
-	token := c.Params("token")
-	if token == "" {
-		return errorResponse(c, fiber.StatusBadRequest, "Bootstrap token is required", nil)
-	}
-
-	// Check if already bootstrapped first
-	if api.r.app.IsBootstrapped() {
-		return errorResponse(c, fiber.StatusForbidden, "Application is already bootstrapped", nil)
-	}
-
-	// Validate bootstrap token
-	_, err := auth.ValidateBootstrapToken(token, api.r.app.Config.DataDir, api.r.app.AppFs.Fs)
-	if err != nil {
-		return errorResponse(c, fiber.StatusUnauthorized, "Invalid or expired bootstrap token", nil)
-	}
-
-	// Create admin user using existing register logic
-	err = api.register(c)
-	if err == nil {
-		api.r.app.SetBootstrapped()
-		auth.DeleteBootstrapToken(api.r.app.Config.DataDir, api.r.app.AppFs.Fs)
-	}
-
-	return err
 }
 
 // ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
@@ -218,7 +225,11 @@ func (api authAPI) updateMe(c *fiber.Ctx) error {
 			return errorResponse(c, fiber.StatusBadRequest, "Invalid current password", nil)
 		}
 
-		user.PasswordHash = auth.GeneratePassword(updateReq.Password)
+		passwordHash, err := auth.GeneratePassword(updateReq.Password)
+		if err != nil {
+			return errorResponse(c, fiber.StatusInternalServerError, "Error hashing password", err)
+		}
+		user.PasswordHash = passwordHash
 	}
 
 	err = api.r.appDao.UpdateUser(ctx, user)

@@ -90,10 +90,15 @@ func (api userAPI) createUser(c *fiber.Ctx) error {
 		userReq.Role = types.UserRoleUser.String()
 	}
 
+	passwordHash, err := auth.GeneratePassword(userReq.Password)
+	if err != nil {
+		return errorResponse(c, fiber.StatusInternalServerError, "Error hashing password", err)
+	}
+
 	user := &models.User{
 		Username:     userReq.Username,
 		DisplayName:  userReq.Username,
-		PasswordHash: auth.GeneratePassword(userReq.Password),
+		PasswordHash: passwordHash,
 		Role:         types.NewUserRole(userReq.Role),
 	}
 
@@ -153,7 +158,11 @@ func (api userAPI) updateUser(c *fiber.Ctx) error {
 		if err := validatePassword(userReq.Password); err != nil {
 			return errorResponse(c, fiber.StatusBadRequest, err.Error(), nil)
 		}
-		user.PasswordHash = auth.GeneratePassword(userReq.Password)
+		passwordHash, err := auth.GeneratePassword(userReq.Password)
+		if err != nil {
+			return errorResponse(c, fiber.StatusInternalServerError, "Error hashing password", err)
+		}
+		user.PasswordHash = passwordHash
 	}
 
 	if userReq.Role != "" {

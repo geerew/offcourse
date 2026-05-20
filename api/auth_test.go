@@ -194,16 +194,19 @@ func TestAuth_Login(t *testing.T) {
 	t.Run("200 (success)", func(t *testing.T) {
 		router, ctx := setupAdmin(t)
 
+		passwordHash, err := auth.GeneratePassword("abcd1234")
+		require.NoError(t, err)
+
 		user := &models.User{
 			Username:     "test",
 			DisplayName:  "Test",
-			PasswordHash: auth.GeneratePassword("abcd1234"),
+			PasswordHash: passwordHash,
 			Role:         types.UserRoleAdmin,
 		}
 		require.NoError(t, router.appDao.CreateUser(ctx, user))
 
 		dbOpts := dao.NewOptions().WithWhere(squirrel.Eq{models.USER_TABLE_ID: user.ID})
-		_, err := router.appDao.GetUser(ctx, dbOpts)
+		_, err = router.appDao.GetUser(ctx, dbOpts)
 		require.NoError(t, err)
 
 		req := httptest.NewRequest(http.MethodPost, "/api/auth/login", strings.NewReader(`{"username": "test", "password": "abcd1234" }`))
@@ -269,10 +272,13 @@ func TestAuth_Login(t *testing.T) {
 	t.Run("401 (invalid user)", func(t *testing.T) {
 		router, ctx := setupAdmin(t)
 
+		passwordHash, err := auth.GeneratePassword("abcd1234")
+		require.NoError(t, err)
+
 		user := &models.User{
 			Username:     "test",
 			DisplayName:  "Test",
-			PasswordHash: auth.GeneratePassword("abcd1234"),
+			PasswordHash: passwordHash,
 			Role:         types.UserRoleAdmin,
 		}
 		require.NoError(t, router.appDao.CreateUser(ctx, user))
@@ -289,10 +295,13 @@ func TestAuth_Login(t *testing.T) {
 	t.Run("401 (invalid password)", func(t *testing.T) {
 		router, ctx := setupAdmin(t)
 
+		passwordHash, err := auth.GeneratePassword("abcd1234")
+		require.NoError(t, err)
+
 		user := &models.User{
 			Username:     "test",
 			DisplayName:  "Test",
-			PasswordHash: auth.GeneratePassword("abcd1234"),
+			PasswordHash: passwordHash,
 			Role:         types.UserRoleAdmin,
 		}
 		require.NoError(t, router.appDao.CreateUser(ctx, user))

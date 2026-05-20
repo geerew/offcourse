@@ -4,10 +4,13 @@ import "golang.org/x/crypto/bcrypt"
 
 // ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
 
-// GeneratePassword generates a hashed password
-func GeneratePassword(p string) string {
-	hash, _ := bcrypt.GenerateFromPassword([]byte(p), bcrypt.DefaultCost)
-	return string(hash)
+// GeneratePassword returns a bcrypt hash of p using DefaultCost
+func GeneratePassword(p string) (string, error) {
+	hash, err := bcrypt.GenerateFromPassword([]byte(p), bcrypt.DefaultCost)
+	if err != nil {
+		return "", err
+	}
+	return string(hash), nil
 }
 
 // ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
