@@ -3,7 +3,6 @@ package dao
 // TODO Tidy to to make this more consistent. Use the builder pattern for all options
 import (
 	"github.com/Masterminds/squirrel"
-	"github.com/geerew/off-course/utils/pagination"
 )
 
 // ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
@@ -84,9 +83,6 @@ type builderOptions struct {
 	//
 	// Example: "ON CONFLICT(id) DO NOTHING"
 	Suffix string
-
-	// Used to paginate the results
-	Pagination *pagination.Pagination
 
 	// Limit for the number of results to return
 	Limit int
@@ -196,16 +192,6 @@ func (o *builderOptions) WithRightJoin(table, condition string) *builderOptions 
 // Use once per builderOptions instance
 func (o *builderOptions) WithSuffix(sql string) *builderOptions {
 	o.Suffix = sql
-	return o
-}
-
-// ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
-
-// WithPagination sets the pagination options
-//
-// Use once per builderOptions instance
-func (o *builderOptions) WithPagination(p *pagination.Pagination) *builderOptions {
-	o.Pagination = p
 	return o
 }
 

@@ -13,7 +13,6 @@ import (
 	"github.com/geerew/off-course/models"
 	"github.com/geerew/off-course/utils"
 	"github.com/geerew/off-course/utils/coursemetadata"
-	"github.com/geerew/off-course/utils/pagination"
 	"github.com/geerew/off-course/utils/types"
 	"github.com/gofiber/fiber/v2"
 	"github.com/gofiber/fiber/v2/middleware/filesystem"
@@ -95,7 +94,7 @@ func (api coursesAPI) getCourses(c *fiber.Ctx) error {
 	dbOpts := dao.NewOptions().
 		WithOrderBy(utils.StringSplit(c.Query("orderBy", ""), ",")...).
 		WithApiQuery(c.Query("q", "")).
-		WithPagination(pagination.NewFromApi(c))
+		WithPagination(paginationFromCtx(c))
 
 	if withUserProgress {
 		dbOpts.WithUserProgress()
@@ -323,7 +322,7 @@ func (api coursesAPI) getCourseLessons(c *fiber.Ctx) error {
 	dbOpts := dao.NewOptions().
 		WithOrderBy(utils.StringSplit(c.Query("orderBy", ""), ",")...).
 		WithAssetMetadata().
-		WithPagination(pagination.NewFromApi(c)).
+		WithPagination(paginationFromCtx(c)).
 		WithWhere(squirrel.Eq{models.LESSON_TABLE_COURSE_ID: id})
 
 	if withUserProgress := c.Query("withUserProgress"); withUserProgress != "" {
@@ -423,7 +422,7 @@ func (api coursesAPI) getCourseLessonAttachments(c *fiber.Ctx) error {
 
 	dbOpts := dao.NewOptions().
 		WithOrderBy(utils.StringSplit(c.Query("orderBy", ""), ",")...).
-		WithPagination(pagination.NewFromApi(c)).
+		WithPagination(paginationFromCtx(c)).
 		WithWhere(squirrel.And{
 			squirrel.Eq{models.ATTACHMENT_TABLE_LESSON_ID: lessonId},
 			squirrel.Eq{models.ATTACHMENT_TABLE_COURSE_ID: id},

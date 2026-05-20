@@ -93,9 +93,8 @@ func selectBuilder(builderOpts builderOptions) (string, []interface{}, error) {
 		}
 
 		if builderOpts.DbOpts.Pagination != nil {
-			builder = builder.
-				Offset(uint64(builderOpts.DbOpts.Pagination.Offset())).
-				Limit(uint64(builderOpts.DbOpts.Pagination.Limit()))
+			pag := builderOpts.DbOpts.Pagination
+			builder = builder.Offset(uint64(pag.Offset())).Limit(uint64(pag.Limit()))
 		}
 	}
 

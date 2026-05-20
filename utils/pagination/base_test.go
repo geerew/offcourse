@@ -2,26 +2,61 @@ package pagination
 
 import (
 	"encoding/json"
-	"fmt"
 	"testing"
 
-	"github.com/Masterminds/squirrel"
 	"github.com/geerew/off-course/utils/types"
-	"github.com/gofiber/fiber/v2"
 	"github.com/stretchr/testify/require"
-	"github.com/valyala/fasthttp"
 )
 
 // ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
 
-func Test_NewFromApi(t *testing.T) {
-	t.Run("no values", func(t *testing.T) {
-		app := fiber.New()
-		c := app.AcquireCtx(&fasthttp.RequestCtx{})
-		c.Request().SetRequestURI("/dummy")
-		defer app.ReleaseCtx(c)
+// Test successfully parsing a page value
+func Test_ParsePage(t *testing.T) {
+	var tests = []struct {
+		in       string
+		expected int
+	}{
+		{"1", 1},
+		{"", 1},
+		{"abc", 1},
+		{"-1", 1},
+		{"0", 1},
+		{"5", 5},
+	}
 
-		p := NewFromApi(c)
+	for _, tt := range tests {
+		require.Equal(t, tt.expected, ParsePage(tt.in), "input %q", tt.in)
+	}
+}
+
+// ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
+
+// Test successfully parsing a perPage value
+func Test_ParsePerPage(t *testing.T) {
+	var tests = []struct {
+		in       string
+		expected int
+	}{
+		{"1", 1},
+		{"", DefaultPerPage},
+		{"abc", DefaultPerPage},
+		{"-1", DefaultPerPage},
+		{"0", DefaultPerPage},
+		{"5", 5},
+		{"99999", MaxPerPage},
+	}
+
+	for _, tt := range tests {
+		require.Equal(t, tt.expected, ParsePerPage(tt.in), "input %q", tt.in)
+	}
+}
+
+// ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
+
+func Test_NewFromQuery(t *testing.T) {
+	// Test successfully creating a pagination with default values
+	t.Run("defaults", func(t *testing.T) {
+		p := New(ParsePage(""), ParsePerPage(""))
 		p.SetCount(1)
 
 		require.Equal(t, 1, p.page)
@@ -30,13 +65,9 @@ func Test_NewFromApi(t *testing.T) {
 		require.Equal(t, 1, p.TotalPages())
 	})
 
+	// Test successfully creating a pagination with values
 	t.Run("values", func(t *testing.T) {
-		app := fiber.New()
-		c := app.AcquireCtx(&fasthttp.RequestCtx{})
-		c.Request().SetRequestURI("/dummy?" + PageQueryParam + "=2" + "&" + PerPageQueryParam + "=10")
-		defer app.ReleaseCtx(c)
-
-		p := NewFromApi(c)
+		p := New(ParsePage("2"), ParsePerPage("10"))
 		p.SetCount(24)
 
 		require.Equal(t, 2, p.page)
@@ -44,13 +75,9 @@ func Test_NewFromApi(t *testing.T) {
 		require.Equal(t, 3, p.TotalPages())
 	})
 
+	// Test error when invalid values are provided
 	t.Run("invalid values", func(t *testing.T) {
-		app := fiber.New()
-		c := app.AcquireCtx(&fasthttp.RequestCtx{})
-		c.Request().SetRequestURI("/dummy?" + PageQueryParam + "=-20" + "&" + PerPageQueryParam + "=bob")
-		defer app.ReleaseCtx(c)
-
-		p := NewFromApi(c)
+		p := New(ParsePage("-20"), ParsePerPage("bob"))
 		p.SetCount(24)
 
 		require.Equal(t, 1, p.page)
@@ -63,6 +90,7 @@ func Test_NewFromApi(t *testing.T) {
 // ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
 
 func Test_New(t *testing.T) {
+	// Test successfully creating a pagination with default values
 	t.Run("no values", func(t *testing.T) {
 		p := New(1, DefaultPerPage)
 		p.SetCount(1)
@@ -72,6 +100,7 @@ func Test_New(t *testing.T) {
 		require.Equal(t, 1, p.TotalItems())
 	})
 
+	// Test successfully creating a pagination with values
 	t.Run("values", func(t *testing.T) {
 		p := New(2, 10)
 		p.SetCount(24)
@@ -81,6 +110,8 @@ func Test_New(t *testing.T) {
 		require.Equal(t, 3, p.TotalPages())
 	})
 
+	// Test successfully creating a pagination when the perPage value is above
+	// the max
 	t.Run("above max", func(t *testing.T) {
 		p := New(1, MaxPerPage+1)
 		p.SetCount(1)
@@ -89,6 +120,7 @@ func Test_New(t *testing.T) {
 		require.Equal(t, MaxPerPage, p.perPage)
 	})
 
+	// Test successfully normalizing invalid values
 	t.Run("invalid values", func(t *testing.T) {
 		p := New(-1, -1)
 		p.SetCount(24)
@@ -102,36 +134,29 @@ func Test_New(t *testing.T) {
 
 // ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
 
+// Test successfully getting the limit value
 func Test_Limit(t *testing.T) {
 	var tests = []struct {
-		in       string
+		perPage  string
 		expected int
 	}{
-		// Invalid
 		{"1", 1},
 		{"", DefaultPerPage},
 		{"abc", DefaultPerPage},
 		{"-1", DefaultPerPage},
 		{"0", DefaultPerPage},
-		// Valid
 		{"5", 5},
 	}
 
 	for _, tt := range tests {
-		app := fiber.New()
-		c := app.AcquireCtx(&fasthttp.RequestCtx{})
-		c.Request().SetRequestURI("/dummy?" + PageQueryParam + "=1" + "&" + PerPageQueryParam + "=" + tt.in)
-		defer app.ReleaseCtx(c)
-
-		p := NewFromApi(c)
-		p.SetCount(1)
-
-		require.Equal(t, tt.expected, p.Limit())
+		p := New(1, ParsePerPage(tt.perPage))
+		require.Equal(t, tt.expected, p.Limit(), "perPage %q", tt.perPage)
 	}
 }
 
 // ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
 
+// Test successfully getting the offset value
 func Test_Offset(t *testing.T) {
 	var tests = []struct {
 		page     string
@@ -149,84 +174,17 @@ func Test_Offset(t *testing.T) {
 	}
 
 	for _, tt := range tests {
-		app := fiber.New()
-		c := app.AcquireCtx(&fasthttp.RequestCtx{})
-		c.Request().SetRequestURI("/dummy?" + PageQueryParam + "=" + tt.page + "&" + PerPageQueryParam + "=" + tt.perPage)
-		defer app.ReleaseCtx(c)
-
-		p := NewFromApi(c)
-		p.SetCount(1)
-
-		require.Equal(t, tt.expected, p.Offset())
-	}
-}
-
-// ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
-
-func Test_Page(t *testing.T) {
-
-	var tests = []struct {
-		in       string
-		expected int
-	}{
-		// Invalid
-		{"1", 1},
-		{"", 1},
-		{"abc", 1},
-		{"-1", 1},
-		{"0", 1},
-		// Valid
-		{"5", 5},
-	}
-
-	for _, tt := range tests {
-		app := fiber.New()
-		c := app.AcquireCtx(&fasthttp.RequestCtx{})
-		c.Request().SetRequestURI("/dummy?" + PageQueryParam + "=" + tt.in)
-		defer app.ReleaseCtx(c)
-
-		require.Equal(t, tt.expected, page(c))
-	}
-}
-
-// ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
-
-func Test_PerPage(t *testing.T) {
-	var tests = []struct {
-		in       string
-		expected int
-	}{
-		// Invalid
-		{"1", 1},
-		{"", DefaultPerPage},
-		{"abc", DefaultPerPage},
-		{"-1", DefaultPerPage},
-		{"0", DefaultPerPage},
-		{fmt.Sprintf("%d", MaxPerPage+1), MaxPerPage},
-		// Valid
-		{"5", 5},
-	}
-
-	for _, tt := range tests {
-		app := fiber.New()
-		c := app.AcquireCtx(&fasthttp.RequestCtx{})
-		c.Request().SetRequestURI("/dummy?" + PerPageQueryParam + "=" + tt.in)
-		defer app.ReleaseCtx(c)
-
-		require.Equal(t, tt.expected, perPage(c))
+		p := New(ParsePage(tt.page), ParsePerPage(tt.perPage))
+		require.Equal(t, tt.expected, p.Offset(), "page=%q perPage=%q", tt.page, tt.perPage)
 	}
 }
 
 // ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
 
 func Test_BuildResult(t *testing.T) {
+	// Test successfully building a result object
 	t.Run("success", func(t *testing.T) {
-		app := fiber.New()
-		c := app.AcquireCtx(&fasthttp.RequestCtx{})
-		c.Request().SetRequestURI("/dummy?" + PageQueryParam + "=-20" + "&" + PerPageQueryParam + "=bob")
-		defer app.ReleaseCtx(c)
-
-		p := NewFromApi(c)
+		p := New(1, DefaultPerPage)
 		p.SetCount(24)
 
 		type Data struct {
@@ -234,7 +192,6 @@ func Test_BuildResult(t *testing.T) {
 			CreatedAt types.DateTime `json:"createdAt"`
 		}
 
-		// The data to marshal
 		data := []Data{
 			{ID: "1", CreatedAt: types.NowDateTime()},
 			{ID: "2", CreatedAt: types.NowDateTime()},
@@ -252,13 +209,9 @@ func Test_BuildResult(t *testing.T) {
 		}
 	})
 
+	// Test error when the input is not a slice
 	t.Run("invalid data", func(t *testing.T) {
-		app := fiber.New()
-		c := app.AcquireCtx(&fasthttp.RequestCtx{})
-		c.Request().SetRequestURI("/dummy?" + PageQueryParam + "=-20" + "&" + PerPageQueryParam + "=bob")
-		defer app.ReleaseCtx(c)
-
-		p := NewFromApi(c)
+		p := New(1, DefaultPerPage)
 		p.SetCount(24)
 
 		result, err := p.BuildResult("data")
@@ -266,16 +219,11 @@ func Test_BuildResult(t *testing.T) {
 		require.Nil(t, result)
 	})
 
+	// Test error when marshalling invalid data
 	t.Run("error marshalling", func(t *testing.T) {
-		app := fiber.New()
-		c := app.AcquireCtx(&fasthttp.RequestCtx{})
-		c.Request().SetRequestURI("/dummy?" + PageQueryParam + "=-20" + "&" + PerPageQueryParam + "=bob")
-		defer app.ReleaseCtx(c)
-
-		p := NewFromApi(c)
+		p := New(1, DefaultPerPage)
 		p.SetCount(24)
 
-		// Invalid data
 		badData := []struct {
 			UnsupportedField chan int `json:"unsupportedField"`
 		}{
@@ -286,22 +234,4 @@ func Test_BuildResult(t *testing.T) {
 		require.EqualError(t, err, "json: unsupported type: chan int")
 		require.Nil(t, result)
 	})
-}
-
-// ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
-
-func Test_Apply(t *testing.T) {
-	p := New(1, 10)
-
-	builder := squirrel.StatementBuilder.
-		PlaceholderFormat(squirrel.Question).
-		Select("*").
-		From("dummy")
-
-	builder = p.Apply(builder)
-
-	query, args, err := builder.ToSql()
-	require.NoError(t, err)
-	require.Equal(t, "SELECT * FROM dummy LIMIT 10 OFFSET 0", query)
-	require.Nil(t, args)
 }

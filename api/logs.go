@@ -5,7 +5,6 @@ import (
 
 	"github.com/geerew/off-course/dao"
 	"github.com/geerew/off-course/utils"
-	"github.com/geerew/off-course/utils/pagination"
 	"github.com/gofiber/fiber/v2"
 )
 
@@ -38,7 +37,7 @@ func (api *logsAPI) getLogs(c *fiber.Ctx) error {
 	dbOpts := dao.NewOptions().
 		WithOrderBy(utils.StringSplit(c.Query("orderBy", ""), ",")...).
 		WithApiQuery(c.Query("q", "")).
-		WithPagination(pagination.NewFromApi(c))
+		WithPagination(paginationFromCtx(c))
 
 	logs, err := api.r.logDao.ListLogs(ctx, dbOpts)
 	if err != nil {

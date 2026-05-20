@@ -44,9 +44,8 @@ type Options struct {
 	// Valid when querying assets
 	IncludeAssetMetadata bool
 
-	// Pagination is used to paginate the results
-	//
-	// Example: &pagination.Pagination{Page: 1, Limit: 10}
+	// Pagination applies OFFSET/LIMIT to list queries. When set, listGeneric runs a COUNT
+	// query and updates the same instance via SetCount before selecting the page.
 	Pagination *pagination.Pagination
 
 	// ApiQuery is the list `q` query string from an HTTP request

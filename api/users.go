@@ -9,7 +9,6 @@ import (
 	"github.com/geerew/off-course/models"
 	"github.com/geerew/off-course/utils"
 	"github.com/geerew/off-course/utils/auth"
-	"github.com/geerew/off-course/utils/pagination"
 	"github.com/geerew/off-course/utils/types"
 	"github.com/gofiber/fiber/v2"
 )
@@ -49,7 +48,7 @@ func (api userAPI) getUsers(c *fiber.Ctx) error {
 	dbOpts := dao.NewOptions().
 		WithOrderBy(utils.StringSplit(c.Query("orderBy", ""), ",")...).
 		WithApiQuery(c.Query("q", "")).
-		WithPagination(pagination.NewFromApi(c))
+		WithPagination(paginationFromCtx(c))
 
 	users, err := api.r.appDao.ListUsers(ctx, dbOpts)
 	if err != nil {
