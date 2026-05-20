@@ -60,6 +60,53 @@ func TestGet(t *testing.T) {
 
 // ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
 
+func TestWarm(t *testing.T) {
+	appFs := appfs.New(afero.NewMemMapFs())
+	tmpDir := t.TempDir()
+
+	cache, err := New(&CardCacheConfig{
+		CachePath: tmpDir,
+		AppFs:     appFs,
+		Logger:    logger.NilLogger(),
+	})
+	require.NoError(t, err)
+
+	// Test successfully warming the card cache
+	t.Run("picks optimized webp on disk", func(t *testing.T) {
+		courseID := "course-warm-opt"
+		optimizedPath, err := cache.optimizedCardPath(courseID)
+		require.NoError(t, err)
+		require.NoError(t, afero.WriteFile(appFs.Fs, optimizedPath, []byte("webp"), os.ModePerm))
+
+		warmed := cache.Warm([]CourseCardRef{{ID: courseID, CardPath: "/missing/original.png"}})
+		require.Equal(t, 1, warmed)
+
+		serve, err := cache.Get(courseID)
+		require.NoError(t, err)
+		require.False(t, serve.Fallback)
+		require.Equal(t, optimizedPath, serve.Path)
+	})
+
+	// Test successfully warming the card cache with an original card when no optimized file
+	// is present
+	t.Run("picks original when no optimized file", func(t *testing.T) {
+		courseID := "course-warm-orig"
+		originalPath := "/course-1/card.png"
+		require.NoError(t, appFs.Fs.MkdirAll("/course-1", os.ModePerm))
+		require.NoError(t, afero.WriteFile(appFs.Fs, originalPath, []byte("original"), os.ModePerm))
+
+		warmed := cache.Warm([]CourseCardRef{{ID: courseID, CardPath: originalPath}})
+		require.Equal(t, 1, warmed)
+
+		serve, err := cache.Get(courseID)
+		require.NoError(t, err)
+		require.False(t, serve.Fallback)
+		require.Equal(t, originalPath, serve.Path)
+	})
+}
+
+// ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
+
 // Test successfully deleting an optimized card
 func TestDeleteCardForCourse(t *testing.T) {
 	appFs := appfs.New(afero.NewMemMapFs())

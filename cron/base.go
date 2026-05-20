@@ -7,6 +7,7 @@ import (
 	"github.com/geerew/off-course/dao"
 	"github.com/geerew/off-course/database"
 	"github.com/geerew/off-course/utils/appfs"
+	"github.com/geerew/off-course/utils/cardcache"
 	"github.com/geerew/off-course/utils/logger"
 	"github.com/robfig/cron/v3"
 )
@@ -18,6 +19,7 @@ type CronConfig struct {
 	DbManager *database.DatabaseManager
 	AppFs     *appfs.AppFs
 	Logger    *logger.Logger
+	CardCache *cardcache.CardCache
 }
 
 // ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
@@ -28,6 +30,7 @@ type CronConfig struct {
 type Cron struct {
 	// Services
 	CourseAvailability *courseAvailability
+	CardCacheWarm      *cardCacheWarm
 	ReleaseChecker     *releaseChecker
 
 	// Cron scheduler
@@ -51,6 +54,16 @@ func NewCronScheduler(config *CronConfig) *Cron {
 
 	c.cron.AddFunc("@every 5m", func() { c.CourseAvailability.run() })
 
+	// Card cache warm
+	if config.CardCache != nil {
+		c.CardCacheWarm = &cardCacheWarm{
+			db:        config.DbManager.DataDb,
+			dao:       dao.New(config.DbManager.DataDb),
+			cardCache: config.CardCache,
+			logger:    config.Logger.WithCardCache(),
+		}
+	}
+
 	// Release checker
 	c.ReleaseChecker = &releaseChecker{
 		logger:     config.Logger.WithCron(),
@@ -66,8 +79,15 @@ func NewCronScheduler(config *CronConfig) *Cron {
 
 // Start starts the cron scheduler
 func (c *Cron) Start() {
-	// Run some jobs immediately
+	// Run startup jobs immediately (not on the recurring schedule above)
 	go func() { c.CourseAvailability.run() }()
+	if c.CardCacheWarm != nil {
+		go func() {
+			if err := c.CardCacheWarm.run(); err != nil {
+				c.CardCacheWarm.logger.Error().Err(err).Msg("Failed to warm card serve index")
+			}
+		}()
+	}
 	go func() { c.ReleaseChecker.run() }()
 
 	c.cron.Start()

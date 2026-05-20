@@ -202,6 +202,7 @@ func NewApp(ctx context.Context, config *Config) (*App, error) {
 		DbManager: dbManager,
 		AppFs:     appFs,
 		Logger:    appLogger,
+		CardCache: cardCache,
 	})
 
 	app := &App{

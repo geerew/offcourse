@@ -62,6 +62,8 @@ The optimized card images will be placed in the data directory under `cards`
 - Each course's optimized card is stored as `{course-id}.webp`
 - A fallback card (`fallback.webp`) is used when a course has no card image
 - Optimized cards are automatically deleted when a course is deleted
+- When the cron scheduler starts (`serve`), the card serve index is warmed once from the database and disk (optimized WebP, 
+  original, or fallback) so card URLs work before the next course scan
 
 ## Build and Run
 
