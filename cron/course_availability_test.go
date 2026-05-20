@@ -78,8 +78,6 @@ func TestCourseAvailability_Run(t *testing.T) {
 
 		err := ca.run()
 		require.Equal(t, fmt.Errorf("stat error"), err)
-
-		// Note: Log assertions removed as we no longer have access to log entries in the new logger system
 	})
 
 	t.Run("db error", func(t *testing.T) {
@@ -99,7 +97,5 @@ func TestCourseAvailability_Run(t *testing.T) {
 
 		err = ca.run()
 		require.ErrorContains(t, err, "no such table: "+models.COURSE_TABLE)
-
-		// Note: Log assertions removed as we no longer have access to log entries in the new logger system
 	})
 }
