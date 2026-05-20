@@ -2,7 +2,6 @@ package api
 
 import (
 	"context"
-	"fmt"
 	"strings"
 
 	"github.com/Masterminds/squirrel"
@@ -55,8 +54,6 @@ func (api authAPI) bootstrap(c *fiber.Ctx) error {
 	if token == "" {
 		return errorResponse(c, fiber.StatusBadRequest, "Bootstrap token is required", nil)
 	}
-
-	fmt.Println("token", token)
 
 	// Check if already bootstrapped first
 	if api.r.app.IsBootstrapped() {

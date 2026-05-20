@@ -10,6 +10,7 @@ import (
 	"strings"
 
 	"github.com/geerew/off-course/utils/appfs"
+	"github.com/geerew/off-course/utils/concurrency"
 	"github.com/geerew/off-course/utils/logger"
 	"github.com/geerew/off-course/utils/media"
 	"github.com/spf13/afero"
@@ -17,15 +18,16 @@ import (
 
 // ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
 
-// ErrInvalidCourseID is returned when a course ID is unsafe for cache file paths.
+// ErrInvalidCourseID is returned when a course ID is unsafe for cache file paths
 var ErrInvalidCourseID = errors.New("invalid course id")
 
 // ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
 
 // CardCache manages optimized card image generation and caching
 type CardCache struct {
-	config    *CardCacheConfig
-	cachePath string
+	config     *CardCacheConfig
+	cachePath  string
+	serveIndex concurrency.Map[string, CardServe]
 }
 
 // ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
@@ -58,21 +60,32 @@ func New(config *CardCacheConfig) (*CardCache, error) {
 		return nil, fmt.Errorf("card cache path is empty")
 	}
 
-	absDataDir, err := filepath.Abs(config.CachePath)
-	if err != nil {
-		return nil, fmt.Errorf("failed to get absolute path for cache path: %w", err)
+	var cachePath string
+	if _, ok := config.AppFs.Fs.(*afero.MemMapFs); ok {
+		cachePath = filepath.Join(config.CachePath, "cards")
+	} else {
+		absDataDir, err := filepath.Abs(config.CachePath)
+		if err != nil {
+			return nil, fmt.Errorf("failed to get absolute path for cache path: %w", err)
+		}
+
+		cachePath = filepath.Join(absDataDir, "cards")
 	}
 
-	cachePath := filepath.Join(absDataDir, "cards")
-
-	err = config.AppFs.Fs.MkdirAll(cachePath, 0o755)
-	if err != nil {
+	if err := config.AppFs.Fs.MkdirAll(cachePath, 0o755); err != nil {
 		return nil, fmt.Errorf("failed to create card cache directory: %w", err)
 	}
 
 	cardCache := &CardCache{
-		config:    config,
-		cachePath: cachePath,
+		config:     config,
+		cachePath:  cachePath,
+		serveIndex: concurrency.NewMap[string, CardServe](),
+	}
+
+	outputPath := cardCache.fallbackPath()
+
+	if err := afero.WriteFile(cardCache.config.AppFs.Fs, outputPath, fallbackCardBytes, 0o644); err != nil {
+		return nil, fmt.Errorf("failed to write fallback card: %w", err)
 	}
 
 	return cardCache, nil
@@ -80,8 +93,9 @@ func New(config *CardCacheConfig) (*CardCache, error) {
 
 // ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
 
-// GenerateOptimizedCard generates an optimized WebP version of a card image
-func (c *CardCache) GenerateOptimizedCard(ctx context.Context, originalPath, outputPath string) error {
+// OptimizeCard generates an optimized WebP when smaller than the source and updates the in-memory
+// serve index to point at the optimized file, the original, or the fallback image
+func (c *CardCache) OptimizeCard(ctx context.Context, courseID, originalPath string) error {
 	if ctx.Err() != nil {
 		return ctx.Err()
 	}
@@ -90,14 +104,23 @@ func (c *CardCache) GenerateOptimizedCard(ctx context.Context, originalPath, out
 		return fmt.Errorf("ffmpeg is not configured")
 	}
 
-	// Ensure output directory exists
-	outputDir := filepath.Dir(outputPath)
-	err := c.config.AppFs.Fs.MkdirAll(outputDir, 0o755)
+	optimizedCardPath, err := c.optimizedCardPath(courseID)
+	if err != nil {
+		return err
+	}
+
+	originalInfo, err := c.config.AppFs.Fs.Stat(originalPath)
+	if err != nil {
+		c.setServeOriginalOrFallback(courseID, originalPath)
+		return fmt.Errorf("failed to stat original card: %w", err)
+	}
+
+	outputDir := filepath.Dir(optimizedCardPath)
+	err = c.config.AppFs.Fs.MkdirAll(outputDir, 0o755)
 	if err != nil {
 		return fmt.Errorf("failed to create output directory: %w", err)
 	}
 
-	// Build FFmpeg command for image conversion
 	args := []string{
 		"-nostats",
 		"-hide_banner",
@@ -107,73 +130,81 @@ func (c *CardCache) GenerateOptimizedCard(ctx context.Context, originalPath, out
 		"-c:v", "libwebp",
 		"-quality", "85",
 		"-y",
-		outputPath,
+		optimizedCardPath,
 	}
 
-	// Create command with context for cancellation support
 	cmd := exec.CommandContext(ctx, c.config.FFmpeg.GetFFmpegPath(), args...)
 
 	c.config.Logger.Debug().
 		Str("original_path", originalPath).
-		Str("output_path", outputPath).
+		Str("output_path", optimizedCardPath).
 		Str("command", strings.Join(cmd.Args, " ")).
 		Msg("Running FFmpeg for card optimization")
 
-	// Capture stderr for error reporting
 	var stderr strings.Builder
 	cmd.Stderr = &stderr
 
-	// Run the command
 	err = cmd.Run()
 	if err != nil {
+		_ = c.deleteCard(optimizedCardPath)
+
 		if ctx.Err() != nil {
 			return ctx.Err()
 		}
 
 		c.config.Logger.Error().
 			Err(err).
+			Str("course_id", courseID).
 			Str("original_path", originalPath).
-			Str("output_path", outputPath).
+			Str("output_path", optimizedCardPath).
 			Str("stderr", stderr.String()).
 			Msg("Failed to generate optimized card")
 
+		c.setServeOriginalOrFallback(courseID, originalPath)
 		return fmt.Errorf("ffmpeg failed: %w", err)
 	}
 
-	c.config.Logger.Debug().
+	optimizedInfo, err := c.config.AppFs.Fs.Stat(optimizedCardPath)
+	if err != nil {
+		_ = c.deleteCard(optimizedCardPath)
+		c.setServeOriginalOrFallback(courseID, originalPath)
+		return fmt.Errorf("failed to stat optimized card: %w", err)
+	}
+
+	if optimizedInfo.Size() >= originalInfo.Size() {
+		_ = c.deleteCard(optimizedCardPath)
+
+		c.config.Logger.Info().
+			Str("course_id", courseID).
+			Str("original_path", originalPath).
+			Str("output_path", optimizedCardPath).
+			Int64("original_bytes", originalInfo.Size()).
+			Int64("optimized_bytes", optimizedInfo.Size()).
+			Msg("Skipped card cache; optimized file is not smaller than original")
+
+		c.setServeOriginal(courseID, originalPath)
+		return nil
+	}
+
+	c.config.Logger.Info().
+		Str("course_id", courseID).
 		Str("original_path", originalPath).
-		Str("output_path", outputPath).
-		Msg("Successfully generated optimized card")
+		Str("output_path", optimizedCardPath).
+		Int64("original_bytes", originalInfo.Size()).
+		Int64("optimized_bytes", optimizedInfo.Size()).
+		Msg("Generated optimized card")
+
+	if err := c.setServeOptimized(courseID); err != nil {
+		return err
+	}
 
 	return nil
 }
 
 // ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
 
-// EnsureFallbackCard writes the embedded fallback WebP to the cache directory
-func (c *CardCache) EnsureFallbackCard(outputPath string) error {
-	outputDir := filepath.Dir(outputPath)
-	err := c.config.AppFs.Fs.MkdirAll(outputDir, 0o755)
-	if err != nil {
-		return fmt.Errorf("failed to create output directory: %w", err)
-	}
-
-	err = afero.WriteFile(c.config.AppFs.Fs, outputPath, fallbackCardBytes, 0o644)
-	if err != nil {
-		return fmt.Errorf("failed to write fallback card: %w", err)
-	}
-
-	c.config.Logger.Debug().
-		Str("output_path", outputPath).
-		Msg("Ensured fallback card exists")
-
-	return nil
-}
-
-// ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
-
-// DeleteCard deletes an optimized card file
-func (c *CardCache) DeleteCard(cardPath string) error {
+// deleteCard deletes a card from the cache directory
+func (c *CardCache) deleteCard(cardPath string) error {
 	err := c.config.AppFs.Fs.Remove(cardPath)
 	if err != nil {
 		if errors.Is(err, os.ErrNotExist) || os.IsNotExist(err) {
@@ -192,8 +223,8 @@ func (c *CardCache) DeleteCard(cardPath string) error {
 
 // ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
 
-// CardExists checks if an optimized card exists
-func (c *CardCache) CardExists(cardPath string) (bool, error) {
+// cardExists checks if a card exists at the given path
+func (c *CardCache) cardExists(cardPath string) (bool, error) {
 	exists, err := afero.Exists(c.config.AppFs.Fs, cardPath)
 	if err != nil {
 		return false, fmt.Errorf("failed to check if card exists: %w", err)
@@ -204,8 +235,9 @@ func (c *CardCache) CardExists(cardPath string) (bool, error) {
 
 // ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
 
-// GetCardPath returns the full path to an optimized card for a course
-func (c *CardCache) GetCardPath(courseID string) (string, error) {
+// optimizedCardPath returns a joined path to the optimized card. It will error
+// if the course ID is empty, contains path traversal, or contains path separators
+func (c *CardCache) optimizedCardPath(courseID string) (string, error) {
 	if courseID == "" || strings.Contains(courseID, "..") || strings.ContainsAny(courseID, `/\`) {
 		return "", ErrInvalidCourseID
 	}
@@ -215,7 +247,7 @@ func (c *CardCache) GetCardPath(courseID string) (string, error) {
 
 // ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
 
-// GetFallbackPath returns the full path to the fallback card
-func (c *CardCache) GetFallbackPath() string {
+// fallbackPath returns a joined path to the fallback card
+func (c *CardCache) fallbackPath() string {
 	return filepath.Join(c.cachePath, "fallback.webp")
 }

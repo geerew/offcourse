@@ -198,12 +198,6 @@ func NewApp(ctx context.Context, config *Config) (*App, error) {
 	// Metadata writer (for oc.json files)
 	metadataWriter := coursemetadata.NewMetadataWriter(appFs.Fs, appLogger.WithCourseMetadata())
 
-	// Ensure fallback card exists
-	fallbackPath := cardCache.GetFallbackPath()
-	if err := cardCache.EnsureFallbackCard(fallbackPath); err != nil {
-		return nil, fmt.Errorf("failed to ensure fallback card exists: %w", err)
-	}
-
 	// Cron scheduler
 	cronScheduler := cron.NewCronScheduler(&cron.CronConfig{
 		DbManager: dbManager,

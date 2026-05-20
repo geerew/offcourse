@@ -146,8 +146,7 @@ func TestScanner_Processor(t *testing.T) {
 		initialHash := course.CardHash
 		require.NotEmpty(t, initialHash)
 
-		optimizedPath, err := scanner.cardCache.GetCardPath(course.ID)
-		require.NoError(t, err)
+		optimizedPath := filepath.Join("./oc_data", "cards", course.ID+".webp")
 		require.NoError(t, afero.WriteFile(scanner.appFs.Fs, optimizedPath, []byte("cached-webp"), os.ModePerm))
 
 		require.NoError(t, afero.WriteFile(scanner.appFs.Fs, cardPath, []byte("card-content-v2-different"), os.ModePerm))

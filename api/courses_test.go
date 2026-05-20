@@ -534,13 +534,10 @@ func TestCourses_DeleteCourse(t *testing.T) {
 		}
 		require.NoError(t, router.appDao.CreateCourse(ctx, course))
 
-		// Create optimized card file
-		cardPath, err := router.app.CardCache.GetCardPath(course.ID)
-		require.NoError(t, err)
+		cardPath := filepath.Join(router.app.Config.DataDir, "cards", course.ID+".webp")
 		require.NoError(t, afero.WriteFile(router.app.AppFs.Fs, cardPath, []byte("test card"), os.ModePerm))
 
-		// Verify card exists
-		exists, err := router.app.CardCache.CardExists(cardPath)
+		exists, err := afero.Exists(router.app.AppFs.Fs, cardPath)
 		require.NoError(t, err)
 		require.True(t, exists, "Card should exist before deletion")
 
@@ -555,8 +552,7 @@ func TestCourses_DeleteCourse(t *testing.T) {
 		require.NoError(t, err)
 		require.Nil(t, deletedCourse)
 
-		// Verify card file is deleted
-		exists, err = router.app.CardCache.CardExists(cardPath)
+		exists, err = afero.Exists(router.app.AppFs.Fs, cardPath)
 		require.NoError(t, err)
 		require.False(t, exists, "Card should be deleted when course is deleted")
 	})
@@ -594,10 +590,9 @@ func TestCourses_GetCard(t *testing.T) {
 		}
 		require.NoError(t, router.appDao.CreateCourse(ctx, course))
 
-		// Create optimized card file in cards directory
-		cardPath, err := router.app.CardCache.GetCardPath(course.ID)
-		require.NoError(t, err)
-		require.NoError(t, afero.WriteFile(router.app.AppFs.Fs, cardPath, []byte("test card"), os.ModePerm))
+		require.NoError(t, router.app.AppFs.Fs.MkdirAll(filepath.Dir(course.CardPath), os.ModePerm))
+		require.NoError(t, afero.WriteFile(router.app.AppFs.Fs, course.CardPath, []byte("test card"), os.ModePerm))
+		_ = router.app.CardCache.OptimizeCard(context.Background(), course.ID, course.CardPath)
 
 		status, body, err := requestHelper(t, router, httptest.NewRequest(http.MethodGet, "/api/courses/"+course.ID+"/card", nil))
 		require.NoError(t, err)
@@ -629,7 +624,31 @@ func TestCourses_GetCard(t *testing.T) {
 		require.Equal(t, http.StatusOK, status) // Fallback is served, not 404
 	})
 
-	t.Run("200 (card not found serves fallback)", func(t *testing.T) {
+	t.Run("200 (no cache serves original)", func(t *testing.T) {
+		router, ctx := setupAdmin(t)
+
+		course := &models.Course{
+			Title:    "course 1",
+			Path:     "/course 1",
+			CardPath: "/course 1/card.png",
+		}
+		require.NoError(t, router.appDao.CreateCourse(ctx, course))
+		require.NoError(t, router.app.AppFs.Fs.MkdirAll(filepath.Dir(course.CardPath), os.ModePerm))
+		require.NoError(t, afero.WriteFile(router.app.AppFs.Fs, course.CardPath, []byte("original card"), os.ModePerm))
+		_ = router.app.CardCache.OptimizeCard(context.Background(), course.ID, course.CardPath)
+
+		serve, err := router.app.CardCache.Get(course.ID)
+		require.NoError(t, err)
+		require.False(t, serve.Fallback)
+		require.Equal(t, course.CardPath, serve.Path)
+
+		status, body, err := requestHelper(t, router, httptest.NewRequest(http.MethodGet, "/api/courses/"+course.ID+"/card", nil))
+		require.NoError(t, err)
+		require.Equal(t, http.StatusOK, status)
+		require.Equal(t, "original card", string(body))
+	})
+
+	t.Run("200 (missing original serves fallback)", func(t *testing.T) {
 		router, ctx := setupAdmin(t)
 
 		course := &models.Course{
@@ -639,18 +658,17 @@ func TestCourses_GetCard(t *testing.T) {
 		}
 		require.NoError(t, router.appDao.CreateCourse(ctx, course))
 
-		// Card path exists in DB but optimized card doesn't exist - should serve fallback
+		_ = router.app.CardCache.OptimizeCard(context.Background(), course.ID, course.CardPath)
+
 		status, _, err := requestHelper(t, router, httptest.NewRequest(http.MethodGet, "/api/courses/"+course.ID+"/card", nil))
 		require.NoError(t, err)
-		require.Equal(t, http.StatusOK, status) // Fallback is served, not 404
+		require.Equal(t, http.StatusOK, status)
 	})
 
 	t.Run("404 (fallback not found)", func(t *testing.T) {
 		router, _ := setupAdmin(t)
 
-		// Delete fallback card to test error case
-		fallbackPath := router.app.CardCache.GetFallbackPath()
-		router.app.AppFs.Fs.Remove(fallbackPath)
+		require.NoError(t, router.app.AppFs.Fs.Remove(filepath.Join(router.app.Config.DataDir, "cards", "fallback.webp")))
 
 		status, body, err := requestHelper(t, router, httptest.NewRequest(http.MethodGet, "/api/courses/invalid/card", nil))
 		require.NoError(t, err)

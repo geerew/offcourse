@@ -31,10 +31,29 @@ func TestNew(t *testing.T) {
 		require.NoError(t, err)
 		require.NotNil(t, cache)
 
-		cachePath, err := cache.GetCardPath("test")
+		cachePath, err := cache.optimizedCardPath("test")
 		require.NoError(t, err)
 		cachePath = filepath.Dir(cachePath)
 		require.Contains(t, cachePath, "cards")
+	})
+
+	// Test successfully writing a fallback card
+	t.Run("writes fallback card", func(t *testing.T) {
+		appFs := appfs.New(afero.NewMemMapFs())
+		tmpDir := t.TempDir()
+
+		cache, err := New(&CardCacheConfig{
+			CachePath: tmpDir,
+			AppFs:     appFs,
+			Logger:    logger.NilLogger(),
+		})
+		require.NoError(t, err)
+
+		fallbackPath := cache.fallbackPath()
+		exists, err := cache.cardExists(fallbackPath)
+		require.NoError(t, err)
+		require.True(t, exists)
+		require.Equal(t, ".webp", filepath.Ext(fallbackPath))
 	})
 
 	// Test erroring when the config is nil
@@ -55,58 +74,7 @@ func TestNew(t *testing.T) {
 
 // ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
 
-func TestEnsureFallbackCard(t *testing.T) {
-	// Test successfully writing a fallback card
-	t.Run("writes fallback card", func(t *testing.T) {
-		appFs := appfs.New(afero.NewMemMapFs())
-		testLogger := logger.NilLogger()
-		tmpDir := t.TempDir()
-
-		cache, err := New(&CardCacheConfig{
-			CachePath: tmpDir,
-			AppFs:     appFs,
-			Logger:    testLogger,
-		})
-		require.NoError(t, err)
-
-		fallbackPath := cache.GetFallbackPath()
-
-		err = cache.EnsureFallbackCard(fallbackPath)
-		require.NoError(t, err)
-
-		exists, err := cache.CardExists(fallbackPath)
-		require.NoError(t, err)
-		require.True(t, exists)
-		require.Equal(t, ".webp", filepath.Ext(fallbackPath))
-	})
-
-	// Test idempotency of the fallback card
-	t.Run("is idempotent", func(t *testing.T) {
-		appFs := appfs.New(afero.NewMemMapFs())
-		testLogger := logger.NilLogger()
-		tmpDir := t.TempDir()
-
-		cache, err := New(&CardCacheConfig{
-			CachePath: tmpDir,
-			AppFs:     appFs,
-			Logger:    testLogger,
-		})
-		require.NoError(t, err)
-
-		fallbackPath := cache.GetFallbackPath()
-
-		require.NoError(t, cache.EnsureFallbackCard(fallbackPath))
-		require.NoError(t, cache.EnsureFallbackCard(fallbackPath))
-
-		exists, err := cache.CardExists(fallbackPath)
-		require.NoError(t, err)
-		require.True(t, exists)
-	})
-}
-
-// ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
-
-func TestGenerateOptimizedCard(t *testing.T) {
+func TestOptimizeCard(t *testing.T) {
 	// Test successfully generating an optimized card from a JPEG image
 	t.Run("generates optimized card from JPEG", func(t *testing.T) {
 		appFs := appfs.New(afero.NewOsFs())
@@ -141,23 +109,40 @@ func TestGenerateOptimizedCard(t *testing.T) {
 			t.Skipf("Failed to create test image: %v", err)
 		}
 
-		outputPath := filepath.Join(tmpDir, "optimized.webp")
+		courseID := "testcourse"
+		outputPath, err := cache.optimizedCardPath(courseID)
+		require.NoError(t, err)
 		ctx := context.Background()
 
-		err = cache.GenerateOptimizedCard(ctx, testImagePath, outputPath)
-		require.NoError(t, err)
+		require.NoError(t, cache.OptimizeCard(ctx, courseID, testImagePath))
 
-		exists, err := cache.CardExists(outputPath)
+		serve, err := cache.Get(courseID)
 		require.NoError(t, err)
-		require.True(t, exists)
+		require.NotEmpty(t, serve.Path)
+
+		exists, err := cache.cardExists(outputPath)
+		require.NoError(t, err)
+		if exists {
+			optimizedInfo, err := appFs.Fs.Stat(outputPath)
+			require.NoError(t, err)
+			originalInfo, err := appFs.Fs.Stat(testImagePath)
+			require.NoError(t, err)
+			require.Less(t, optimizedInfo.Size(), originalInfo.Size())
+			require.Equal(t, outputPath, serve.Path)
+		} else {
+			require.Equal(t, testImagePath, serve.Path)
+		}
 		require.Equal(t, ".webp", filepath.Ext(outputPath))
 	})
 
 	// Test erroring when FFmpeg is not configured
 	t.Run("requires ffmpeg", func(t *testing.T) {
-		cache := &CardCache{config: &CardCacheConfig{Logger: logger.NilLogger()}}
+		cache := &CardCache{
+			config:    &CardCacheConfig{Logger: logger.NilLogger()},
+			cachePath: filepath.Join(t.TempDir(), "cards"),
+		}
 
-		err := cache.GenerateOptimizedCard(context.Background(), "in.jpg", "out.webp")
+		err := cache.OptimizeCard(context.Background(), "testcourse", "in.jpg")
 		require.Error(t, err)
 		require.Contains(t, err.Error(), "ffmpeg is not configured")
 	})
@@ -196,11 +181,10 @@ func TestGenerateOptimizedCard(t *testing.T) {
 			t.Skipf("Failed to create test image: %v", err)
 		}
 
-		outputPath := filepath.Join(tmpDir, "optimized.webp")
 		ctx, cancel := context.WithCancel(context.Background())
 		cancel()
 
-		err = cache.GenerateOptimizedCard(ctx, testImagePath, outputPath)
+		err = cache.OptimizeCard(ctx, "testcourse", testImagePath)
 		require.Error(t, err)
 		require.Equal(t, context.Canceled, err)
 	})
@@ -208,7 +192,7 @@ func TestGenerateOptimizedCard(t *testing.T) {
 
 // ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
 
-func TestDeleteCard(t *testing.T) {
+func TestDelete(t *testing.T) {
 	// Test successfully deleting an existing card
 	t.Run("deletes existing card", func(t *testing.T) {
 		appFs := appfs.New(afero.NewOsFs())
@@ -226,10 +210,10 @@ func TestDeleteCard(t *testing.T) {
 		err = os.WriteFile(testCardPath, []byte("test"), 0o644)
 		require.NoError(t, err)
 
-		err = cache.DeleteCard(testCardPath)
+		err = cache.deleteCard(testCardPath)
 		require.NoError(t, err)
 
-		exists, err := cache.CardExists(testCardPath)
+		exists, err := cache.cardExists(testCardPath)
 		require.NoError(t, err)
 		require.False(t, exists)
 	})
@@ -248,14 +232,14 @@ func TestDeleteCard(t *testing.T) {
 		require.NoError(t, err)
 
 		nonExistentPath := filepath.Join(tmpDir, "nonexistent.webp")
-		err = cache.DeleteCard(nonExistentPath)
+		err = cache.deleteCard(nonExistentPath)
 		require.NoError(t, err)
 	})
 }
 
 // ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
 
-func TestGetCardPath(t *testing.T) {
+func TestOptimizedPath(t *testing.T) {
 	appFs := appfs.New(afero.NewMemMapFs())
 	testLogger := logger.NilLogger()
 
@@ -269,7 +253,7 @@ func TestGetCardPath(t *testing.T) {
 	// Test successfully getting a card path
 	t.Run("returns correct path format", func(t *testing.T) {
 		courseID := "test-course-id"
-		cardPath, err := cache.GetCardPath(courseID)
+		cardPath, err := cache.optimizedCardPath(courseID)
 		require.NoError(t, err)
 		require.Contains(t, cardPath, courseID)
 		require.Equal(t, ".webp", filepath.Ext(cardPath))
@@ -277,19 +261,19 @@ func TestGetCardPath(t *testing.T) {
 
 	// Test erroring when the course ID is empty
 	t.Run("rejects empty course id", func(t *testing.T) {
-		_, err := cache.GetCardPath("")
+		_, err := cache.optimizedCardPath("")
 		require.ErrorIs(t, err, ErrInvalidCourseID)
 	})
 
 	// Test erroring when the course ID contains path traversal
 	t.Run("rejects path traversal", func(t *testing.T) {
-		_, err := cache.GetCardPath("../escape")
+		_, err := cache.optimizedCardPath("../escape")
 		require.ErrorIs(t, err, ErrInvalidCourseID)
 	})
 
 	// Test erroring when the course ID contains path separators
 	t.Run("rejects path separators", func(t *testing.T) {
-		_, err := cache.GetCardPath(`a/b`)
+		_, err := cache.optimizedCardPath(`a/b`)
 		require.ErrorIs(t, err, ErrInvalidCourseID)
 	})
 }

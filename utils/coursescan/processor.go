@@ -454,15 +454,12 @@ func handleCourseCard(
 			return false, nil
 		}
 
-		if optimizedCardPath, err := s.cardCache.GetCardPath(course.ID); err == nil {
-			if err := s.cardCache.DeleteCard(optimizedCardPath); err != nil {
-				s.logger.Warn().
-					Err(err).
-					Str("course_id", courseID).
-					Str("course_path", coursePath).
-					Str("card_path", optimizedCardPath).
-					Msg("Failed to delete optimized card")
-			}
+		if err := s.cardCache.Delete(course.ID); err != nil {
+			s.logger.Warn().
+				Err(err).
+				Str("course_id", courseID).
+				Str("course_path", coursePath).
+				Msg("Failed to delete optimized card")
 		}
 
 		course.CardPath = ""
@@ -505,57 +502,20 @@ func handleCourseCard(
 	cardModTime := stat.ModTime().UTC().Format(time.RFC3339Nano)
 	contentChanged := course.CardHash != cardHash || course.CardModTime != cardModTime
 
-	optimizedCardPath, err := s.cardCache.GetCardPath(course.ID)
-	if err != nil {
-		s.logger.Warn().
-			Err(err).
-			Str("course_id", courseID).
-			Msg("Failed to resolve optimized card path")
-		course.CardPath = scannedCardPath
-		course.CardHash = cardHash
-		course.CardModTime = cardModTime
-		return pathChanged || contentChanged, nil
-	}
-
-	cacheExists, err := s.cardCache.CardExists(optimizedCardPath)
-	if err != nil {
-		s.logger.Warn().
-			Err(err).
-			Str("course_id", courseID).
-			Str("optimized_path", optimizedCardPath).
-			Msg("Failed to check optimized card cache")
-		cacheExists = false
-	}
-
-	needsOptimization := pathChanged || contentChanged || !cacheExists
-	if !needsOptimization {
-		return false, nil
-	}
-
 	course.CardPath = scannedCardPath
 	course.CardHash = cardHash
 	course.CardModTime = cardModTime
 
+	if !pathChanged && !contentChanged {
+		return false, nil
+	}
+
 	scanState.UpdateMessage("Optimizing course card")
-	if err := s.cardCache.GenerateOptimizedCard(ctx, scannedCardPath, optimizedCardPath); err != nil {
+	err = s.cardCache.OptimizeCard(ctx, course.ID, scannedCardPath)
+	if err != nil {
 		if err == context.Canceled || err == context.DeadlineExceeded {
 			return true, err
 		}
-		s.logger.Warn().
-			Err(err).
-			Str("course_id", courseID).
-			Str("course_path", coursePath).
-			Str("card_path", scannedCardPath).
-			Str("optimized_path", optimizedCardPath).
-			Msg("Failed to generate optimized card, course will use fallback")
-		// Continue scan even if optimization fails - course will use fallback
-	} else {
-		s.logger.Info().
-			Str("course_id", courseID).
-			Str("course_path", coursePath).
-			Str("card_path", scannedCardPath).
-			Str("optimized_path", optimizedCardPath).
-			Msg("Generated optimized card")
 	}
 
 	return true, nil
