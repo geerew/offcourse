@@ -32,30 +32,6 @@ type CourseCardRef struct {
 
 // ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
 
-// Warm rebuilds the in-memory serve index from disk for each course (optimized WebP,
-// original source, or fallback). Call on startup so Get works before the next scan.
-func (c *CardCache) Warm(refs []CourseCardRef) int {
-	warmed := 0
-
-	for _, ref := range refs {
-		if ref.ID == "" {
-			continue
-		}
-
-		serve, err := c.resolveServeFromDisk(ref.ID, ref.CardPath)
-		if err != nil {
-			continue
-		}
-
-		c.serveIndex.Set(ref.ID, serve)
-		warmed++
-	}
-
-	return warmed
-}
-
-// ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
-
 // Get returns the in-memory serve entry for a course, or the fallback image when
 // none is set
 func (c *CardCache) Get(courseID string) (CardServe, error) {
@@ -96,6 +72,30 @@ func (c *CardCache) Delete(courseID string) error {
 
 // ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
 
+// Warm rebuilds the in-memory serve index from disk for each course (optimized WebP,
+// original source, or fallback). Call on startup so Get works before the next scan.
+func (c *CardCache) Warm(refs []CourseCardRef) int {
+	warmed := 0
+
+	for _, ref := range refs {
+		if ref.ID == "" {
+			continue
+		}
+
+		serve, err := c.resolveServeFromDisk(ref.ID, ref.CardPath)
+		if err != nil {
+			continue
+		}
+
+		c.serveIndex.Set(ref.ID, serve)
+		warmed++
+	}
+
+	return warmed
+}
+
+// ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
+
 // setServeOptimized sets the serve entry to the optimized card
 func (c *CardCache) setServeOptimized(courseID string) error {
 	optimizedPath, err := c.optimizedCardPath(courseID)
@@ -118,6 +118,9 @@ func (c *CardCache) setServeOriginal(courseID, originalPath string) {
 	c.serveIndex.Set(courseID, c.cardServeOriginal(originalPath))
 }
 
+// ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
+
+// cardServeOriginal returns a CardServe entry for the original card
 func (c *CardCache) cardServeOriginal(originalPath string) CardServe {
 	contentType := mime.TypeByExtension(filepath.Ext(originalPath))
 	if contentType == "" {
