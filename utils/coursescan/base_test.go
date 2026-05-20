@@ -25,30 +25,25 @@ import (
 func setup(t *testing.T) (*CourseScan, context.Context) {
 	t.Helper()
 
-	// Create a test logger
 	testLogger := logger.NilLogger()
-
 	appFs := appfs.New(afero.NewMemMapFs())
+	dataDir := "./oc_data"
 
 	dbManager, err := database.NewSQLiteManager(&database.DatabaseManagerConfig{
-		DataDir: "./oc_data",
+		DataDir: dataDir,
 		AppFs:   appFs,
 		Testing: true,
 	})
-
 	require.NoError(t, err)
 	require.NotNil(t, dbManager)
 
-	// Create a mock FFmpeg for testing
 	ffmpeg, err := media.NewFFmpeg()
 	if err != nil {
-		// If FFmpeg is not available, skip the test
 		t.Skip("FFmpeg not available; skipping test")
 	}
 
-	// Create CardCache for testing
-	cardCache, err := cardcache.NewCardCache(&cardcache.CardCacheConfig{
-		CachePath: "./oc_data",
+	cardCache, err := cardcache.New(&cardcache.CardCacheConfig{
+		CachePath: dataDir,
 		AppFs:     appFs,
 		Logger:    testLogger.WithCardCache(),
 		FFmpeg:    ffmpeg,
@@ -63,7 +58,6 @@ func setup(t *testing.T) (*CourseScan, context.Context) {
 		CardCache: cardCache,
 	})
 
-	// Create a user for the context
 	user := &models.User{
 		Username:     "test-user",
 		DisplayName:  "Test User",

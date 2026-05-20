@@ -5,6 +5,7 @@ import (
 	"database/sql"
 	"errors"
 	"fmt"
+	"net/http"
 	"strconv"
 	"strings"
 
@@ -12,12 +13,17 @@ import (
 	"github.com/geerew/off-course/dao"
 	"github.com/geerew/off-course/models"
 	"github.com/geerew/off-course/utils"
+	"github.com/geerew/off-course/utils/cardcache"
 	"github.com/geerew/off-course/utils/coursemetadata"
 	"github.com/geerew/off-course/utils/types"
 	"github.com/gofiber/fiber/v2"
 	"github.com/gofiber/fiber/v2/middleware/filesystem"
 	"github.com/spf13/afero"
 )
+
+// ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
+
+var errFallbackCardNotFound = errors.New("fallback card not found")
 
 // ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
 
@@ -209,14 +215,14 @@ func (api coursesAPI) deleteCourse(c *fiber.Ctx) error {
 	api.r.app.CourseScan.CancelAndRemoveScansByCourseID(id)
 
 	// Delete optimized card file if it exists
-	cardPath := api.r.app.CardCache.GetCardPath(id)
-	if err := api.r.app.CardCache.DeleteCard(cardPath); err != nil {
-		// Log warning but continue with course deletion
-		api.r.app.Logger.Warn().
-			Err(err).
-			Str("course_id", id).
-			Str("card_path", cardPath).
-			Msg("Failed to delete optimized card during course deletion")
+	if cardPath, err := api.r.app.CardCache.GetCardPath(id); err == nil {
+		if err := api.r.app.CardCache.DeleteCard(cardPath); err != nil {
+			api.r.app.Logger.Warn().
+				Err(err).
+				Str("course_id", id).
+				Str("card_path", cardPath).
+				Msg("Failed to delete optimized card during course deletion")
+		}
 	}
 
 	dbOpts := dao.NewOptions().WithWhere(squirrel.Eq{models.COURSE_TABLE_ID: id})
@@ -282,30 +288,69 @@ func (api coursesAPI) getCourseCard(c *fiber.Ctx) error {
 		return errorResponse(c, fiber.StatusUnauthorized, "Missing principal", nil)
 	}
 
-	// Check if optimized card exists for this course
-	cardPath := api.r.app.CardCache.GetCardPath(id)
-	exists, err := api.r.app.CardCache.CardExists(cardPath)
+	cardPath, servingFallback, err := api.resolveCourseCardPath(id)
 	if err != nil {
-		return errorResponse(c, fiber.StatusInternalServerError, "Error checking card", err)
-	}
-
-	// If card doesn't exist, serve fallback
-	if !exists {
-		cardPath = api.r.app.CardCache.GetFallbackPath()
-		exists, err := api.r.app.CardCache.CardExists(cardPath)
-		if err != nil {
-			return errorResponse(c, fiber.StatusInternalServerError, "Error checking fallback card", err)
-		}
-		if !exists {
+		if errors.Is(err, errFallbackCardNotFound) {
 			return errorResponse(c, fiber.StatusNotFound, "Fallback card not found", nil)
 		}
+
+		return errorResponse(c, fiber.StatusInternalServerError, "Error resolving card", err)
 	}
 
-	c.Set(fiber.HeaderCacheControl, "public, no-cache")
+	info, err := api.r.app.AppFs.Fs.Stat(cardPath)
+	if err != nil {
+		return errorResponse(c, fiber.StatusInternalServerError, "Error reading card", err)
+	}
+
+	c.Type("webp", "image")
+	if servingFallback {
+		c.Set(fiber.HeaderCacheControl, "public, max-age=86400")
+	} else {
+		c.Set(fiber.HeaderCacheControl, "public, max-age=0, must-revalidate")
+		c.Set(fiber.HeaderLastModified, info.ModTime().UTC().Format(http.TimeFormat))
+	}
 
 	// The fiber function sendFile(...) does not support using a custom FS. Therefore, use
 	// SendFile() from the filesystem middleware
 	return filesystem.SendFile(c, afero.NewHttpFs(api.r.app.AppFs.Fs), cardPath)
+}
+
+// resolveCourseCardPath returns the filesystem path to serve and whether it is the fallback card.
+func (api coursesAPI) resolveCourseCardPath(courseID string) (string, bool, error) {
+	cardPath, err := api.r.app.CardCache.GetCardPath(courseID)
+	if err != nil {
+		if !errors.Is(err, cardcache.ErrInvalidCourseID) {
+			return "", false, err
+		}
+
+		return api.fallbackCardPath()
+	}
+
+	exists, err := api.r.app.CardCache.CardExists(cardPath)
+	if err != nil {
+		return "", false, err
+	}
+
+	if exists {
+		return cardPath, false, nil
+	}
+
+	return api.fallbackCardPath()
+}
+
+func (api coursesAPI) fallbackCardPath() (string, bool, error) {
+	cardPath := api.r.app.CardCache.GetFallbackPath()
+
+	exists, err := api.r.app.CardCache.CardExists(cardPath)
+	if err != nil {
+		return "", false, err
+	}
+
+	if !exists {
+		return "", false, errFallbackCardNotFound
+	}
+
+	return cardPath, true, nil
 }
 
 // ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~

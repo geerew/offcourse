@@ -446,16 +446,15 @@ func handleCourseCard(
 	courseID, coursePath string,
 	scanState *ScanState,
 ) (bool, error) {
-	cardChanged := course.CardPath != scannedCardPath
-	if !cardChanged {
-		return false, nil
-	}
+	pathChanged := course.CardPath != scannedCardPath
 
-	// Card was deleted
+	// Card was deleted from disk
 	if scannedCardPath == "" {
-		// Delete optimized card if it exists
-		if course.CardPath != "" {
-			optimizedCardPath := s.cardCache.GetCardPath(course.ID)
+		if course.CardPath == "" {
+			return false, nil
+		}
+
+		if optimizedCardPath, err := s.cardCache.GetCardPath(course.ID); err == nil {
 			if err := s.cardCache.DeleteCard(optimizedCardPath); err != nil {
 				s.logger.Warn().
 					Err(err).
@@ -465,16 +464,14 @@ func handleCourseCard(
 					Msg("Failed to delete optimized card")
 			}
 		}
+
 		course.CardPath = ""
 		course.CardHash = ""
 		course.CardModTime = ""
 		return true, nil
 	}
 
-	// Card was added or changed
-	course.CardPath = scannedCardPath
-
-	// Calculate card hash and mod time
+	// Calculate card hash and mod time for the scanned source file
 	cardHash, err := hashFilePartial(s.appFs.Fs, scannedCardPath, 1024*1024)
 	if err != nil {
 		s.logger.Warn().
@@ -483,12 +480,13 @@ func handleCourseCard(
 			Str("course_path", coursePath).
 			Str("card_path", scannedCardPath).
 			Msg("Failed to calculate card hash, continuing without optimization")
+		hadMetadata := course.CardHash != "" || course.CardModTime != ""
+		course.CardPath = scannedCardPath
 		course.CardHash = ""
 		course.CardModTime = ""
-		return true, nil
+		return pathChanged || hadMetadata, nil
 	}
 
-	// Get card mod time
 	stat, err := s.appFs.Fs.Stat(scannedCardPath)
 	if err != nil {
 		s.logger.Warn().
@@ -497,16 +495,47 @@ func handleCourseCard(
 			Str("course_path", coursePath).
 			Str("card_path", scannedCardPath).
 			Msg("Failed to get card mod time, continuing without optimization")
+		hadMetadata := course.CardHash != "" || course.CardModTime != ""
+		course.CardPath = scannedCardPath
 		course.CardHash = ""
 		course.CardModTime = ""
-		return true, nil
+		return pathChanged || hadMetadata, nil
 	}
 
-	course.CardHash = cardHash
-	course.CardModTime = stat.ModTime().UTC().Format(time.RFC3339Nano)
+	cardModTime := stat.ModTime().UTC().Format(time.RFC3339Nano)
+	contentChanged := course.CardHash != cardHash || course.CardModTime != cardModTime
 
-	// Generate optimized card
-	optimizedCardPath := s.cardCache.GetCardPath(course.ID)
+	optimizedCardPath, err := s.cardCache.GetCardPath(course.ID)
+	if err != nil {
+		s.logger.Warn().
+			Err(err).
+			Str("course_id", courseID).
+			Msg("Failed to resolve optimized card path")
+		course.CardPath = scannedCardPath
+		course.CardHash = cardHash
+		course.CardModTime = cardModTime
+		return pathChanged || contentChanged, nil
+	}
+
+	cacheExists, err := s.cardCache.CardExists(optimizedCardPath)
+	if err != nil {
+		s.logger.Warn().
+			Err(err).
+			Str("course_id", courseID).
+			Str("optimized_path", optimizedCardPath).
+			Msg("Failed to check optimized card cache")
+		cacheExists = false
+	}
+
+	needsOptimization := pathChanged || contentChanged || !cacheExists
+	if !needsOptimization {
+		return false, nil
+	}
+
+	course.CardPath = scannedCardPath
+	course.CardHash = cardHash
+	course.CardModTime = cardModTime
+
 	scanState.UpdateMessage("Optimizing course card")
 	if err := s.cardCache.GenerateOptimizedCard(ctx, scannedCardPath, optimizedCardPath); err != nil {
 		if err == context.Canceled || err == context.DeadlineExceeded {

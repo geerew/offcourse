@@ -174,7 +174,6 @@ func NewApp(ctx context.Context, config *Config) (*App, error) {
 	}
 
 	// Card Cache
-
 	cardCacheConfig := &cardcache.CardCacheConfig{
 		CachePath: config.DataDir,
 		AppFs:     appFs,
@@ -182,7 +181,7 @@ func NewApp(ctx context.Context, config *Config) (*App, error) {
 		FFmpeg:    ffmpeg,
 	}
 
-	cardCache, err := cardcache.NewCardCache(cardCacheConfig)
+	cardCache, err := cardcache.New(cardCacheConfig)
 	if err != nil {
 		return nil, fmt.Errorf("failed to create card cache: %w", err)
 	}

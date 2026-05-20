@@ -33,7 +33,7 @@ type CourseScan struct {
 	dao       *dao.DAO
 	logger    *logger.Logger
 	ffmpeg    *media.FFmpeg
-	cardCache cardcache.CardCacher
+	cardCache *cardcache.CardCache
 
 	// In-memory scan state storage
 	scans concurrency.Map[string, *ScanState]
@@ -57,7 +57,7 @@ type CourseScanConfig struct {
 	AppFs     *appfs.AppFs
 	Logger    *logger.Logger
 	FFmpeg    *media.FFmpeg
-	CardCache cardcache.CardCacher
+	CardCache *cardcache.CardCache
 }
 
 // ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
@@ -258,7 +258,6 @@ func (s *CourseScan) Worker(ctx context.Context, processorFn CourseScanProcessor
 				}
 
 				scanCtx, cancel := context.WithCancel(ctx)
-				defer cancel()
 				existingScan.SetCancel(cancel)
 
 				if finalCheck, stillExists := s.scans.Get(scanState.ID); !stillExists {
@@ -289,6 +288,8 @@ func (s *CourseScan) Worker(ctx context.Context, processorFn CourseScanProcessor
 					Msg("Processing scan job")
 
 				err := processorFn(scanCtx, s, existingScan)
+				cancel()
+
 				if err != nil {
 					if err == context.Canceled || err == context.DeadlineExceeded {
 						s.logger.Info().

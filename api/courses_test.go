@@ -535,7 +535,8 @@ func TestCourses_DeleteCourse(t *testing.T) {
 		require.NoError(t, router.appDao.CreateCourse(ctx, course))
 
 		// Create optimized card file
-		cardPath := router.app.CardCache.GetCardPath(course.ID)
+		cardPath, err := router.app.CardCache.GetCardPath(course.ID)
+		require.NoError(t, err)
 		require.NoError(t, afero.WriteFile(router.app.AppFs.Fs, cardPath, []byte("test card"), os.ModePerm))
 
 		// Verify card exists
@@ -594,8 +595,9 @@ func TestCourses_GetCard(t *testing.T) {
 		require.NoError(t, router.appDao.CreateCourse(ctx, course))
 
 		// Create optimized card file in cards directory
-		cardPath := router.app.CardCache.GetCardPath(course.ID)
-		require.Nil(t, afero.WriteFile(router.app.AppFs.Fs, cardPath, []byte("test card"), os.ModePerm))
+		cardPath, err := router.app.CardCache.GetCardPath(course.ID)
+		require.NoError(t, err)
+		require.NoError(t, afero.WriteFile(router.app.AppFs.Fs, cardPath, []byte("test card"), os.ModePerm))
 
 		status, body, err := requestHelper(t, router, httptest.NewRequest(http.MethodGet, "/api/courses/"+course.ID+"/card", nil))
 		require.NoError(t, err)

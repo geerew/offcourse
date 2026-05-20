@@ -128,6 +128,36 @@ func TestScanner_Processor(t *testing.T) {
 		}
 	})
 
+	t.Run("re-optimizes card when content changes", func(t *testing.T) {
+		scanner, ctx := setup(t)
+
+		course := &models.Course{Title: "Course 1", Path: "/course-1"}
+		require.NoError(t, scanner.dao.CreateCourse(ctx, course))
+
+		cardPath := filepath.Join(course.Path, "card.jpg")
+		require.NoError(t, scanner.appFs.Fs.Mkdir(course.Path, os.ModePerm))
+		require.NoError(t, afero.WriteFile(scanner.appFs.Fs, cardPath, []byte("card-content-v1"), os.ModePerm))
+
+		scanState := NewScanState(course.ID, course.Path, course.Title)
+
+		changed, err := handleCourseCard(ctx, scanner, course, cardPath, course.ID, course.Path, scanState)
+		require.NoError(t, err)
+		require.True(t, changed)
+		initialHash := course.CardHash
+		require.NotEmpty(t, initialHash)
+
+		optimizedPath, err := scanner.cardCache.GetCardPath(course.ID)
+		require.NoError(t, err)
+		require.NoError(t, afero.WriteFile(scanner.appFs.Fs, optimizedPath, []byte("cached-webp"), os.ModePerm))
+
+		require.NoError(t, afero.WriteFile(scanner.appFs.Fs, cardPath, []byte("card-content-v2-different"), os.ModePerm))
+
+		changed, err = handleCourseCard(ctx, scanner, course, cardPath, course.ID, course.Path, scanState)
+		require.NoError(t, err)
+		require.True(t, changed)
+		require.NotEqual(t, initialHash, course.CardHash)
+	})
+
 	t.Run("ignore files", func(t *testing.T) {
 		scanner, ctx := setup(t)
 
