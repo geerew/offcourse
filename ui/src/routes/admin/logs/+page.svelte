@@ -97,18 +97,18 @@
 	// ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
 
 	// Get level display info
-	function getLevelInfo(level: number) {
+	function getLevelInfo(level: string) {
 		switch (level) {
-			case -1:
+			case 'debug':
 				return { label: 'debug', color: 'bg-background-alt-4 text-foreground-alt-2' };
-			case 0:
+			case 'info':
 				return { label: 'info', color: 'bg-background-primary-alt-2 text-foreground-alt-6' };
-			case 2:
+			case 'warn':
 				return { label: 'warn', color: 'bg-background-warning text-foreground-alt-1' };
-			case 1:
+			case 'error':
 				return { label: 'error', color: 'bg-background-error text-foreground-alt-2' };
 			default:
-				return { label: 'unknown', color: 'bg-background-alt-4 text-foreground-alt-2' };
+				return { label: level || 'unknown', color: 'bg-background-alt-4 text-foreground-alt-2' };
 		}
 	}
 

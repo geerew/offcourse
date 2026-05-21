@@ -45,14 +45,14 @@ func setup(t *testing.T) (*CourseScan, context.Context) {
 	cardCache, err := cardcache.New(&cardcache.CardCacheConfig{
 		CachePath: dataDir,
 		AppFs:     appFs,
-		Logger:    testLogger.WithCardCache(),
+		Logger:    testLogger,
 	})
 	require.NoError(t, err)
 
 	courseScan := New(&CourseScanConfig{
 		Db:        dbManager.DataDb,
 		AppFs:     appFs,
-		Logger:    testLogger.WithCourseScan(),
+		Logger:    testLogger,
 		FFmpeg:    ffmpeg,
 		CardCache: cardCache,
 	})

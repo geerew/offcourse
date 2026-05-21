@@ -47,7 +47,7 @@ type App struct {
 	Config *Config
 
 	// Internal
-	dbLogger     *logger.DbWriter
+	logBatchWriter *logger.LogBatchWriter
 	bootstrapped atomic.Int32
 }
 
@@ -97,7 +97,20 @@ func NewApp(ctx context.Context, config *Config) (*App, error) {
 		logLevel = logger.LevelDebug
 	}
 
-	// AppFS (filesystem)
+	// Logger (attach batch log writer once the DB is ready)
+	var appLogger *logger.Logger
+	var logBatchWriter *logger.LogBatchWriter
+
+	if config.AppMode == AppModeTest {
+		appLogger = logger.NilLogger()
+	} else {
+		appLogger = logger.New(&logger.LoggerConfig{
+			Level:         logLevel,
+			ConsoleOutput: true,
+		})
+	}
+
+	// AppFS
 	var appFs *appfs.AppFs
 	if config.AppMode == AppModeTest {
 		appFs = appfs.New(afero.NewMemMapFs())
@@ -129,42 +142,24 @@ func NewApp(ctx context.Context, config *Config) (*App, error) {
 		return nil, fmt.Errorf("failed to create database manager: %w", err)
 	}
 
-	// Create logger
-	var appLogger *logger.Logger
-	var dbLogger *logger.DbWriter
-
-	if config.AppMode == AppModeTest {
-		appLogger = logger.NilLogger()
-	} else {
+	// Batch log writer (DAO persists flushed batches)
+	if config.AppMode != AppModeTest {
 		logDao := dao.New(dbManager.LogsDb)
 
-		// Create a db logger
-		dbLoggerConfig := &logger.DbWriterConfig{
+		logBatchWriter = logger.NewLogBatchWriter(logDao.CreateLogsBatch, &logger.BatchWriterConfig{
 			BatchSize:     100,
 			FlushInterval: 5 * time.Second,
-		}
-
-		dbLogger = logger.NewDbWriter(logDao.CreateLogsBatch, dbLoggerConfig)
-
-		// Create the app logger
-		appLogger = logger.New(&logger.Config{
-			Level:         logLevel,
-			ConsoleOutput: true,
-			DbWriter:      dbLogger,
 		})
 
-		if appLogger == nil {
-			dbLogger.Close()
-			return nil, fmt.Errorf("failed to initialize logger")
-		}
+		appLogger.AddWriter(logBatchWriter)
 	}
 
 	// HLS Transcoder
 	transcoderConfig := &hls.TranscoderConfig{
 		CachePath: config.DataDir,
-		HwAccel:   hls.DetectHardwareAccel(appLogger.WithHLS()),
+		HwAccel:   hls.DetectHardwareAccel(appLogger.WithComponent(string(ComponentHLS))),
 		AppFs:     appFs,
-		Logger:    appLogger.WithHLS(),
+		Logger:    appLogger.WithComponent(string(ComponentHLS)),
 		Dao:       dao.New(dbManager.DataDb),
 	}
 
@@ -177,7 +172,7 @@ func NewApp(ctx context.Context, config *Config) (*App, error) {
 	cardCacheConfig := &cardcache.CardCacheConfig{
 		CachePath: config.DataDir,
 		AppFs:     appFs,
-		Logger:    appLogger.WithCardCache(),
+		Logger:    appLogger.WithComponent(string(ComponentCardCache)),
 	}
 
 	cardCache, err := cardcache.New(cardCacheConfig)
@@ -189,20 +184,22 @@ func NewApp(ctx context.Context, config *Config) (*App, error) {
 	courseScan := coursescan.New(&coursescan.CourseScanConfig{
 		Db:        dbManager.DataDb,
 		AppFs:     appFs,
-		Logger:    appLogger.WithCourseScan(),
+		Logger:    appLogger.WithComponent(string(ComponentCourseScan)),
 		FFmpeg:    ffmpeg,
 		CardCache: cardCache,
 	})
 
 	// Metadata writer (for oc.json files)
-	metadataWriter := coursemetadata.NewMetadataWriter(appFs.Fs, appLogger.WithCourseMetadata())
+	metadataWriter := coursemetadata.NewMetadataWriter(appFs.Fs, appLogger.WithComponent(string(ComponentCourseMetadata)))
 
 	// Cron scheduler
 	cronScheduler := cron.NewCronScheduler(&cron.CronConfig{
-		DbManager: dbManager,
-		AppFs:     appFs,
-		Logger:    appLogger,
-		CardCache: cardCache,
+		DbManager:                dbManager,
+		AppFs:                    appFs,
+		CardCache:                cardCache,
+		CourseAvailabilityLogger: appLogger.WithComponent(string(ComponentCron)),
+		CardCacheWarmLogger:      appLogger.WithComponent(string(ComponentCardCache)),
+		ReleaseCheckerLogger:     appLogger.WithComponent(string(ComponentCron)),
 	})
 
 	app := &App{
@@ -215,7 +212,7 @@ func NewApp(ctx context.Context, config *Config) (*App, error) {
 		CardCache:      cardCache,
 		CourseScan:     courseScan,
 		MetadataWriter: metadataWriter,
-		dbLogger:       dbLogger,
+		logBatchWriter: logBatchWriter,
 		Cron:           cronScheduler,
 	}
 
@@ -251,8 +248,8 @@ func NewTestApp(t *testing.T) *App {
 
 // Close closes all resources that need cleanup
 func (a *App) Close() error {
-	if a.dbLogger != nil {
-		return a.dbLogger.Close()
+	if a.logBatchWriter != nil {
+		return a.logBatchWriter.Close()
 	}
 
 	return nil
@@ -303,7 +300,7 @@ func (a *App) bootstrap() error {
 		}
 
 		bootstrapURL := fmt.Sprintf("http://%s/auth/bootstrap/%s", a.Config.HttpAddr, bootstrapToken.Token)
-		a.Logger.WithApp().Info().
+		a.Logger.WithComponent(string(ComponentApp)).Info().
 			Str("bootstrap_url", bootstrapURL).
 			Str("expires_in", "5 minutes").
 			Msg("Bootstrap required")
@@ -312,10 +309,10 @@ func (a *App) bootstrap() error {
 
 		// Clean up any existing bootstrap tokens
 		if err := auth.DeleteBootstrapToken(a.Config.DataDir, a.AppFs.Fs); err != nil {
-			a.Logger.WithApp().Warn().Err(err).Msg("Failed to delete bootstrap token")
+			a.Logger.WithComponent(string(ComponentApp)).Warn().Err(err).Msg("Failed to delete bootstrap token")
 		}
 
-		a.Logger.WithApp().Info().Msg("Application bootstrapped")
+		a.Logger.WithComponent(string(ComponentApp)).Info().Msg("Application bootstrapped")
 	}
 
 	return nil

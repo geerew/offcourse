@@ -33,7 +33,7 @@ func TestCourseAvailability_Run(t *testing.T) {
 			db:        testApp.DbManager.DataDb,
 			dao:       appDao,
 			appFs:     testApp.AppFs,
-			logger:    testApp.Logger.WithCron(),
+			logger:    testApp.Logger,
 			batchSize: 2,
 		}
 
@@ -72,7 +72,7 @@ func TestCourseAvailability_Run(t *testing.T) {
 			db:        testApp.DbManager.DataDb,
 			dao:       appDao,
 			appFs:     appfs.New(fsWithError),
-			logger:    testApp.Logger.WithCron(),
+			logger:    testApp.Logger,
 			batchSize: 1,
 		}
 
@@ -91,7 +91,7 @@ func TestCourseAvailability_Run(t *testing.T) {
 			db:        db,
 			dao:       dao.New(db),
 			appFs:     testApp.AppFs,
-			logger:    testApp.Logger.WithCron(),
+			logger:    testApp.Logger,
 			batchSize: 1,
 		}
 

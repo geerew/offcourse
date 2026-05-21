@@ -27,7 +27,7 @@ const (
 // Log defines the model for a log
 type Log struct {
 	Base
-	Level   int           `db:"level"`   // Immutable
+	Level   string        `db:"level"`   // Immutable
 	Message string        `db:"message"` // Immutable
 	Data    types.JsonMap `db:"data"`    // Immutable
 }

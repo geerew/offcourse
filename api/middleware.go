@@ -32,7 +32,7 @@ func corsMiddleWare() fiber.Handler {
 // ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
 
 // requestLoggingMiddleware creates a request logging middleware
-func requestLoggingMiddleware(logger *logger.Logger) fiber.Handler {
+func requestLoggingMiddleware(log *logger.Logger) fiber.Handler {
 	return func(c *fiber.Ctx) error {
 		start := time.Now()
 
@@ -47,7 +47,7 @@ func requestLoggingMiddleware(logger *logger.Logger) fiber.Handler {
 		}
 
 		status := c.Response().StatusCode()
-		apiLogger := logger.WithAPI()
+		apiLogger := log.WithComponent(string(app.ComponentAPI))
 
 		// Pull any error info stored by errorResponse
 		errMsg, _ := c.Locals("api_error_message").(string)

@@ -19,7 +19,7 @@ func Test_CreateLog(t *testing.T) {
 	t.Run("success", func(t *testing.T) {
 		dao, ctx := setupLog(t)
 
-		log := &models.Log{Data: map[string]any{}, Level: 0, Message: fmt.Sprintf("log %d", 1)}
+		log := &models.Log{Data: map[string]any{}, Level: "info", Message: fmt.Sprintf("log %d", 1)}
 		require.NoError(t, dao.CreateLog(ctx, log))
 	})
 
@@ -34,7 +34,7 @@ func Test_CreateLog(t *testing.T) {
 	t.Run("invalid message", func(t *testing.T) {
 		dao, ctx := setupLog(t)
 
-		log := &models.Log{Data: map[string]any{}, Level: 0, Message: ""}
+		log := &models.Log{Data: map[string]any{}, Level: "info", Message: ""}
 		require.ErrorIs(t, dao.CreateLog(ctx, log), utils.ErrLogMessage)
 	})
 }
@@ -46,7 +46,7 @@ func Test_GetLog(t *testing.T) {
 	t.Run("success", func(t *testing.T) {
 		dao, ctx := setupLog(t)
 
-		log := &models.Log{Data: map[string]any{}, Level: 0, Message: fmt.Sprintf("log %d", 1)}
+		log := &models.Log{Data: map[string]any{}, Level: "info", Message: fmt.Sprintf("log %d", 1)}
 		require.NoError(t, dao.CreateLog(ctx, log))
 
 		dbOpts := NewOptions().WithWhere(squirrel.Eq{models.LOG_TABLE_ID: log.ID})
@@ -75,7 +75,7 @@ func Test_ListLogs(t *testing.T) {
 		logs := []*models.Log{}
 
 		for i := range 3 {
-			log := &models.Log{Data: map[string]any{}, Level: 0, Message: fmt.Sprintf("log %d", i+1)}
+			log := &models.Log{Data: map[string]any{}, Level: "info", Message: fmt.Sprintf("log %d", i+1)}
 			logs = append(logs, log)
 			require.NoError(t, dao.CreateLog(ctx, log))
 			time.Sleep(1 * time.Millisecond)
@@ -105,7 +105,7 @@ func Test_ListLogs(t *testing.T) {
 
 		logs := []*models.Log{}
 		for i := range 3 {
-			log := &models.Log{Data: map[string]any{}, Level: 0, Message: fmt.Sprintf("log %d", i+1)}
+			log := &models.Log{Data: map[string]any{}, Level: "info", Message: fmt.Sprintf("log %d", i+1)}
 			logs = append(logs, log)
 			require.NoError(t, dao.CreateLog(ctx, log))
 			time.Sleep(1 * time.Millisecond)
@@ -138,7 +138,7 @@ func Test_ListLogs(t *testing.T) {
 	t.Run("where", func(t *testing.T) {
 		dao, ctx := setupLog(t)
 
-		log := &models.Log{Data: map[string]any{}, Level: 0, Message: fmt.Sprintf("log %d", 1)}
+		log := &models.Log{Data: map[string]any{}, Level: "info", Message: fmt.Sprintf("log %d", 1)}
 		require.NoError(t, dao.CreateLog(ctx, log))
 
 		opts := NewOptions().WithWhere(squirrel.Eq{models.LOG_TABLE_ID: log.ID})
@@ -154,7 +154,7 @@ func Test_ListLogs(t *testing.T) {
 
 		logs := []*models.Log{}
 		for i := range 17 {
-			log := &models.Log{Data: map[string]any{}, Level: 0, Message: fmt.Sprintf("log %d", i+1)}
+			log := &models.Log{Data: map[string]any{}, Level: "info", Message: fmt.Sprintf("log %d", i+1)}
 			logs = append(logs, log)
 			require.NoError(t, dao.CreateLog(ctx, log))
 			time.Sleep(1 * time.Millisecond)
@@ -192,10 +192,11 @@ func Test_CreateLogsBatch(t *testing.T) {
 		dao, ctx := setupLog(t)
 
 		logs := []*models.Log{}
+		levels := []string{"debug", "info", "warn"}
 		for i := range 5 {
 			log := &models.Log{
 				Data:    map[string]any{"test": i},
-				Level:   i % 3,
+				Level:   levels[i%len(levels)],
 				Message: fmt.Sprintf("batch log %d", i+1),
 			}
 			logs = append(logs, log)
@@ -237,9 +238,9 @@ func Test_CreateLogsBatch(t *testing.T) {
 		dao, ctx := setupLog(t)
 
 		logs := []*models.Log{
-			{Data: map[string]any{}, Level: 0, Message: "valid log"},
+			{Data: map[string]any{}, Level: "info", Message: "valid log"},
 			nil,
-			{Data: map[string]any{}, Level: 1, Message: "another valid log"},
+			{Data: map[string]any{}, Level: "error", Message: "another valid log"},
 		}
 
 		require.ErrorIs(t, dao.CreateLogsBatch(ctx, logs), utils.ErrNilPtr)
@@ -250,9 +251,9 @@ func Test_CreateLogsBatch(t *testing.T) {
 		dao, ctx := setupLog(t)
 
 		logs := []*models.Log{
-			{Data: map[string]any{}, Level: 0, Message: "valid log"},
-			{Data: map[string]any{}, Level: 0, Message: ""}, // Invalid
-			{Data: map[string]any{}, Level: 1, Message: "another valid log"},
+			{Data: map[string]any{}, Level: "info", Message: "valid log"},
+			{Data: map[string]any{}, Level: "info", Message: ""}, // Invalid
+			{Data: map[string]any{}, Level: "error", Message: "another valid log"},
 		}
 
 		require.ErrorIs(t, dao.CreateLogsBatch(ctx, logs), utils.ErrLogMessage)
@@ -263,10 +264,11 @@ func Test_CreateLogsBatch(t *testing.T) {
 		dao, ctx := setupLog(t)
 
 		logs := []*models.Log{}
+		levels := []string{"debug", "info", "warn"}
 		for i := range 100 {
 			log := &models.Log{
 				Data:    map[string]any{"index": i},
-				Level:   i % 3,
+				Level:   levels[i%len(levels)],
 				Message: fmt.Sprintf("large batch log %d", i+1),
 			}
 			logs = append(logs, log)

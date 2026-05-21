@@ -34,12 +34,12 @@ type Router struct {
 // ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
 
 // NewRouter creates a new router from an App instance
-func NewRouter(app *app.App) *Router {
+func NewRouter(application *app.App) *Router {
 	r := &Router{
-		app:    app,
-		appDao: dao.New(app.DbManager.DataDb),
-		logDao: dao.New(app.DbManager.LogsDb),
-		logger: app.Logger.WithAPI(),
+		app:    application,
+		appDao: dao.New(application.DbManager.DataDb),
+		logDao: dao.New(application.DbManager.LogsDb),
+		logger: application.Logger.WithComponent(string(app.ComponentAPI)),
 	}
 
 	r.createSessionStore()

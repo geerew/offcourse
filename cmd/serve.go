@@ -50,7 +50,7 @@ var serveCmd = &cobra.Command{
 			os.Exit(1)
 		}
 
-		appLogger := application.Logger.WithApp()
+		appLogger := application.Logger.WithComponent(string(app.ComponentApp))
 
 		appLogger.Info().
 			Str("version", version.GetVersion()).

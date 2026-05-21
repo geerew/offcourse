@@ -18,8 +18,12 @@ import (
 type CronConfig struct {
 	DbManager *database.DatabaseManager
 	AppFs     *appfs.AppFs
-	Logger    *logger.Logger
 	CardCache *cardcache.CardCache
+
+	// Loggers are scoped by the app (component tags) before being passed in
+	CourseAvailabilityLogger *logger.Logger
+	CardCacheWarmLogger      *logger.Logger
+	ReleaseCheckerLogger     *logger.Logger
 }
 
 // ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
@@ -48,7 +52,7 @@ func NewCronScheduler(config *CronConfig) *Cron {
 		db:        config.DbManager.DataDb,
 		dao:       dao.New(config.DbManager.DataDb),
 		appFs:     config.AppFs,
-		logger:    config.Logger.WithCron(),
+		logger:    config.CourseAvailabilityLogger,
 		batchSize: 200,
 	}
 
@@ -60,13 +64,13 @@ func NewCronScheduler(config *CronConfig) *Cron {
 			db:        config.DbManager.DataDb,
 			dao:       dao.New(config.DbManager.DataDb),
 			cardCache: config.CardCache,
-			logger:    config.Logger.WithCardCache(),
+			logger:    config.CardCacheWarmLogger,
 		}
 	}
 
 	// Release checker
 	c.ReleaseChecker = &releaseChecker{
-		logger:     config.Logger.WithCron(),
+		logger:     config.ReleaseCheckerLogger,
 		httpClient: &http.Client{Timeout: 10 * time.Second},
 	}
 

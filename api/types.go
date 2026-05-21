@@ -613,7 +613,7 @@ type selfDeleteRequest struct {
 
 type logResponse struct {
 	ID        string         `json:"id"`
-	Level     int            `json:"level"`
+	Level     string         `json:"level"`
 	Message   string         `json:"message"`
 	Data      types.JsonMap  `json:"data"`
 	CreatedAt types.DateTime `json:"createdAt"`
