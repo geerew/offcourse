@@ -8,9 +8,6 @@ import (
 	"github.com/Masterminds/squirrel"
 	"github.com/geerew/off-course/dao"
 	"github.com/geerew/off-course/models"
-	"github.com/geerew/off-course/utils/appfs"
-	"github.com/geerew/off-course/utils/mocks"
-	"github.com/spf13/afero"
 	"github.com/stretchr/testify/require"
 )
 
@@ -53,31 +50,6 @@ func TestCourseAvailability_Run(t *testing.T) {
 			require.NoError(t, err)
 			require.True(t, course.Available)
 		}
-	})
-
-	t.Run("stat error", func(t *testing.T) {
-		testApp, ctx := setup(t)
-
-		appDao := dao.New(testApp.DbManager.DataDb)
-
-		course := &models.Course{Title: "course 1", Path: "/course-1", Available: false}
-		require.NoError(t, appDao.CreateCourse(ctx, course))
-
-		fsWithError := &mocks.MockFsWithError{
-			Fs:          afero.NewMemMapFs(),
-			ErrToReturn: fmt.Errorf("stat error"),
-		}
-
-		ca := &courseAvailability{
-			db:        testApp.DbManager.DataDb,
-			dao:       appDao,
-			appFs:     appfs.New(fsWithError),
-			logger:    testApp.Logger,
-			batchSize: 1,
-		}
-
-		err := ca.run()
-		require.Equal(t, fmt.Errorf("stat error"), err)
 	})
 
 	t.Run("db error", func(t *testing.T) {

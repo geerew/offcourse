@@ -15,8 +15,6 @@ var (
 
 // GetVersion returns a version string
 func GetVersion() string {
-	// When the version is empty or dev return 'dev-commit' or just 'dev' if the
-	// commit is unknown
 	if Version == "" || Version == "dev" {
 		if Commit != "unknown" && Commit != "" {
 			return "dev-" + Commit
