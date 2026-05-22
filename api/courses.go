@@ -169,7 +169,7 @@ func (api coursesAPI) createCourse(c *fiber.Ctx) error {
 	}
 
 	// Validate the path
-	if exists, err := afero.DirExists(api.r.app.AppFs.Fs, course.Path); err != nil || !exists {
+	if exists, err := afero.DirExists(api.r.app.FS, course.Path); err != nil || !exists {
 		return errorResponse(c, fiber.StatusBadRequest, "Invalid course path", err)
 	}
 
@@ -497,12 +497,12 @@ func (api coursesAPI) serveCourseLessonAttachment(c *fiber.Ctx) error {
 		return errorResponse(c, fiber.StatusNotFound, "Attachment not found", nil)
 	}
 
-	if exists, err := afero.Exists(api.r.app.AppFs.Fs, attachment.Path); err != nil || !exists {
+	if exists, err := afero.Exists(api.r.app.FS, attachment.Path); err != nil || !exists {
 		return errorResponse(c, fiber.StatusBadRequest, "Attachment does not exist", err)
 	}
 
 	c.Set(fiber.HeaderContentDisposition, `attachment; filename="`+attachment.Title+`"`)
-	return filesystem.SendFile(c, afero.NewHttpFs(api.r.app.AppFs.Fs), attachment.Path)
+	return filesystem.SendFile(c, afero.NewHttpFs(api.r.app.FS), attachment.Path)
 }
 
 // ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
@@ -535,14 +535,14 @@ func (api coursesAPI) serveCourseLessonAsset(c *fiber.Ctx) error {
 	}
 
 	// Check for invalid path
-	if exists, err := afero.Exists(api.r.app.AppFs.Fs, asset.Path); err != nil || !exists {
+	if exists, err := afero.Exists(api.r.app.FS, asset.Path); err != nil || !exists {
 		return errorResponse(c, fiber.StatusBadRequest, "Asset does not exist", nil)
 	}
 
 	if asset.Type.IsVideo() {
-		return handleVideo(c, api.r.app.AppFs, asset)
+		return handleVideo(c, api.r.app.FS, asset)
 	} else if asset.Type.IsText() || asset.Type.IsMarkdown() {
-		return handleText(c, api.r.app.AppFs, asset)
+		return handleText(c, api.r.app.FS, asset)
 	}
 
 	return c.Status(fiber.StatusOK).SendString("done")

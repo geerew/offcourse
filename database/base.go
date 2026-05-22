@@ -4,7 +4,7 @@ import (
 	"context"
 	"database/sql"
 
-	"github.com/geerew/off-course/utils/appfs"
+	"github.com/geerew/off-course/utils/filesystem"
 	"github.com/jmoiron/sqlx"
 )
 
@@ -50,7 +50,7 @@ type DatabaseManagerConfig struct {
 	DataDir string
 
 	// The application file system
-	AppFs *appfs.AppFs
+	FS *filesystem.FS
 
 	// Whether to use an in-memory database
 	Testing bool

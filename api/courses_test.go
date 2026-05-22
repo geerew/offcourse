@@ -403,7 +403,7 @@ func TestCourses_CreateCourse(t *testing.T) {
 	t.Run("201 (created)", func(t *testing.T) {
 		router, _ := setupAdmin(t)
 
-		router.app.AppFs.Fs.MkdirAll("/course 1", os.ModePerm)
+		router.app.FS.MkdirAll("/course 1", os.ModePerm)
 
 		req := httptest.NewRequest(http.MethodPost, "/api/courses/", strings.NewReader(`{"title": "course 1", "path": "/course 1" }`))
 		req.Header.Set(fiber.HeaderContentType, fiber.MIMEApplicationJSON)
@@ -467,7 +467,7 @@ func TestCourses_CreateCourse(t *testing.T) {
 	t.Run("400 (existing course)", func(t *testing.T) {
 		router, _ := setupAdmin(t)
 
-		router.app.AppFs.Fs.MkdirAll("/course 1", os.ModePerm)
+		router.app.FS.MkdirAll("/course 1", os.ModePerm)
 
 		req := httptest.NewRequest(http.MethodPost, "/api/courses/", strings.NewReader(`{"title": "course 1", "path": "/course 1" }`))
 		req.Header.Set(fiber.HeaderContentType, fiber.MIMEApplicationJSON)
@@ -488,7 +488,7 @@ func TestCourses_CreateCourse(t *testing.T) {
 		_, err := router.app.DbManager.DataDb.ExecContext(context.Background(), "DROP TABLE IF EXISTS "+models.COURSE_TABLE)
 		require.NoError(t, err)
 
-		router.app.AppFs.Fs.MkdirAll("/course 1", os.ModePerm)
+		router.app.FS.MkdirAll("/course 1", os.ModePerm)
 
 		req := httptest.NewRequest(http.MethodPost, "/api/courses/", strings.NewReader(`{"title": "course 1", "path": "/course 1" }`))
 		req.Header.Set(fiber.HeaderContentType, fiber.MIMEApplicationJSON)
@@ -536,9 +536,9 @@ func TestCourses_DeleteCourse(t *testing.T) {
 		require.NoError(t, router.appDao.CreateCourse(ctx, course))
 
 		cardPath := filepath.Join(router.app.Config.DataDir, "cards", course.ID+".webp")
-		require.NoError(t, afero.WriteFile(router.app.AppFs.Fs, cardPath, []byte("test card"), os.ModePerm))
+		require.NoError(t, afero.WriteFile(router.app.FS, cardPath, []byte("test card"), os.ModePerm))
 
-		exists, err := afero.Exists(router.app.AppFs.Fs, cardPath)
+		exists, err := afero.Exists(router.app.FS, cardPath)
 		require.NoError(t, err)
 		require.True(t, exists, "Card should exist before deletion")
 
@@ -553,7 +553,7 @@ func TestCourses_DeleteCourse(t *testing.T) {
 		require.NoError(t, err)
 		require.Nil(t, deletedCourse)
 
-		exists, err = afero.Exists(router.app.AppFs.Fs, cardPath)
+		exists, err = afero.Exists(router.app.FS, cardPath)
 		require.NoError(t, err)
 		require.False(t, exists, "Card should be deleted when course is deleted")
 	})
@@ -591,8 +591,8 @@ func TestCourses_GetCard(t *testing.T) {
 		}
 		require.NoError(t, router.appDao.CreateCourse(ctx, course))
 
-		require.NoError(t, router.app.AppFs.Fs.MkdirAll(filepath.Dir(course.CardPath), os.ModePerm))
-		require.NoError(t, afero.WriteFile(router.app.AppFs.Fs, course.CardPath, []byte("test card"), os.ModePerm))
+		require.NoError(t, router.app.FS.MkdirAll(filepath.Dir(course.CardPath), os.ModePerm))
+		require.NoError(t, afero.WriteFile(router.app.FS, course.CardPath, []byte("test card"), os.ModePerm))
 		_ = router.app.CardCache.OptimizeCard(context.Background(), course.ID, course.CardPath, "")
 
 		status, body, err := requestHelper(t, router, httptest.NewRequest(http.MethodGet, "/api/courses/"+course.ID+"/card", nil))
@@ -634,8 +634,8 @@ func TestCourses_GetCard(t *testing.T) {
 			CardPath: "/course 1/card.png",
 		}
 		require.NoError(t, router.appDao.CreateCourse(ctx, course))
-		require.NoError(t, router.app.AppFs.Fs.MkdirAll(filepath.Dir(course.CardPath), os.ModePerm))
-		require.NoError(t, afero.WriteFile(router.app.AppFs.Fs, course.CardPath, []byte("original card"), os.ModePerm))
+		require.NoError(t, router.app.FS.MkdirAll(filepath.Dir(course.CardPath), os.ModePerm))
+		require.NoError(t, afero.WriteFile(router.app.FS, course.CardPath, []byte("original card"), os.ModePerm))
 		_ = router.app.CardCache.OptimizeCard(context.Background(), course.ID, course.CardPath, "")
 
 		serve, err := router.app.CardCache.Get(course.ID)
@@ -677,8 +677,8 @@ func TestCourses_GetCard(t *testing.T) {
 			CardHash: cardHash,
 		}
 		require.NoError(t, router.appDao.CreateCourse(ctx, course))
-		require.NoError(t, router.app.AppFs.Fs.MkdirAll(filepath.Dir(course.CardPath), os.ModePerm))
-		require.NoError(t, afero.WriteFile(router.app.AppFs.Fs, course.CardPath, []byte("etag card"), os.ModePerm))
+		require.NoError(t, router.app.FS.MkdirAll(filepath.Dir(course.CardPath), os.ModePerm))
+		require.NoError(t, afero.WriteFile(router.app.FS, course.CardPath, []byte("etag card"), os.ModePerm))
 		router.app.CardCache.Warm([]cardcache.CourseCardRef{{
 			ID: course.ID, CardPath: course.CardPath, CardHash: cardHash,
 		}})
@@ -703,8 +703,8 @@ func TestCourses_GetCard(t *testing.T) {
 			CardHash: cardHash,
 		}
 		require.NoError(t, router.appDao.CreateCourse(ctx, course))
-		require.NoError(t, router.app.AppFs.Fs.MkdirAll(filepath.Dir(course.CardPath), os.ModePerm))
-		require.NoError(t, afero.WriteFile(router.app.AppFs.Fs, course.CardPath, []byte("cache card"), os.ModePerm))
+		require.NoError(t, router.app.FS.MkdirAll(filepath.Dir(course.CardPath), os.ModePerm))
+		require.NoError(t, afero.WriteFile(router.app.FS, course.CardPath, []byte("cache card"), os.ModePerm))
 		router.app.CardCache.Warm([]cardcache.CourseCardRef{{
 			ID: course.ID, CardPath: course.CardPath, CardHash: cardHash,
 		}})
@@ -719,7 +719,7 @@ func TestCourses_GetCard(t *testing.T) {
 	t.Run("404 (fallback not found)", func(t *testing.T) {
 		router, _ := setupAdmin(t)
 
-		require.NoError(t, router.app.AppFs.Fs.Remove(filepath.Join(router.app.Config.DataDir, "cards", "fallback.webp")))
+		require.NoError(t, router.app.FS.Remove(filepath.Join(router.app.Config.DataDir, "cards", "fallback.webp")))
 
 		status, body, err := requestHelper(t, router, httptest.NewRequest(http.MethodGet, "/api/courses/invalid/card", nil))
 		require.NoError(t, err)
@@ -1868,8 +1868,8 @@ func TestCourses_ServeAttachment(t *testing.T) {
 		}
 		require.NoError(t, router.appDao.CreateAttachment(ctx, attachment))
 
-		require.Nil(t, router.app.AppFs.Fs.MkdirAll(filepath.Dir(attachment.Path), os.ModePerm))
-		require.Nil(t, afero.WriteFile(router.app.AppFs.Fs, attachment.Path, []byte("hello"), os.ModePerm))
+		require.Nil(t, router.app.FS.MkdirAll(filepath.Dir(attachment.Path), os.ModePerm))
+		require.Nil(t, afero.WriteFile(router.app.FS, attachment.Path, []byte("hello"), os.ModePerm))
 
 		req := httptest.NewRequest(http.MethodGet, "/api/courses/"+course.ID+"/lessons/"+lesson.ID+"/attachments/"+attachment.ID+"/serve", nil)
 		status, body, err := requestHelper(t, router, req)
@@ -2030,8 +2030,8 @@ func TestCourses_ServeAsset(t *testing.T) {
 		}
 		require.NoError(t, router.appDao.CreateAsset(ctx, asset))
 
-		require.Nil(t, router.app.AppFs.Fs.MkdirAll(filepath.Dir(asset.Path), os.ModePerm))
-		require.Nil(t, afero.WriteFile(router.app.AppFs.Fs, asset.Path, []byte("video"), os.ModePerm))
+		require.Nil(t, router.app.FS.MkdirAll(filepath.Dir(asset.Path), os.ModePerm))
+		require.Nil(t, afero.WriteFile(router.app.FS, asset.Path, []byte("video"), os.ModePerm))
 
 		req := httptest.NewRequest(http.MethodGet, "/api/courses/"+course.ID+"/lessons/"+lesson.ID+"/assets/"+asset.ID+"/serve", nil)
 		status, body, err := requestHelper(t, router, req)
@@ -2068,8 +2068,8 @@ func TestCourses_ServeAsset(t *testing.T) {
 		}
 		require.NoError(t, router.appDao.CreateAsset(ctx, asset))
 
-		require.Nil(t, router.app.AppFs.Fs.MkdirAll(filepath.Dir(asset.Path), os.ModePerm))
-		require.Nil(t, afero.WriteFile(router.app.AppFs.Fs, asset.Path, []byte("video"), os.ModePerm))
+		require.Nil(t, router.app.FS.MkdirAll(filepath.Dir(asset.Path), os.ModePerm))
+		require.Nil(t, afero.WriteFile(router.app.FS, asset.Path, []byte("video"), os.ModePerm))
 
 		req := httptest.NewRequest(http.MethodGet, "/api/courses/"+course.ID+"/lessons/"+lesson.ID+"/assets/"+asset.ID+"/serve", nil)
 		req.Header.Add("Range", "bytes=0-")
@@ -2143,8 +2143,8 @@ func TestCourses_ServeAsset(t *testing.T) {
 		}
 		require.NoError(t, router.appDao.CreateAsset(ctx, asset))
 
-		require.Nil(t, router.app.AppFs.Fs.MkdirAll(filepath.Dir(asset.Path), os.ModePerm))
-		require.Nil(t, afero.WriteFile(router.app.AppFs.Fs, asset.Path, []byte("video"), os.ModePerm))
+		require.Nil(t, router.app.FS.MkdirAll(filepath.Dir(asset.Path), os.ModePerm))
+		require.Nil(t, afero.WriteFile(router.app.FS, asset.Path, []byte("video"), os.ModePerm))
 
 		req := httptest.NewRequest(http.MethodGet, "/api/courses/"+course.ID+"/lessons/"+lesson.ID+"/assets/"+asset.ID+"/serve", nil)
 		req.Header.Add("Range", "bytes=10-1")

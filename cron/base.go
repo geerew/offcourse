@@ -6,7 +6,7 @@ import (
 
 	"github.com/geerew/off-course/dao"
 	"github.com/geerew/off-course/database"
-	"github.com/geerew/off-course/utils/appfs"
+	"github.com/geerew/off-course/utils/filesystem"
 	"github.com/geerew/off-course/utils/cardcache"
 	"github.com/geerew/off-course/utils/logger"
 	"github.com/robfig/cron/v3"
@@ -17,7 +17,7 @@ import (
 // CronConfig holds the configuration needed to create a Cron scheduler
 type CronConfig struct {
 	DbManager *database.DatabaseManager
-	AppFs     *appfs.AppFs
+	FS        *filesystem.FS
 	CardCache *cardcache.CardCache
 
 	// Loggers are scoped by the app (component tags) before being passed in
@@ -51,7 +51,7 @@ func NewCronScheduler(config *CronConfig) *Cron {
 	c.CourseAvailability = &courseAvailability{
 		db:        config.DbManager.DataDb,
 		dao:       dao.New(config.DbManager.DataDb),
-		appFs:     config.AppFs,
+		fs: config.FS,
 		logger:    config.CourseAvailabilityLogger,
 		batchSize: 200,
 	}

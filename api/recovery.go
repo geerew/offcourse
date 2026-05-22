@@ -51,7 +51,7 @@ func (api recoveryAPI) resetPassword(c *fiber.Ctx) error {
 	}
 
 	// Validate recovery token
-	recoveryToken, err := auth.ValidateRecoveryToken(api.r.app.AppFs, req.Token, api.r.app.Config.DataDir)
+	recoveryToken, err := auth.ValidateRecoveryToken(api.r.app.FS, req.Token, api.r.app.Config.DataDir)
 	if err != nil {
 		return errorResponse(c, fiber.StatusUnauthorized, "Invalid or expired recovery token", nil)
 	}
@@ -81,7 +81,7 @@ func (api recoveryAPI) resetPassword(c *fiber.Ctx) error {
 	}
 
 	// Delete the recovery token file (best-effort)
-	_ = auth.DeleteRecoveryToken(api.r.app.AppFs, api.r.app.Config.DataDir)
+	_ = auth.DeleteRecoveryToken(api.r.app.FS, api.r.app.Config.DataDir)
 
 	return c.Status(fiber.StatusOK).JSON(fiber.Map{
 		"message":  "Password reset successfully",

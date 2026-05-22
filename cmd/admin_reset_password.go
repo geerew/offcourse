@@ -17,7 +17,7 @@ import (
 	"github.com/geerew/off-course/dao"
 	"github.com/geerew/off-course/database"
 	"github.com/geerew/off-course/models"
-	"github.com/geerew/off-course/utils/appfs"
+	"github.com/geerew/off-course/utils/filesystem"
 	"github.com/geerew/off-course/utils/auth"
 	"github.com/geerew/off-course/utils/types"
 	"github.com/spf13/afero"
@@ -43,7 +43,7 @@ var adminResetPasswordCmd = &cobra.Command{
 		// Get configuration
 		dataDir := viper.GetString("data-dir")
 		httpAddr := viper.GetString("http")
-		appFs := appfs.New(afero.NewOsFs())
+		fs := filesystem.New(afero.NewOsFs())
 
 		if err := verifyAdminUser(username, dataDir); err != nil {
 			errorMessage("%s", err)
@@ -69,7 +69,7 @@ var adminResetPasswordCmd = &cobra.Command{
 
 		fmt.Println()
 
-		if err := resetPasswordViaAPI(appFs, username, password, dataDir, httpAddr); err != nil {
+		if err := resetPasswordViaAPI(fs, username, password, dataDir, httpAddr); err != nil {
 			errorMessage("Failed to reset password: %s", err)
 			os.Exit(1)
 		}
@@ -83,11 +83,11 @@ var adminResetPasswordCmd = &cobra.Command{
 // verifyAdminUser ensures a user exists and is admin
 func verifyAdminUser(username, dataDir string) error {
 	ctx := context.Background()
-	appFs := appfs.New(afero.NewOsFs())
+	fs := filesystem.New(afero.NewOsFs())
 
 	dbManagerConfig := &database.DatabaseManagerConfig{
 		DataDir: dataDir,
-		AppFs:   appFs,
+		FS:   fs,
 		Testing: false,
 	}
 
@@ -123,14 +123,14 @@ func verifyAdminUser(username, dataDir string) error {
 
 // resetPasswordViaAPI generates a recovery token on disk, then makes an HTTP request to
 // the running application to reset the password
-func resetPasswordViaAPI(appFs *appfs.AppFs, username, password, dataDir, httpAddr string) error {
-	recoveryToken, err := auth.GenerateRecoveryToken(appFs, username, password, dataDir)
+func resetPasswordViaAPI(fs *filesystem.FS, username, password, dataDir, httpAddr string) error {
+	recoveryToken, err := auth.GenerateRecoveryToken(fs, username, password, dataDir)
 	if err != nil {
 		return fmt.Errorf("failed to generate recovery token: %w", err)
 	}
 
 	defer func() {
-		auth.DeleteRecoveryToken(appFs, dataDir)
+		auth.DeleteRecoveryToken(fs, dataDir)
 	}()
 
 	requestBody := map[string]string{

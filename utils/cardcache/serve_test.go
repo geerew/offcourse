@@ -5,19 +5,19 @@ import (
 	"os"
 	"testing"
 
-	"github.com/geerew/off-course/utils/appfs"
+	"github.com/geerew/off-course/utils/filesystem"
 	"github.com/geerew/off-course/utils/logger"
 	"github.com/spf13/afero"
 	"github.com/stretchr/testify/require"
 )
 
 func TestGet(t *testing.T) {
-	appFs := appfs.New(afero.NewMemMapFs())
+	fs := filesystem.New(afero.NewMemMapFs())
 	tmpDir := t.TempDir()
 
 	cache, err := New(&CardCacheConfig{
 		CachePath: tmpDir,
-		AppFs:     appFs,
+		FS:   fs,
 		Logger:    logger.NilLogger(),
 	})
 	require.NoError(t, err)
@@ -34,7 +34,7 @@ func TestGet(t *testing.T) {
 		courseID := "course-optimized"
 		optimizedPath, err := cache.optimizedCardPath(courseID)
 		require.NoError(t, err)
-		require.NoError(t, afero.WriteFile(appFs.Fs, optimizedPath, []byte("webp"), os.ModePerm))
+		require.NoError(t, afero.WriteFile(fs, optimizedPath, []byte("webp"), os.ModePerm))
 		require.NoError(t, cache.setServeOptimized(courseID, "hash-opt"))
 
 		serve, err := cache.Get(courseID)
@@ -48,8 +48,8 @@ func TestGet(t *testing.T) {
 	t.Run("original", func(t *testing.T) {
 		courseID := "course-original"
 		originalPath := "/course-1/card-original.png"
-		require.NoError(t, appFs.Fs.MkdirAll("/course-1", os.ModePerm))
-		require.NoError(t, afero.WriteFile(appFs.Fs, originalPath, []byte("original"), os.ModePerm))
+		require.NoError(t, fs.MkdirAll("/course-1", os.ModePerm))
+		require.NoError(t, afero.WriteFile(fs, originalPath, []byte("original"), os.ModePerm))
 		cache.setServeOriginal(courseID, originalPath, "hash-orig")
 
 		serve, err := cache.Get(courseID)
@@ -62,12 +62,12 @@ func TestGet(t *testing.T) {
 // ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
 
 func TestWarm(t *testing.T) {
-	appFs := appfs.New(afero.NewMemMapFs())
+	fs := filesystem.New(afero.NewMemMapFs())
 	tmpDir := t.TempDir()
 
 	cache, err := New(&CardCacheConfig{
 		CachePath: tmpDir,
-		AppFs:     appFs,
+		FS:   fs,
 		Logger:    logger.NilLogger(),
 	})
 	require.NoError(t, err)
@@ -77,7 +77,7 @@ func TestWarm(t *testing.T) {
 		courseID := "course-warm-opt"
 		optimizedPath, err := cache.optimizedCardPath(courseID)
 		require.NoError(t, err)
-		require.NoError(t, afero.WriteFile(appFs.Fs, optimizedPath, []byte("webp"), os.ModePerm))
+		require.NoError(t, afero.WriteFile(fs, optimizedPath, []byte("webp"), os.ModePerm))
 
 		warmed := cache.Warm([]CourseCardRef{{ID: courseID, CardPath: "/missing/original.png"}})
 		require.Equal(t, 1, warmed)
@@ -93,8 +93,8 @@ func TestWarm(t *testing.T) {
 	t.Run("picks original when no optimized file", func(t *testing.T) {
 		courseID := "course-warm-orig"
 		originalPath := "/course-1/card.png"
-		require.NoError(t, appFs.Fs.MkdirAll("/course-1", os.ModePerm))
-		require.NoError(t, afero.WriteFile(appFs.Fs, originalPath, []byte("original"), os.ModePerm))
+		require.NoError(t, fs.MkdirAll("/course-1", os.ModePerm))
+		require.NoError(t, afero.WriteFile(fs, originalPath, []byte("original"), os.ModePerm))
 
 		warmed := cache.Warm([]CourseCardRef{{ID: courseID, CardPath: originalPath}})
 		require.Equal(t, 1, warmed)
@@ -110,12 +110,12 @@ func TestWarm(t *testing.T) {
 
 // Test successfully deleting an optimized card
 func TestDeleteCardForCourse(t *testing.T) {
-	appFs := appfs.New(afero.NewMemMapFs())
+	fs := filesystem.New(afero.NewMemMapFs())
 	tmpDir := t.TempDir()
 
 	cache, err := New(&CardCacheConfig{
 		CachePath: tmpDir,
-		AppFs:     appFs,
+		FS:   fs,
 		Logger:    logger.NilLogger(),
 	})
 	require.NoError(t, err)
@@ -123,7 +123,7 @@ func TestDeleteCardForCourse(t *testing.T) {
 	courseID := "course-xyz"
 	optimizedPath, err := cache.optimizedCardPath(courseID)
 	require.NoError(t, err)
-	require.NoError(t, afero.WriteFile(appFs.Fs, optimizedPath, []byte("webp"), os.ModePerm))
+	require.NoError(t, afero.WriteFile(fs, optimizedPath, []byte("webp"), os.ModePerm))
 	cache.setServeOriginal(courseID, "/card.png", "")
 
 	require.NoError(t, cache.Delete(courseID))
@@ -140,12 +140,12 @@ func TestDeleteCardForCourse(t *testing.T) {
 // ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
 
 func TestOpenCard(t *testing.T) {
-	appFs := appfs.New(afero.NewMemMapFs())
+	fs := filesystem.New(afero.NewMemMapFs())
 	tmpDir := t.TempDir()
 
 	cache, err := New(&CardCacheConfig{
 		CachePath: tmpDir,
-		AppFs:     appFs,
+		FS:   fs,
 		Logger:    logger.NilLogger(),
 	})
 	require.NoError(t, err)
@@ -153,7 +153,7 @@ func TestOpenCard(t *testing.T) {
 	courseID := "course-open"
 	optimizedPath, err := cache.optimizedCardPath(courseID)
 	require.NoError(t, err)
-	require.NoError(t, afero.WriteFile(appFs.Fs, optimizedPath, []byte("webp-bytes"), os.ModePerm))
+	require.NoError(t, afero.WriteFile(fs, optimizedPath, []byte("webp-bytes"), os.ModePerm))
 	require.NoError(t, cache.setServeOptimized(courseID, "open-hash"))
 
 	rc, serve, err := cache.OpenCard(courseID)

@@ -192,7 +192,7 @@ func (s *Stream) run(startSegment int32) error {
 
 	// Create output directory
 	outPath := s.streamer.getOutPath(encoderID)
-	err := s.streamWrapper.config.AppFs.Fs.MkdirAll(filepath.Dir(outPath), 0o755)
+	err := s.streamWrapper.config.FS.MkdirAll(filepath.Dir(outPath), 0o755)
 	if err != nil {
 		s.streamWrapper.config.Logger.Error().
 			Err(err).

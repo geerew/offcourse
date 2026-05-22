@@ -79,7 +79,7 @@ func (sw *StreamWrapper) Destroy() {
 		Str("path", sw.Info.Path).
 		Msg("Removing all transcode cache files")
 	sw.Kill()
-	_ = sw.config.AppFs.Fs.RemoveAll(sw.Out)
+	_ = sw.config.FS.RemoveAll(sw.Out)
 }
 
 // ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~

@@ -8,7 +8,7 @@ import (
 	"github.com/Masterminds/squirrel"
 	"github.com/geerew/off-course/dao"
 	"github.com/geerew/off-course/models"
-	"github.com/geerew/off-course/utils/appfs"
+	"github.com/geerew/off-course/utils/filesystem"
 	"github.com/geerew/off-course/utils/concurrency"
 	"github.com/geerew/off-course/utils/logger"
 	"github.com/spf13/afero"
@@ -31,7 +31,7 @@ type Transcoder struct {
 type TranscoderConfig struct {
 	CachePath string
 	HwAccel   HwAccelT
-	AppFs     *appfs.AppFs
+	FS        *filesystem.FS
 	Logger    *logger.Logger
 	Dao       *dao.DAO
 }
@@ -42,7 +42,7 @@ type TranscoderConfig struct {
 func NewTranscoder(config *TranscoderConfig) (*Transcoder, error) {
 	// Use relative paths for in-memory filesystems
 	var cachePath string
-	if _, ok := config.AppFs.Fs.(*afero.MemMapFs); ok {
+	if _, ok := config.FS.Fs.(*afero.MemMapFs); ok {
 		// In-memory filesystem
 		cachePath = filepath.Join(config.CachePath, "hls")
 	} else {
@@ -55,10 +55,10 @@ func NewTranscoder(config *TranscoderConfig) (*Transcoder, error) {
 		cachePath = filepath.Join(absDataDir, "hls")
 	}
 
-	config.AppFs.Fs.MkdirAll(cachePath, 0o755)
+	config.FS.MkdirAll(cachePath, 0o755)
 
 	// Empty the cache directory
-	err := config.AppFs.RemoveAllContents(cachePath)
+	err := config.FS.RemoveAllContents(cachePath)
 	if err != nil {
 		return nil, err
 	}

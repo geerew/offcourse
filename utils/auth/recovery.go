@@ -7,7 +7,7 @@ import (
 	"path/filepath"
 	"time"
 
-	"github.com/geerew/off-course/utils/appfs"
+	"github.com/geerew/off-course/utils/filesystem"
 	"github.com/geerew/off-course/utils/security"
 	"github.com/spf13/afero"
 )
@@ -35,7 +35,7 @@ type RecoveryToken struct {
 // ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
 
 // GenerateRecoveryToken creates a .recovery-token file in the data directory
-func GenerateRecoveryToken(appFs *appfs.AppFs, username, password, dataDir string) (*RecoveryToken, error) {
+func GenerateRecoveryToken(fs *filesystem.FS, username, password, dataDir string) (*RecoveryToken, error) {
 	token := security.RandomString(32)
 
 	hash, err := GeneratePassword(password)
@@ -58,7 +58,7 @@ func GenerateRecoveryToken(appFs *appfs.AppFs, username, password, dataDir strin
 		return nil, fmt.Errorf("failed to marshal token: %w", err)
 	}
 
-	if err := afero.WriteFile(appFs.Fs, tokenPath, tokenData, 0600); err != nil {
+	if err := afero.WriteFile(fs, tokenPath, tokenData, 0600); err != nil {
 		return nil, fmt.Errorf("failed to write token file: %w", err)
 	}
 
@@ -70,14 +70,14 @@ func GenerateRecoveryToken(appFs *appfs.AppFs, username, password, dataDir strin
 // ValidateRecoveryToken checks the recovery token against the token in the .recovery-token
 //
 // It returns the token data when the token is valid, else it returns an error
-func ValidateRecoveryToken(appFs *appfs.AppFs, token, dataDir string) (*RecoveryToken, error) {
+func ValidateRecoveryToken(fs *filesystem.FS, token, dataDir string) (*RecoveryToken, error) {
 	tokenPath := filepath.Join(dataDir, ".recovery-token")
 
-	if _, err := appFs.Fs.Stat(tokenPath); os.IsNotExist(err) {
+	if _, err := fs.Stat(tokenPath); os.IsNotExist(err) {
 		return nil, fmt.Errorf("recovery token file not found")
 	}
 
-	tokenData, err := afero.ReadFile(appFs.Fs, tokenPath)
+	tokenData, err := afero.ReadFile(fs, tokenPath)
 	if err != nil {
 		return nil, fmt.Errorf("failed to read token file: %w", err)
 	}
@@ -101,10 +101,10 @@ func ValidateRecoveryToken(appFs *appfs.AppFs, token, dataDir string) (*Recovery
 // ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
 
 // DeleteRecoveryToken deletes the .recovery-token file
-func DeleteRecoveryToken(appFs *appfs.AppFs, dataDir string) error {
+func DeleteRecoveryToken(fs *filesystem.FS, dataDir string) error {
 	tokenPath := filepath.Join(dataDir, ".recovery-token")
 
-	if err := appFs.Fs.Remove(tokenPath); err != nil && !os.IsNotExist(err) {
+	if err := fs.Remove(tokenPath); err != nil && !os.IsNotExist(err) {
 		return fmt.Errorf("failed to delete token file: %w", err)
 	}
 

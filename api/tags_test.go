@@ -691,11 +691,11 @@ func TestTags_DeleteTag(t *testing.T) {
 		// Create courses
 		course1 := &models.Course{Title: "Course 1", Path: "/course-1"}
 		require.NoError(t, router.appDao.CreateCourse(ctx, course1))
-		require.NoError(t, router.app.AppFs.Fs.MkdirAll(course1.Path, 0755))
+		require.NoError(t, router.app.FS.MkdirAll(course1.Path, 0755))
 
 		course2 := &models.Course{Title: "Course 2", Path: "/course-2"}
 		require.NoError(t, router.appDao.CreateCourse(ctx, course2))
-		require.NoError(t, router.app.AppFs.Fs.MkdirAll(course2.Path, 0755))
+		require.NoError(t, router.app.FS.MkdirAll(course2.Path, 0755))
 
 		// Create tags
 		tag1 := &models.Tag{Tag: "Go"}
@@ -730,13 +730,13 @@ func TestTags_DeleteTag(t *testing.T) {
 
 		// Verify oc.json files were updated
 		// Course 1 should only have PHP now
-		metadata1, err := coursemetadata.ReadMetadata(router.app.AppFs.Fs, course1.Path)
+		metadata1, err := coursemetadata.ReadMetadata(router.app.FS, course1.Path)
 		require.NoError(t, err)
 		require.NotNil(t, metadata1)
 		require.Equal(t, []string{"PHP"}, metadata1.Tags)
 
 		// Course 2 should only have Python now
-		metadata2, err := coursemetadata.ReadMetadata(router.app.AppFs.Fs, course2.Path)
+		metadata2, err := coursemetadata.ReadMetadata(router.app.FS, course2.Path)
 		require.NoError(t, err)
 		require.NotNil(t, metadata2)
 		require.Equal(t, []string{"Python"}, metadata2.Tags)

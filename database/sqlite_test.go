@@ -4,7 +4,7 @@ import (
 	"context"
 	"testing"
 
-	"github.com/geerew/off-course/utils/appfs"
+	"github.com/geerew/off-course/utils/filesystem"
 	"github.com/spf13/afero"
 	"github.com/stretchr/testify/require"
 )
@@ -14,11 +14,11 @@ import (
 func setupSqliteDB(t *testing.T) *DatabaseManager {
 	t.Helper()
 
-	appFs := appfs.New(afero.NewMemMapFs())
+	fs := filesystem.New(afero.NewMemMapFs())
 
 	dbManager, err := NewSQLiteManager(&DatabaseManagerConfig{
 		DataDir: "./oc_data",
-		AppFs:   appFs,
+		FS:   fs,
 		Testing: true,
 	})
 
@@ -38,13 +38,13 @@ func TestSqliteDb_Bootstrap(t *testing.T) {
 	// Test successfully creating a sqlite connection
 	t.Run("success", func(t *testing.T) {
 
-		appFs := appfs.New(afero.NewMemMapFs())
+		fs := filesystem.New(afero.NewMemMapFs())
 
 		db, err := newSqliteConn(&sqliteConfig{
 			DataDir:    "./oc_data",
 			DSN:        "data.db",
 			MigrateDir: "data",
-			AppFs:      appFs,
+			FS:   fs,
 			Testing:    true,
 		})
 
@@ -55,13 +55,13 @@ func TestSqliteDb_Bootstrap(t *testing.T) {
 
 	// Test error due to being unable to create data.db
 	t.Run("error creating data.db", func(t *testing.T) {
-		appFs := appfs.New(afero.NewReadOnlyFs(afero.NewMemMapFs()))
+		fs := filesystem.New(afero.NewReadOnlyFs(afero.NewMemMapFs()))
 
 		db, err := newSqliteConn(&sqliteConfig{
 			DataDir:    "./oc_data",
 			DSN:        "data.db",
 			MigrateDir: "data",
-			AppFs:      appFs,
+			FS:   fs,
 			Testing:    true,
 		})
 
@@ -72,13 +72,13 @@ func TestSqliteDb_Bootstrap(t *testing.T) {
 
 	// Test error due to invalid migration directory
 	t.Run("invalid migration", func(t *testing.T) {
-		appFs := appfs.New(afero.NewMemMapFs())
+		fs := filesystem.New(afero.NewMemMapFs())
 
 		db, err := newSqliteConn(&sqliteConfig{
 			DataDir:    "./oc_data",
 			DSN:        "data.db",
 			MigrateDir: "test",
-			AppFs:      appFs,
+			FS:   fs,
 			Testing:    true,
 		})
 

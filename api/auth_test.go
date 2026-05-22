@@ -135,7 +135,7 @@ func TestAuth_Bootstrap(t *testing.T) {
 		router.app.UnsetBootstrapped()
 
 		// Generate a bootstrap token using the app's data directory and filesystem
-		bootstrapToken, err := auth.GenerateBootstrapToken(router.app.Config.DataDir, router.app.AppFs.Fs)
+		bootstrapToken, err := auth.GenerateBootstrapToken(router.app.Config.DataDir, router.app.FS)
 		require.NoError(t, err)
 
 		// Create user with token
@@ -176,7 +176,7 @@ func TestAuth_Bootstrap(t *testing.T) {
 		router, _ := setupAdmin(t)
 
 		// Generate a bootstrap token using the app's data directory and filesystem
-		bootstrapToken, err := auth.GenerateBootstrapToken(router.app.Config.DataDir, router.app.AppFs.Fs)
+		bootstrapToken, err := auth.GenerateBootstrapToken(router.app.Config.DataDir, router.app.FS)
 		require.NoError(t, err)
 
 		req := httptest.NewRequest(http.MethodPost, "/api/auth/bootstrap/"+bootstrapToken.Token, strings.NewReader(`{"username": "test", "password": "abcd1234" }`))

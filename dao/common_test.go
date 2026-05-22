@@ -6,7 +6,7 @@ import (
 
 	"github.com/geerew/off-course/database"
 	"github.com/geerew/off-course/models"
-	"github.com/geerew/off-course/utils/appfs"
+	"github.com/geerew/off-course/utils/filesystem"
 	"github.com/geerew/off-course/utils/types"
 	"github.com/spf13/afero"
 	"github.com/stretchr/testify/require"
@@ -20,7 +20,7 @@ func setup(tb testing.TB) (*DAO, context.Context) {
 	// DB
 	dbManager, err := database.NewSQLiteManager(&database.DatabaseManagerConfig{
 		DataDir: "./oc_data",
-		AppFs:   appfs.New(afero.NewMemMapFs()),
+		FS:   filesystem.New(afero.NewMemMapFs()),
 		Testing: true,
 	})
 
@@ -53,11 +53,11 @@ func setup(tb testing.TB) (*DAO, context.Context) {
 func setupLog(tb testing.TB) (*DAO, context.Context) {
 	tb.Helper()
 
-	appFs := appfs.New(afero.NewMemMapFs())
+	fs := filesystem.New(afero.NewMemMapFs())
 
 	dbManager, err := database.NewSQLiteManager(&database.DatabaseManagerConfig{
 		DataDir: "./oc_data",
-		AppFs:   appFs,
+		FS:   fs,
 		Testing: true,
 	})
 

@@ -11,7 +11,7 @@ import (
 	"time"
 
 	"github.com/geerew/off-course/migrations"
-	"github.com/geerew/off-course/utils/appfs"
+	"github.com/geerew/off-course/utils/filesystem"
 	"github.com/geerew/off-course/utils/security"
 	"github.com/jmoiron/sqlx"
 	_ "github.com/mattn/go-sqlite3"
@@ -61,7 +61,7 @@ type sqliteConfig struct {
 	MigrateDir string
 
 	// The application file system
-	AppFs *appfs.AppFs
+	FS *filesystem.FS
 
 	// The database mode (ie read-only or read-write)
 	Mode string
@@ -82,7 +82,7 @@ func NewSQLiteManager(config *DatabaseManagerConfig) (*DatabaseManager, error) {
 		DataDir:    config.DataDir,
 		DSN:        dsnName,
 		MigrateDir: migrateDirData,
-		AppFs:      config.AppFs,
+		FS:      config.FS,
 		Testing:    config.Testing,
 		Mode:       modeReadWrite,
 	}
@@ -98,7 +98,7 @@ func NewSQLiteManager(config *DatabaseManagerConfig) (*DatabaseManager, error) {
 		DataDir:    config.DataDir,
 		DSN:        dsnName,
 		MigrateDir: "",
-		AppFs:      config.AppFs,
+		FS:      config.FS,
 		Testing:    config.Testing,
 		Mode:       modeReadOnly,
 	}
@@ -121,7 +121,7 @@ func NewSQLiteManager(config *DatabaseManagerConfig) (*DatabaseManager, error) {
 		DataDir:    config.DataDir,
 		DSN:        dsnName,
 		MigrateDir: migrateDirLogs,
-		AppFs:      config.AppFs,
+		FS:      config.FS,
 		Testing:    config.Testing,
 		Mode:       modeReadWrite,
 	}
@@ -325,7 +325,7 @@ func (db *SqliteDB) DB() *sqlx.DB {
 
 // newSqliteConn bootstraps a single SQLite connection
 func newSqliteConn(config *sqliteConfig) (*sqlx.DB, error) {
-	if err := config.AppFs.Fs.MkdirAll(config.DataDir, os.ModePerm); err != nil {
+	if err := config.FS.MkdirAll(config.DataDir, os.ModePerm); err != nil {
 		return nil, err
 	}
 

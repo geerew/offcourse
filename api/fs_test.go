@@ -19,10 +19,10 @@ func TestFsPath(t *testing.T) {
 	t.Run("200 (found)", func(t *testing.T) {
 		router, _ := setupAdmin(t)
 
-		router.app.AppFs.Fs.MkdirAll("/dir1", os.ModePerm)
-		router.app.AppFs.Fs.Create("/file1")
-		router.app.AppFs.Fs.Create("/file2")
-		router.app.AppFs.Fs.Create("/file3")
+		router.app.FS.MkdirAll("/dir1", os.ModePerm)
+		router.app.FS.Create("/file1")
+		router.app.FS.Create("/file2")
+		router.app.FS.Create("/file3")
 
 		req := httptest.NewRequest(http.MethodGet, "/api/filesystem/"+utils.EncodeString("/"), nil)
 		status, body, err := requestHelper(t, router, req)
@@ -42,15 +42,15 @@ func TestFsPath(t *testing.T) {
 		router, ctx := setupAdmin(t)
 
 		// Create /dir 1, /course 1, /courses/course 2
-		router.app.AppFs.Fs.MkdirAll("/dir 1", os.ModePerm)
+		router.app.FS.MkdirAll("/dir 1", os.ModePerm)
 
 		course1 := &models.Course{Title: "course 1", Path: "/course 1"}
 		require.NoError(t, router.appDao.CreateCourse(ctx, course1))
-		require.NoError(t, router.app.AppFs.Fs.MkdirAll(course1.Path, os.ModePerm))
+		require.NoError(t, router.app.FS.MkdirAll(course1.Path, os.ModePerm))
 
 		course2 := &models.Course{Title: "course 2", Path: "/courses/course 2"}
 		require.NoError(t, router.appDao.CreateCourse(ctx, course2))
-		require.NoError(t, router.app.AppFs.Fs.MkdirAll(course2.Path, os.ModePerm))
+		require.NoError(t, router.app.FS.MkdirAll(course2.Path, os.ModePerm))
 
 		// Test /
 		req := httptest.NewRequest(http.MethodGet, "/api/filesystem/"+utils.EncodeString("/"), nil)

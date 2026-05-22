@@ -7,7 +7,7 @@ import (
 	"github.com/geerew/off-course/dao"
 	"github.com/geerew/off-course/database"
 	"github.com/geerew/off-course/models"
-	"github.com/geerew/off-course/utils/appfs"
+	"github.com/geerew/off-course/utils/filesystem"
 	"github.com/geerew/off-course/utils/logger"
 	"github.com/geerew/off-course/utils/types"
 	"github.com/spf13/afero"
@@ -19,7 +19,7 @@ import (
 // testApp holds the dependencies needed for cron tests
 type testApp struct {
 	DbManager *database.DatabaseManager
-	AppFs     *appfs.AppFs
+	FS        *filesystem.FS
 	Logger    *logger.Logger
 }
 
@@ -27,12 +27,12 @@ func setup(t *testing.T) (*testApp, context.Context) {
 	t.Helper()
 
 	// Create filesystem
-	appFs := appfs.New(afero.NewMemMapFs())
+	fs := filesystem.New(afero.NewMemMapFs())
 
 	// Create database manager
 	dbManagerConfig := &database.DatabaseManagerConfig{
 		DataDir: "./oc_data",
-		AppFs:   appFs,
+		FS:   fs,
 		Testing: true,
 	}
 
@@ -63,7 +63,7 @@ func setup(t *testing.T) (*testApp, context.Context) {
 
 	return &testApp{
 		DbManager: dbManager,
-		AppFs:     appFs,
+		FS:   fs,
 		Logger:    appLogger,
 	}, ctx
 }

@@ -39,7 +39,7 @@ func (api fsAPI) fileSystem(c *fiber.Ctx) error {
 		return errorResponse(c, fiber.StatusUnauthorized, "Missing principal", nil)
 	}
 
-	drives, err := api.r.app.AppFs.AvailableDrives()
+	drives, err := api.r.app.FS.AvailableDrives()
 	if err != nil {
 		return errorResponse(c, fiber.StatusInternalServerError, "Error looking up available drives", nil)
 	}
@@ -90,7 +90,7 @@ func (api fsAPI) path(c *fiber.Ctx) error {
 	files := make([]*fileInfoResponse, 0)
 
 	// Get a string slice of items in a directory
-	items, err := api.r.app.AppFs.ReadDir(path, true)
+	items, err := api.r.app.FS.ReadDir(path, true)
 	if err != nil {
 		return errorResponse(c, fiber.StatusNotFound, "Error reading directory", nil)
 	}

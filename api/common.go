@@ -9,11 +9,11 @@ import (
 	"strings"
 
 	"github.com/geerew/off-course/models"
-	"github.com/geerew/off-course/utils/appfs"
+	"github.com/geerew/off-course/utils/filesystem"
 	"github.com/geerew/off-course/utils/pagination"
 	"github.com/geerew/off-course/utils/types"
 	"github.com/gofiber/fiber/v2"
-	"github.com/gofiber/fiber/v2/middleware/filesystem"
+	fiberfs "github.com/gofiber/fiber/v2/middleware/filesystem"
 	"github.com/spf13/afero"
 )
 
@@ -88,9 +88,9 @@ func paginationFromCtx(c *fiber.Ctx) *pagination.Pagination {
 // ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
 
 // handleVideo handles the video streaming logic
-func handleVideo(c *fiber.Ctx, appFs *appfs.AppFs, asset *models.Asset) error {
+func handleVideo(c *fiber.Ctx, fs *filesystem.FS, asset *models.Asset) error {
 	// Open the video
-	file, err := appFs.Fs.Open(asset.Path)
+	file, err := fs.Open(asset.Path)
 	if err != nil {
 		return errorResponse(c, fiber.StatusInternalServerError, "Error opening file", err)
 	}
@@ -105,7 +105,7 @@ func handleVideo(c *fiber.Ctx, appFs *appfs.AppFs, asset *models.Asset) error {
 	// Get the range header and return the entire video if there is no range header
 	rangeHeader := c.Get("Range", "")
 	if rangeHeader == "" {
-		return filesystem.SendFile(c, afero.NewHttpFs(appFs.Fs), asset.Path)
+		return fiberfs.SendFile(c, afero.NewHttpFs(fs), asset.Path)
 	}
 
 	// Parse the "bytes=START-END" format
@@ -162,8 +162,8 @@ func handleVideo(c *fiber.Ctx, appFs *appfs.AppFs, asset *models.Asset) error {
 // ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
 
 // handleText handles serving text files and markdown files
-func handleText(c *fiber.Ctx, appFs *appfs.AppFs, asset *models.Asset) error {
-	file, err := appFs.Fs.Open(asset.Path)
+func handleText(c *fiber.Ctx, fs *filesystem.FS, asset *models.Asset) error {
+	file, err := fs.Open(asset.Path)
 	if err != nil {
 		return errorResponse(c, fiber.StatusInternalServerError, "Error opening text file", err)
 	}

@@ -33,7 +33,7 @@ func TestRecovery_ResetPassword(t *testing.T) {
 		require.NoError(t, router.appDao.CreateUser(ctx, user))
 
 		// Generate recovery token in the router's data directory
-		recoveryToken, err := auth.GenerateRecoveryToken(router.app.AppFs, "testadmin", "newpassword123", router.app.Config.DataDir)
+		recoveryToken, err := auth.GenerateRecoveryToken(router.app.FS, "testadmin", "newpassword123", router.app.Config.DataDir)
 		require.NoError(t, err)
 
 		// Make request
@@ -110,7 +110,7 @@ func TestRecovery_ResetPassword(t *testing.T) {
 		router, _ := setupNoAuth(t)
 
 		// Generate recovery token for non-existent user
-		recoveryToken, err := auth.GenerateRecoveryToken(router.app.AppFs, "nonexistent", "password", router.app.Config.DataDir)
+		recoveryToken, err := auth.GenerateRecoveryToken(router.app.FS, "nonexistent", "password", router.app.Config.DataDir)
 		require.NoError(t, err)
 
 		// Make request
@@ -140,7 +140,7 @@ func TestRecovery_ResetPassword(t *testing.T) {
 		require.NoError(t, router.appDao.CreateUser(ctx, user))
 
 		// Generate recovery token
-		recoveryToken, err := auth.GenerateRecoveryToken(router.app.AppFs, "testuser", "newpassword123", router.app.Config.DataDir)
+		recoveryToken, err := auth.GenerateRecoveryToken(router.app.FS, "testuser", "newpassword123", router.app.Config.DataDir)
 		require.NoError(t, err)
 
 		// Make request

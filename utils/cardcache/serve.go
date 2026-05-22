@@ -44,7 +44,7 @@ func (c *CardCache) Get(courseID string) (CardServe, error) {
 	}
 
 	if serve, ok := c.serveIndex.Get(courseID); ok {
-		exists, err := afero.Exists(c.config.AppFs.Fs, serve.Path)
+		exists, err := afero.Exists(c.config.FS, serve.Path)
 		if err != nil {
 			return CardServe{}, err
 		}
@@ -83,7 +83,7 @@ func (c *CardCache) OpenCard(courseID string) (io.ReadCloser, CardServe, error) 
 		return nil, CardServe{}, err
 	}
 
-	f, err := c.config.AppFs.Fs.Open(serve.Path)
+	f, err := c.config.FS.Open(serve.Path)
 	if err != nil {
 		return nil, CardServe{}, fmt.Errorf("failed to open card: %w", err)
 	}
@@ -191,7 +191,7 @@ func (c *CardCache) resolveServeFromDisk(courseID, originalPath, cardHash string
 	}
 
 	if originalPath != "" {
-		exists, err := afero.Exists(c.config.AppFs.Fs, originalPath)
+		exists, err := afero.Exists(c.config.FS, originalPath)
 		if err != nil {
 			return CardServe{}, err
 		}
@@ -210,7 +210,7 @@ func (c *CardCache) resolveServeFromDisk(courseID, originalPath, cardHash string
 // fallback card
 func (c *CardCache) setServeOriginalOrFallback(courseID, originalPath, cardHash string) {
 	if originalPath != "" {
-		exists, err := afero.Exists(c.config.AppFs.Fs, originalPath)
+		exists, err := afero.Exists(c.config.FS, originalPath)
 		if err == nil && exists {
 			c.setServeOriginal(courseID, originalPath, cardHash)
 			return

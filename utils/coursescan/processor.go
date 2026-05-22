@@ -106,7 +106,7 @@ func Processor(ctx context.Context, s *CourseScan, scanState *ScanState) error {
 		return err
 	}
 
-	if _, err := s.appFs.Fs.Stat(course.Path); err != nil {
+	if _, err := s.fs.Stat(course.Path); err != nil {
 		if os.IsNotExist(err) {
 			s.logger.Warn().
 				Str("course_id", courseID).
@@ -125,7 +125,7 @@ func Processor(ctx context.Context, s *CourseScan, scanState *ScanState) error {
 
 	// Read course metadata if it exists
 	scanState.UpdateMessage("Reading course metadata")
-	metadata, err := coursemetadata.ReadMetadata(s.appFs.Fs, course.Path)
+	metadata, err := coursemetadata.ReadMetadata(s.fs, course.Path)
 	if err != nil {
 		s.logger.Warn().
 			Err(err).
@@ -469,7 +469,7 @@ func handleCourseCard(
 	}
 
 	// Calculate card hash and mod time for the scanned source file
-	cardHash, err := hashFilePartial(s.appFs.Fs, scannedCardPath, 1024*1024)
+	cardHash, err := hashFilePartial(s.fs, scannedCardPath, 1024*1024)
 	if err != nil {
 		s.logger.Warn().
 			Err(err).
@@ -484,7 +484,7 @@ func handleCourseCard(
 		return pathChanged || hadMetadata, nil
 	}
 
-	stat, err := s.appFs.Fs.Stat(scannedCardPath)
+	stat, err := s.fs.Stat(scannedCardPath)
 	if err != nil {
 		s.logger.Warn().
 			Err(err).
@@ -546,7 +546,7 @@ func fetchCourse(ctx context.Context, s *CourseScan, courseID string) (*models.C
 // checkAndSetCourseAvailability checks if the course is available and updates its status
 // accordingly
 func checkAndSetCourseAvailability(ctx context.Context, s *CourseScan, course *models.Course) (bool, error) {
-	_, err := s.appFs.Fs.Stat(course.Path)
+	_, err := s.fs.Stat(course.Path)
 	if os.IsNotExist(err) {
 		s.logger.Debug().
 			Str("course_id", course.ID).
@@ -679,7 +679,7 @@ func scanFiles(s *CourseScan, course *models.Course) (*scannedResults, error) {
 		Str("course_path", course.Path).
 		Msg("Scanning course directory")
 
-	files, err := s.appFs.ReadDirFlat(course.Path, 2)
+	files, err := s.fs.ReadDirFlat(course.Path, 2)
 	if err != nil {
 		return nil, err
 	}
@@ -755,7 +755,7 @@ func scanFiles(s *CourseScan, course *models.Course) (*scannedResults, error) {
 
 			if len(bucket.groupedFiles) > 0 {
 				for _, parsedFile := range bucket.groupedFiles {
-					asset, err := parsedFile.toAsset(s.appFs.Fs, module, course.ID)
+					asset, err := parsedFile.toAsset(s.fs, module, course.ID)
 					if err != nil {
 						return nil, err
 					}
@@ -772,7 +772,7 @@ func scanFiles(s *CourseScan, course *models.Course) (*scannedResults, error) {
 					idx := pickBest(bucket.soloFiles)
 					pf := bucket.soloFiles[idx]
 
-					asset, err := pf.toAsset(s.appFs.Fs, module, course.ID)
+					asset, err := pf.toAsset(s.fs, module, course.ID)
 					if err != nil {
 						return nil, err
 					}
@@ -788,7 +788,7 @@ func scanFiles(s *CourseScan, course *models.Course) (*scannedResults, error) {
 						lesson.Attachments = append(lesson.Attachments, other.toAttachment())
 					}
 				} else {
-					asset, err := bucket.soloFiles[0].toAsset(s.appFs.Fs, module, course.ID)
+					asset, err := bucket.soloFiles[0].toAsset(s.fs, module, course.ID)
 					if err != nil {
 						return nil, err
 					}
@@ -1507,7 +1507,7 @@ func populateHashesParallel(ctx context.Context, s *CourseScan, assets []*models
 					return
 				}
 
-				hash, err := hashFilePartial(s.appFs.Fs, asset.Path, 1024*1024)
+				hash, err := hashFilePartial(s.fs, asset.Path, 1024*1024)
 				if err != nil {
 					mu.Lock()
 					if firstError == nil {

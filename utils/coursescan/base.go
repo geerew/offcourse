@@ -11,7 +11,7 @@ import (
 	"github.com/geerew/off-course/database"
 	"github.com/geerew/off-course/models"
 	"github.com/geerew/off-course/utils"
-	"github.com/geerew/off-course/utils/appfs"
+	"github.com/geerew/off-course/utils/filesystem"
 	"github.com/geerew/off-course/utils/cardcache"
 	"github.com/geerew/off-course/utils/concurrency"
 	"github.com/geerew/off-course/utils/logger"
@@ -28,7 +28,7 @@ type CourseScanProcessorFn func(context.Context, *CourseScan, *ScanState) error
 
 // CourseScan scans a course and finds assets and attachments
 type CourseScan struct {
-	appFs     *appfs.AppFs
+	fs        *filesystem.FS
 	db        database.Database
 	dao       *dao.DAO
 	logger    *logger.Logger
@@ -54,7 +54,7 @@ const (
 // CourseScanConfig is the config for a CourseScan
 type CourseScanConfig struct {
 	Db        database.Database
-	AppFs     *appfs.AppFs
+	FS        *filesystem.FS
 	Logger    *logger.Logger
 	FFmpeg    *media.FFmpeg
 	CardCache *cardcache.CardCache
@@ -65,7 +65,7 @@ type CourseScanConfig struct {
 // New creates a new CourseScan
 func New(config *CourseScanConfig) *CourseScan {
 	return &CourseScan{
-		appFs:     config.AppFs,
+		fs: config.FS,
 		db:        config.Db,
 		dao:       dao.New(config.Db),
 		logger:    config.Logger,

@@ -13,7 +13,7 @@ import (
 	"github.com/geerew/off-course/dao"
 	"github.com/geerew/off-course/database"
 	"github.com/geerew/off-course/models"
-	"github.com/geerew/off-course/utils/appfs"
+	"github.com/geerew/off-course/utils/filesystem"
 	"github.com/geerew/off-course/utils/auth"
 	"github.com/geerew/off-course/utils/cardcache"
 	"github.com/geerew/off-course/utils/coursemetadata"
@@ -32,7 +32,7 @@ import (
 type App struct {
 	// Core dependencies
 	Logger    *logger.Logger
-	AppFs     *appfs.AppFs
+	FS        *filesystem.FS
 	FFmpeg    *media.FFmpeg
 	DbManager *database.DatabaseManager
 
@@ -111,11 +111,11 @@ func NewApp(ctx context.Context, config *Config) (*App, error) {
 	}
 
 	// AppFS
-	var appFs *appfs.AppFs
+	var fs *filesystem.FS
 	if config.AppMode == AppModeTest {
-		appFs = appfs.New(afero.NewMemMapFs())
+		fs = filesystem.New(afero.NewMemMapFs())
 	} else {
-		appFs = appfs.New(afero.NewOsFs())
+		fs = filesystem.New(afero.NewOsFs())
 	}
 
 	// FFmpeg
@@ -133,7 +133,7 @@ func NewApp(ctx context.Context, config *Config) (*App, error) {
 	// Database manager
 	dbManagerConfig := &database.DatabaseManagerConfig{
 		DataDir: config.DataDir,
-		AppFs:   appFs,
+		FS:   fs,
 		Testing: config.AppMode == AppModeTest,
 	}
 
@@ -158,7 +158,7 @@ func NewApp(ctx context.Context, config *Config) (*App, error) {
 	transcoderConfig := &hls.TranscoderConfig{
 		CachePath: config.DataDir,
 		HwAccel:   hls.DetectHardwareAccel(appLogger.WithComponent(string(ComponentHLS))),
-		AppFs:     appFs,
+		FS:     fs,
 		Logger:    appLogger.WithComponent(string(ComponentHLS)),
 		Dao:       dao.New(dbManager.DataDb),
 	}
@@ -171,7 +171,7 @@ func NewApp(ctx context.Context, config *Config) (*App, error) {
 	// Card Cache
 	cardCacheConfig := &cardcache.CardCacheConfig{
 		CachePath: config.DataDir,
-		AppFs:     appFs,
+		FS:     fs,
 		Logger:    appLogger.WithComponent(string(ComponentCardCache)),
 	}
 
@@ -183,19 +183,19 @@ func NewApp(ctx context.Context, config *Config) (*App, error) {
 	// Course scanner
 	courseScan := coursescan.New(&coursescan.CourseScanConfig{
 		Db:        dbManager.DataDb,
-		AppFs:     appFs,
+		FS:     fs,
 		Logger:    appLogger.WithComponent(string(ComponentCourseScan)),
 		FFmpeg:    ffmpeg,
 		CardCache: cardCache,
 	})
 
 	// Metadata writer (for oc.json files)
-	metadataWriter := coursemetadata.NewMetadataWriter(appFs.Fs, appLogger.WithComponent(string(ComponentCourseMetadata)))
+	metadataWriter := coursemetadata.NewMetadataWriter(fs, appLogger.WithComponent(string(ComponentCourseMetadata)))
 
 	// Cron scheduler
 	cronScheduler := cron.NewCronScheduler(&cron.CronConfig{
 		DbManager:                dbManager,
-		AppFs:                    appFs,
+		FS:                    fs,
 		CardCache:                cardCache,
 		CourseAvailabilityLogger: appLogger.WithComponent(string(ComponentCron)),
 		CardCacheWarmLogger:      appLogger.WithComponent(string(ComponentCardCache)),
@@ -204,7 +204,7 @@ func NewApp(ctx context.Context, config *Config) (*App, error) {
 
 	app := &App{
 		Logger:         appLogger,
-		AppFs:          appFs,
+		FS:          fs,
 		FFmpeg:         ffmpeg,
 		DbManager:      dbManager,
 		Config:         config,
@@ -294,7 +294,7 @@ func (a *App) bootstrap() error {
 	if count == 0 {
 		a.bootstrapped.Store(0)
 
-		bootstrapToken, err := auth.GenerateBootstrapToken(a.Config.DataDir, a.AppFs.Fs)
+		bootstrapToken, err := auth.GenerateBootstrapToken(a.Config.DataDir, a.FS)
 		if err != nil {
 			return fmt.Errorf("failed to generate bootstrap token: %w", err)
 		}
@@ -308,7 +308,7 @@ func (a *App) bootstrap() error {
 		a.bootstrapped.Store(1)
 
 		// Clean up any existing bootstrap tokens
-		if err := auth.DeleteBootstrapToken(a.Config.DataDir, a.AppFs.Fs); err != nil {
+		if err := auth.DeleteBootstrapToken(a.Config.DataDir, a.FS); err != nil {
 			a.Logger.WithComponent(string(ComponentApp)).Warn().Err(err).Msg("Failed to delete bootstrap token")
 		}
 

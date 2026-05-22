@@ -61,7 +61,7 @@ func (api authAPI) bootstrap(c *fiber.Ctx) error {
 	}
 
 	// Validate bootstrap token
-	if err := auth.ValidateBootstrapToken(token, api.r.app.Config.DataDir, api.r.app.AppFs.Fs); err != nil {
+	if err := auth.ValidateBootstrapToken(token, api.r.app.Config.DataDir, api.r.app.FS); err != nil {
 		return errorResponse(c, fiber.StatusUnauthorized, "Invalid or expired bootstrap token", nil)
 	}
 
@@ -69,7 +69,7 @@ func (api authAPI) bootstrap(c *fiber.Ctx) error {
 	err := api.register(c)
 	if err == nil {
 		api.r.app.SetBootstrapped()
-		auth.DeleteBootstrapToken(api.r.app.Config.DataDir, api.r.app.AppFs.Fs)
+		auth.DeleteBootstrapToken(api.r.app.Config.DataDir, api.r.app.FS)
 	}
 
 	return err

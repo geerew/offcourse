@@ -11,7 +11,7 @@ import (
 	"github.com/geerew/off-course/database"
 	"github.com/geerew/off-course/models"
 	"github.com/geerew/off-course/utils"
-	"github.com/geerew/off-course/utils/appfs"
+	"github.com/geerew/off-course/utils/filesystem"
 	"github.com/geerew/off-course/utils/cardcache"
 	"github.com/geerew/off-course/utils/logger"
 	"github.com/geerew/off-course/utils/media"
@@ -26,12 +26,12 @@ func setup(t *testing.T) (*CourseScan, context.Context) {
 	t.Helper()
 
 	testLogger := logger.NilLogger()
-	appFs := appfs.New(afero.NewMemMapFs())
+	fs := filesystem.New(afero.NewMemMapFs())
 	dataDir := "./oc_data"
 
 	dbManager, err := database.NewSQLiteManager(&database.DatabaseManagerConfig{
 		DataDir: dataDir,
-		AppFs:   appFs,
+		FS:   fs,
 		Testing: true,
 	})
 	require.NoError(t, err)
@@ -44,14 +44,14 @@ func setup(t *testing.T) (*CourseScan, context.Context) {
 
 	cardCache, err := cardcache.New(&cardcache.CardCacheConfig{
 		CachePath: dataDir,
-		AppFs:     appFs,
+		FS:   fs,
 		Logger:    testLogger,
 	})
 	require.NoError(t, err)
 
 	courseScan := New(&CourseScanConfig{
 		Db:        dbManager.DataDb,
-		AppFs:     appFs,
+		FS:   fs,
 		Logger:    testLogger,
 		FFmpeg:    ffmpeg,
 		CardCache: cardCache,

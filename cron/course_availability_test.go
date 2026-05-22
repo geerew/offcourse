@@ -29,7 +29,7 @@ func TestCourseAvailability_Run(t *testing.T) {
 		ca := &courseAvailability{
 			db:        testApp.DbManager.DataDb,
 			dao:       appDao,
-			appFs:     testApp.AppFs,
+			fs:     testApp.FS,
 			logger:    testApp.Logger,
 			batchSize: 2,
 		}
@@ -38,7 +38,7 @@ func TestCourseAvailability_Run(t *testing.T) {
 		require.NoError(t, err)
 
 		for _, course := range courses {
-			require.Nil(t, testApp.AppFs.Fs.MkdirAll(course.Path, 0755))
+			require.Nil(t, testApp.FS.MkdirAll(course.Path, 0755))
 		}
 
 		err = ca.run()
@@ -62,7 +62,7 @@ func TestCourseAvailability_Run(t *testing.T) {
 		ca := &courseAvailability{
 			db:        db,
 			dao:       dao.New(db),
-			appFs:     testApp.AppFs,
+			fs:     testApp.FS,
 			logger:    testApp.Logger,
 			batchSize: 1,
 		}

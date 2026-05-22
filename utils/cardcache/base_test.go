@@ -9,7 +9,7 @@ import (
 	"path/filepath"
 	"testing"
 
-	"github.com/geerew/off-course/utils/appfs"
+	"github.com/geerew/off-course/utils/filesystem"
 	"github.com/geerew/off-course/utils/logger"
 	"github.com/spf13/afero"
 	"github.com/stretchr/testify/require"
@@ -20,12 +20,12 @@ import (
 func TestNew(t *testing.T) {
 	// Test successfully creating a new card cache
 	t.Run("create cache directory", func(t *testing.T) {
-		appFs := appfs.New(afero.NewMemMapFs())
+		fs := filesystem.New(afero.NewMemMapFs())
 		testLogger := logger.NilLogger()
 
 		cache, err := New(&CardCacheConfig{
 			CachePath: "/test",
-			AppFs:     appFs,
+			FS:   fs,
 			Logger:    testLogger,
 		})
 
@@ -40,12 +40,12 @@ func TestNew(t *testing.T) {
 
 	// Test successfully writing a fallback card
 	t.Run("fallback card", func(t *testing.T) {
-		appFs := appfs.New(afero.NewMemMapFs())
+		fs := filesystem.New(afero.NewMemMapFs())
 		tmpDir := t.TempDir()
 
 		cache, err := New(&CardCacheConfig{
 			CachePath: tmpDir,
-			AppFs:     appFs,
+			FS:   fs,
 			Logger:    logger.NilLogger(),
 		})
 		require.NoError(t, err)
@@ -66,7 +66,7 @@ func TestNew(t *testing.T) {
 	// Test erroring when the cache path is empty
 	t.Run("empty cache path", func(t *testing.T) {
 		_, err := New(&CardCacheConfig{
-			AppFs:  appfs.New(afero.NewMemMapFs()),
+			FS:  filesystem.New(afero.NewMemMapFs()),
 			Logger: logger.NilLogger(),
 		})
 		require.Error(t, err)
@@ -78,18 +78,18 @@ func TestNew(t *testing.T) {
 func TestOptimizeCard(t *testing.T) {
 	// Test successfully generating an optimized card from a JPEG image
 	t.Run("generates optimized card", func(t *testing.T) {
-		appFs := appfs.New(afero.NewMemMapFs())
+		fs := filesystem.New(afero.NewMemMapFs())
 		tmpDir := t.TempDir()
 
 		cache, err := New(&CardCacheConfig{
 			CachePath: tmpDir,
-			AppFs:     appFs,
+			FS:   fs,
 			Logger:    logger.NilLogger(),
 		})
 		require.NoError(t, err)
 
 		testImagePath := filepath.Join(tmpDir, "test.jpg")
-		writeTestJPEG(t, appFs.Fs, testImagePath, 1200, 800)
+		writeTestJPEG(t, fs, testImagePath, 1200, 800)
 
 		courseID := "testcourse"
 		outputPath, err := cache.optimizedCardPath(courseID)
@@ -105,9 +105,9 @@ func TestOptimizeCard(t *testing.T) {
 		require.NoError(t, err)
 		require.True(t, exists)
 
-		optimizedInfo, err := appFs.Fs.Stat(outputPath)
+		optimizedInfo, err := fs.Stat(outputPath)
 		require.NoError(t, err)
-		originalInfo, err := appFs.Fs.Stat(testImagePath)
+		originalInfo, err := fs.Stat(testImagePath)
 		require.NoError(t, err)
 		require.Less(t, optimizedInfo.Size(), originalInfo.Size())
 		require.Equal(t, ".webp", filepath.Ext(outputPath))
@@ -115,18 +115,18 @@ func TestOptimizeCard(t *testing.T) {
 
 	// Test erroring when the image data is invalid
 	t.Run("invalid image data", func(t *testing.T) {
-		appFs := appfs.New(afero.NewMemMapFs())
+		fs := filesystem.New(afero.NewMemMapFs())
 		tmpDir := t.TempDir()
 
 		cache, err := New(&CardCacheConfig{
 			CachePath: tmpDir,
-			AppFs:     appFs,
+			FS:   fs,
 			Logger:    logger.NilLogger(),
 		})
 		require.NoError(t, err)
 
 		badPath := filepath.Join(tmpDir, "bad.jpg")
-		require.NoError(t, afero.WriteFile(appFs.Fs, badPath, []byte("not an image"), os.ModePerm))
+		require.NoError(t, afero.WriteFile(fs, badPath, []byte("not an image"), os.ModePerm))
 
 		err = cache.OptimizeCard(context.Background(), "testcourse", badPath, "")
 		require.Error(t, err)
@@ -135,18 +135,18 @@ func TestOptimizeCard(t *testing.T) {
 
 	// Test erroring when the context is cancelled
 	t.Run("context cancellation", func(t *testing.T) {
-		appFs := appfs.New(afero.NewMemMapFs())
+		fs := filesystem.New(afero.NewMemMapFs())
 		tmpDir := t.TempDir()
 
 		cache, err := New(&CardCacheConfig{
 			CachePath: tmpDir,
-			AppFs:     appFs,
+			FS:   fs,
 			Logger:    logger.NilLogger(),
 		})
 		require.NoError(t, err)
 
 		testImagePath := filepath.Join(tmpDir, "test.jpg")
-		writeTestJPEG(t, appFs.Fs, testImagePath, 100, 100)
+		writeTestJPEG(t, fs, testImagePath, 100, 100)
 
 		ctx, cancel := context.WithCancel(context.Background())
 		cancel()
@@ -162,13 +162,13 @@ func TestOptimizeCard(t *testing.T) {
 func TestDelete(t *testing.T) {
 	// Test successfully deleting an existing card
 	t.Run("success", func(t *testing.T) {
-		appFs := appfs.New(afero.NewOsFs())
+		fs := filesystem.New(afero.NewOsFs())
 		testLogger := logger.NilLogger()
 		tmpDir := t.TempDir()
 
 		cache, err := New(&CardCacheConfig{
 			CachePath: tmpDir,
-			AppFs:     appFs,
+			FS:   fs,
 			Logger:    testLogger,
 		})
 		require.NoError(t, err)
@@ -187,13 +187,13 @@ func TestDelete(t *testing.T) {
 
 	// Test successfully handling a non-existent card
 	t.Run("non-existent card", func(t *testing.T) {
-		appFs := appfs.New(afero.NewOsFs())
+		fs := filesystem.New(afero.NewOsFs())
 		testLogger := logger.NilLogger()
 		tmpDir := t.TempDir()
 
 		cache, err := New(&CardCacheConfig{
 			CachePath: tmpDir,
-			AppFs:     appFs,
+			FS:   fs,
 			Logger:    testLogger,
 		})
 		require.NoError(t, err)
@@ -207,12 +207,12 @@ func TestDelete(t *testing.T) {
 // ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
 
 func TestOptimizedPath(t *testing.T) {
-	appFs := appfs.New(afero.NewMemMapFs())
+	fs := filesystem.New(afero.NewMemMapFs())
 	testLogger := logger.NilLogger()
 
 	cache, err := New(&CardCacheConfig{
 		CachePath: "/test",
-		AppFs:     appFs,
+		FS:   fs,
 		Logger:    testLogger,
 	})
 	require.NoError(t, err)

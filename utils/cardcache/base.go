@@ -8,7 +8,7 @@ import (
 	"path/filepath"
 	"strings"
 
-	"github.com/geerew/off-course/utils/appfs"
+	"github.com/geerew/off-course/utils/filesystem"
 	"github.com/geerew/off-course/utils/concurrency"
 	"github.com/geerew/off-course/utils/logger"
 	"github.com/spf13/afero"
@@ -33,7 +33,7 @@ type CardCache struct {
 // CardCacheConfig defines the configuration for a CardCache
 type CardCacheConfig struct {
 	CachePath string
-	AppFs     *appfs.AppFs
+	FS        *filesystem.FS
 	Logger    *logger.Logger
 }
 
@@ -45,7 +45,7 @@ func New(config *CardCacheConfig) (*CardCache, error) {
 		return nil, fmt.Errorf("card cache config is nil")
 	}
 
-	if config.AppFs == nil || config.AppFs.Fs == nil {
+	if config.FS == nil || config.FS.Fs == nil {
 		return nil, fmt.Errorf("card cache app filesystem is nil")
 	}
 
@@ -58,7 +58,7 @@ func New(config *CardCacheConfig) (*CardCache, error) {
 	}
 
 	var cachePath string
-	if _, ok := config.AppFs.Fs.(*afero.MemMapFs); ok {
+	if _, ok := config.FS.Fs.(*afero.MemMapFs); ok {
 		cachePath = filepath.Join(config.CachePath, "cards")
 	} else {
 		absDataDir, err := filepath.Abs(config.CachePath)
@@ -69,7 +69,7 @@ func New(config *CardCacheConfig) (*CardCache, error) {
 		cachePath = filepath.Join(absDataDir, "cards")
 	}
 
-	if err := config.AppFs.Fs.MkdirAll(cachePath, 0o755); err != nil {
+	if err := config.FS.MkdirAll(cachePath, 0o755); err != nil {
 		return nil, fmt.Errorf("failed to create card cache directory: %w", err)
 	}
 
@@ -81,7 +81,7 @@ func New(config *CardCacheConfig) (*CardCache, error) {
 
 	outputPath := cardCache.fallbackPath()
 
-	if err := afero.WriteFile(cardCache.config.AppFs.Fs, outputPath, fallbackCardBytes, 0o644); err != nil {
+	if err := afero.WriteFile(cardCache.config.FS, outputPath, fallbackCardBytes, 0o644); err != nil {
 		return nil, fmt.Errorf("failed to write fallback card: %w", err)
 	}
 
@@ -102,18 +102,18 @@ func (c *CardCache) OptimizeCard(ctx context.Context, courseID, originalPath, ca
 		return err
 	}
 
-	originalInfo, err := c.config.AppFs.Fs.Stat(originalPath)
+	originalInfo, err := c.config.FS.Stat(originalPath)
 	if err != nil {
 		c.setServeOriginalOrFallback(courseID, originalPath, cardHash)
 		return fmt.Errorf("failed to stat original card: %w", err)
 	}
 
 	outputDir := filepath.Dir(optimizedCardPath)
-	if err := c.config.AppFs.Fs.MkdirAll(outputDir, 0o755); err != nil {
+	if err := c.config.FS.MkdirAll(outputDir, 0o755); err != nil {
 		return fmt.Errorf("failed to create output directory: %w", err)
 	}
 
-	originalData, err := afero.ReadFile(c.config.AppFs.Fs, originalPath)
+	originalData, err := afero.ReadFile(c.config.FS, originalPath)
 	if err != nil {
 		c.setServeOriginalOrFallback(courseID, originalPath, cardHash)
 		return fmt.Errorf("failed to read original card: %w", err)
@@ -148,7 +148,7 @@ func (c *CardCache) OptimizeCard(ctx context.Context, courseID, originalPath, ca
 		return nil
 	}
 
-	if err := afero.WriteFile(c.config.AppFs.Fs, optimizedCardPath, webpData, 0o644); err != nil {
+	if err := afero.WriteFile(c.config.FS, optimizedCardPath, webpData, 0o644); err != nil {
 		c.setServeOriginalOrFallback(courseID, originalPath, cardHash)
 		return fmt.Errorf("failed to write optimized card: %w", err)
 	}
@@ -172,7 +172,7 @@ func (c *CardCache) OptimizeCard(ctx context.Context, courseID, originalPath, ca
 
 // deleteCard deletes a card from the cache directory
 func (c *CardCache) deleteCard(cardPath string) error {
-	err := c.config.AppFs.Fs.Remove(cardPath)
+	err := c.config.FS.Remove(cardPath)
 	if err != nil {
 		if errors.Is(err, os.ErrNotExist) || os.IsNotExist(err) {
 			return nil
@@ -192,7 +192,7 @@ func (c *CardCache) deleteCard(cardPath string) error {
 
 // cardExists checks if a card exists at the given path
 func (c *CardCache) cardExists(cardPath string) (bool, error) {
-	exists, err := afero.Exists(c.config.AppFs.Fs, cardPath)
+	exists, err := afero.Exists(c.config.FS, cardPath)
 	if err != nil {
 		return false, fmt.Errorf("failed to check if card exists: %w", err)
 	}
