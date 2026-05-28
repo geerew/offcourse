@@ -42,6 +42,7 @@ func (s ScanStatusType) IsValid() bool {
 	case ScanStatusWaiting, ScanStatusProcessing:
 		return true
 	}
+
 	return false
 }
 
@@ -73,6 +74,7 @@ func (s ScanStatusType) MarshalJSON() ([]byte, error) {
 	if !s.IsValid() {
 		return nil, fmt.Errorf("invalid scan status: %s", s)
 	}
+
 	return []byte(`"` + string(s) + `"`), nil
 }
 
@@ -95,12 +97,14 @@ func (s ScanStatusType) Value() (driver.Value, error) {
 	if !s.IsValid() {
 		return nil, fmt.Errorf("invalid scan status: %s", s)
 	}
+
 	return string(s), nil
 }
 
 // ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
 
-// Scan implements `sql.Scanner` interface
+// Scan implements the `sql.Scanner` interface, scanning the provided value into
+// the ScanStatusType
 func (s *ScanStatusType) Scan(value any) error {
 	vv := cast.ToString(value)
 

@@ -1,21 +1,15 @@
 package api
 
 import (
-	"context"
 	"fmt"
 	"net"
 	"net/http"
 	"time"
 
-	"sync/atomic"
-
-	"github.com/Masterminds/squirrel"
 	"github.com/geerew/off-course/app"
 	"github.com/geerew/off-course/dao"
-	"github.com/geerew/off-course/models"
 	"github.com/geerew/off-course/utils/logger"
 	"github.com/geerew/off-course/utils/session"
-	"github.com/geerew/off-course/utils/types"
 	"github.com/gofiber/fiber/v2"
 	fibersession "github.com/gofiber/fiber/v2/middleware/session"
 )
@@ -33,7 +27,6 @@ type Router struct {
 	app            *app.App
 	appDao         *dao.DAO
 	logDao         *dao.DAO
-	bootstrapped   int32
 	sessionManager *session.SessionManager
 	logger         *logger.Logger
 }
@@ -41,12 +34,12 @@ type Router struct {
 // ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
 
 // NewRouter creates a new router from an App instance
-func NewRouter(app *app.App) *Router {
+func NewRouter(application *app.App) *Router {
 	r := &Router{
-		app:    app,
-		appDao: dao.New(app.DbManager.DataDb),
-		logDao: dao.New(app.DbManager.LogsDb),
-		logger: app.Logger.WithAPI(),
+		app:    application,
+		appDao: dao.New(application.DbManager.DataDb),
+		logDao: dao.New(application.DbManager.LogsDb),
+		logger: application.Logger.WithComponent(string(app.ComponentAPI)),
 	}
 
 	r.createSessionStore()
@@ -128,47 +121,16 @@ func (r *Router) createSessionStore() {
 
 // ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
 
-// InitBootstrap determines if the app is bootstrapped by checking if there is
-// an admin user
-func (r *Router) InitBootstrap() {
-	dbOpts := dao.NewOptions().WithWhere(squirrel.Eq{models.USER_TABLE_ROLE: types.UserRoleAdmin})
-	count, err := r.appDao.CountUsers(context.Background(), dbOpts)
-	if err != nil {
-		r.logger.Error().Err(err).Msg("Failed to count users")
-	}
-
-	if count != 0 {
-		atomic.StoreInt32(&r.bootstrapped, 1)
-	} else {
-		atomic.StoreInt32(&r.bootstrapped, 0)
-	}
-}
-
-// ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
-
-// setBootstrapped sets the application as bootstrapped
-func (r *Router) setBootstrapped() {
-	atomic.StoreInt32(&r.bootstrapped, 1)
-}
-
-// ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
-
-// IsBootstrapped checks if the application is bootstrapped
-func (r *Router) IsBootstrapped() bool {
-	return atomic.LoadInt32(&r.bootstrapped) == 1
-}
-
-// ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
-
-// apiGroup returns the API router group
+// apiGroup returns a new API router group
 func (r *Router) apiGroup(groupPath string) fiber.Router {
 	return r.fiberApp.Group("/api/" + groupPath)
 }
 
 // ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
 
-// SetTestMiddleware replaces the middleware stack with test middleware.
-// This should only be used in tests.
+// SetTestMiddleware replaces the middleware stack with test middleware
+//
+// FOR TESTING PURPOSES ONLY
 func (r *Router) SetTestMiddleware(factories ...MiddlewareFactory) {
 	// Clear existing middleware by creating a new Fiber app with same config
 	r.fiberApp = fiber.New(fiber.Config{

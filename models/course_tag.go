@@ -32,14 +32,14 @@ type CourseTag struct {
 
 // ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
 
-// CourseTagColumns returns the list of columns to use when populating `CourseTag`
+// CourseTagColumns returns the columns for use in a SELECT query
 func CourseTagColumns() []string {
 	return []string{
-		fmt.Sprintf("%s AS id", COURSE_TAG_TABLE_ID),
-		fmt.Sprintf("%s AS created_at", COURSE_TAG_TABLE_CREATED_AT),
-		fmt.Sprintf("%s AS updated_at", COURSE_TAG_TABLE_UPDATED_AT),
-		fmt.Sprintf("%s AS tag_id", COURSE_TAG_TABLE_TAG_ID),
-		fmt.Sprintf("%s AS course_id", COURSE_TAG_TABLE_COURSE_ID),
+		fmt.Sprintf("%s AS %s", COURSE_TAG_TABLE_ID, BASE_ID),
+		fmt.Sprintf("%s AS %s", COURSE_TAG_TABLE_CREATED_AT, BASE_CREATED_AT),
+		fmt.Sprintf("%s AS %s", COURSE_TAG_TABLE_UPDATED_AT, BASE_UPDATED_AT),
+		fmt.Sprintf("%s AS %s", COURSE_TAG_TABLE_TAG_ID, COURSE_TAG_TAG_ID),
+		fmt.Sprintf("%s AS %s", COURSE_TAG_TABLE_COURSE_ID, COURSE_TAG_COURSE_ID),
 		// Join columns
 		fmt.Sprintf("%s AS course_title", COURSE_TABLE_TITLE),
 		fmt.Sprintf("%s AS tag_tag", TAG_TABLE_TAG),

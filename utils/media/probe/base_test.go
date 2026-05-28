@@ -29,10 +29,10 @@ func TestProbeVideo(t *testing.T) {
 	t.Run("valid video", func(t *testing.T) {
 		testVideo := filepath.Join("testdata", "sample.mp4")
 
-		ffmpeg, err := media.NewFFmpeg()
+		tools, err := media.NewTools()
 		require.NoError(t, err)
 
-		mp := MediaProbe{FFmpeg: ffmpeg}
+		mp := MediaProbe{Tools: tools}
 		info, videoIdx, err := mp.ProbeVideo(context.Background(), testVideo)
 		require.NoError(t, err)
 		require.NotNil(t, info)
@@ -61,10 +61,10 @@ func TestProbeVideo(t *testing.T) {
 	})
 
 	t.Run("invalid video", func(t *testing.T) {
-		ffmpeg, err := media.NewFFmpeg()
+		tools, err := media.NewTools()
 		require.NoError(t, err)
 
-		mp := MediaProbe{FFmpeg: ffmpeg}
+		mp := MediaProbe{Tools: tools}
 		_, _, err = mp.ProbeVideo(context.Background(), "testdata/does_not_exist.mp4")
 		require.Error(t, err)
 		require.Contains(t, err.Error(), "error running ffprobe")

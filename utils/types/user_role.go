@@ -29,7 +29,9 @@ type Principal struct {
 
 // ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
 
-// NewUserRole creates a new UserRole. Defaults to UserRoleUser if the role provided is invalid
+// NewUserRole creates a new UserRole
+//
+// Defaults to UserRoleUser if the role provided is invalid
 func NewUserRole(role string) UserRole {
 	switch role {
 	case "admin":
@@ -49,6 +51,7 @@ func (r UserRole) IsValid() bool {
 	case UserRoleAdmin, UserRoleUser:
 		return true
 	}
+
 	return false
 }
 
@@ -61,17 +64,18 @@ func (r UserRole) String() string {
 
 // ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
 
-// MarshalJSON implements the json.Marshaler interface
+// MarshalJSON implements the `json.Marshaler` interface
 func (r UserRole) MarshalJSON() ([]byte, error) {
 	if !r.IsValid() {
 		return nil, fmt.Errorf("invalid user role: %s", r)
 	}
+
 	return json.Marshal(string(r))
 }
 
 // ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
 
-// UnmarshalJSON implements the json.Unmarshaler interface
+// UnmarshalJSON implements the `json.Unmarshaler` interface
 func (r *UserRole) UnmarshalJSON(data []byte) error {
 	var role string
 	if err := json.Unmarshal(data, &role); err != nil {
@@ -89,7 +93,7 @@ func (r *UserRole) UnmarshalJSON(data []byte) error {
 
 // ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
 
-// Value implements the driver.Valuer interface for database serialization
+// Value implements the `driver.Valuer` interface
 func (r UserRole) Value() (driver.Value, error) {
 	if !r.IsValid() {
 		return nil, fmt.Errorf("invalid user role: %s", r)

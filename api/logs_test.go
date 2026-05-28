@@ -35,7 +35,7 @@ func TestLogs_GetLogs(t *testing.T) {
 		for i := range 5 {
 			log := &models.Log{
 				Data:    map[string]any{},
-				Level:   0,
+				Level:   "info",
 				Message: fmt.Sprintf("log %d", i+1),
 			}
 
@@ -55,7 +55,7 @@ func TestLogs_GetLogs(t *testing.T) {
 		router, ctx := setupAdmin(t)
 
 		for i := range 17 {
-			require.Nil(t, router.logDao.CreateLog(ctx, &models.Log{Data: map[string]any{}, Level: 0, Message: fmt.Sprintf("log %d", i+1)}))
+			require.Nil(t, router.logDao.CreateLog(ctx, &models.Log{Data: map[string]any{}, Level: "info", Message: fmt.Sprintf("log %d", i+1)}))
 			time.Sleep(1 * time.Millisecond)
 		}
 

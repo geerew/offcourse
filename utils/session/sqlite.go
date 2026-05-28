@@ -10,11 +10,12 @@ import (
 	"github.com/geerew/off-course/dao"
 	"github.com/geerew/off-course/database"
 	"github.com/geerew/off-course/models"
+	"github.com/geerew/off-course/utils"
 )
 
 // ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
 
-// SqliteStorage is a sqlite storage
+// SqliteStorage implements the `fiber.Storage` interface
 type SqliteStorage struct {
 	dao        *dao.DAO
 	gcInterval time.Duration
@@ -29,7 +30,6 @@ func NewSqliteStorage(db database.Database, gcInterval time.Duration) *SqliteSto
 		gcInterval: gcInterval,
 	}
 
-	// Start garbage collector
 	go storage.gcTicker()
 
 	return storage
@@ -37,13 +37,13 @@ func NewSqliteStorage(db database.Database, gcInterval time.Duration) *SqliteSto
 
 // ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
 
-// Get value by key
-func (s *SqliteStorage) Get(key string) ([]byte, error) {
-	if key == "" {
-		return nil, nil
+// Get gets a session by ID
+func (s *SqliteStorage) Get(id string) ([]byte, error) {
+	if id == "" {
+		return nil, utils.ErrId
 	}
 
-	dbOpts := dao.NewOptions().WithWhere(squirrel.Eq{models.SESSION_TABLE_ID: key})
+	dbOpts := dao.NewOptions().WithWhere(squirrel.Eq{models.SESSION_TABLE_ID: id})
 	session, err := s.dao.GetSession(context.Background(), dbOpts)
 	if err != nil {
 		return nil, err
@@ -58,10 +58,10 @@ func (s *SqliteStorage) Get(key string) ([]byte, error) {
 
 // ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
 
-// Set key with value
-func (s *SqliteStorage) Set(key string, data []byte, exp time.Duration) error {
-	if key == "" || len(data) <= 0 {
-		return nil
+// Set will create or replace an existing session by ID
+func (s *SqliteStorage) Set(id string, data []byte, exp time.Duration) error {
+	if id == "" || len(data) <= 0 {
+		return utils.ErrId
 	}
 
 	var expSeconds int64
@@ -69,15 +69,13 @@ func (s *SqliteStorage) Set(key string, data []byte, exp time.Duration) error {
 		expSeconds = time.Now().Add(exp).Unix()
 	}
 
-	// Try to extract "id" (userId) from the serialized session payload.
-	// Fiber session uses encoding/gob by default for the map[string]any.
-	userID := ""
-	if uid, ok := extractUserIDFromSessionBytes(data); ok {
-		userID = uid
+	userID, ok := extractUserId(data)
+	if !ok {
+		return utils.ErrUserId
 	}
 
 	session := &models.Session{
-		ID:      key,
+		ID:      id,
 		Data:    data,
 		Expires: expSeconds,
 		UserId:  userID,
@@ -88,22 +86,22 @@ func (s *SqliteStorage) Set(key string, data []byte, exp time.Duration) error {
 
 // ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
 
-// Delete deletes an entry by ID (key)
-func (s *SqliteStorage) Delete(key string) error {
-	if key == "" {
-		return nil
+// Delete deletes a session by ID
+func (s *SqliteStorage) Delete(id string) error {
+	if id == "" {
+		return utils.ErrId
 	}
 
-	dbOpts := dao.NewOptions().WithWhere(squirrel.Eq{models.SESSION_TABLE_ID: key})
+	dbOpts := dao.NewOptions().WithWhere(squirrel.Eq{models.SESSION_TABLE_ID: id})
 	return s.dao.DeleteSessions(context.Background(), dbOpts)
 }
 
 // ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
 
-// DeleteUser deletes all entries for a user
+// DeleteUser deletes all sessions for a user
 func (s *SqliteStorage) DeleteUser(id string) error {
 	if id == "" {
-		return nil
+		return utils.ErrUserId
 	}
 
 	dbOpts := dao.NewOptions().WithWhere(squirrel.Eq{models.SESSION_TABLE_USER_ID: id})
@@ -112,21 +110,21 @@ func (s *SqliteStorage) DeleteUser(id string) error {
 
 // ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
 
-// Reset resets all entries, including unexpired
+// Reset deletes all session for all users
 func (s *SqliteStorage) Reset() error {
 	return s.dao.DeleteAllSessions(context.Background())
 }
 
 // ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
 
-// Close closes the database
+// Close is unimplemented for this storage
 func (s *SqliteStorage) Close() error {
 	return nil
 }
 
 // ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
 
-// gcTicker starts a garbage collector that deletes expired sessions
+// gcTicker runs a garbage collector that deletes expired sessions at a set interval
 func (s *SqliteStorage) gcTicker() {
 	ticker := time.NewTicker(s.gcInterval)
 	ctx := context.Background()
@@ -144,19 +142,23 @@ func (s *SqliteStorage) gcTicker() {
 
 // ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
 
-// helper: decode gob into map and read "id"
-func extractUserIDFromSessionBytes(b []byte) (string, bool) {
+// extractUserId takes a slice of bytes, decodes it and attempts to extract the user ID
+//
+// It returns a string, and a boolean indicating whether the user ID was found
+func extractUserId(b []byte) (string, bool) {
 	var m map[string]any
 	buf := bytes.NewBuffer(b)
 	dec := gob.NewDecoder(buf)
+
 	if err := dec.Decode(&m); err != nil {
 		return "", false
 	}
-	// SessionManager sets: session.Set("id", userId)
+
 	if v, ok := m["id"]; ok {
 		if s, ok := v.(string); ok && s != "" {
 			return s, true
 		}
 	}
+
 	return "", false
 }

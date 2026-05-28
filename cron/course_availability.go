@@ -7,22 +7,28 @@ import (
 	"github.com/geerew/off-course/dao"
 	"github.com/geerew/off-course/database"
 	"github.com/geerew/off-course/models"
-	"github.com/geerew/off-course/utils/appfs"
+	"github.com/geerew/off-course/utils/filesystem"
 	"github.com/geerew/off-course/utils/logger"
 	"github.com/geerew/off-course/utils/pagination"
 	"github.com/geerew/off-course/utils/types"
 )
 
+// ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
+
+// courseAvailability represents course availability
+//
+// Once created, call ca.run() to update the availability of courses
 type courseAvailability struct {
 	db        database.Database
 	dao       *dao.DAO
-	appFs     *appfs.AppFs
+	fs *filesystem.FS
 	logger    *logger.Logger
 	batchSize int
 }
 
 // ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
 
+// run updates the availability of courses
 func (ca *courseAvailability) run() error {
 	perPage := 100
 	page := 1
@@ -67,7 +73,7 @@ func (ca *courseAvailability) run() error {
 
 		// Process each course in the batch
 		for _, course := range courses {
-			if _, err := ca.appFs.Fs.Stat(course.Path); err != nil {
+			if _, err := ca.fs.Stat(course.Path); err != nil {
 				if os.IsNotExist(err) {
 					if course.Available {
 						// The course is currently marked as available but is now unavailable
@@ -128,8 +134,9 @@ func (ca *courseAvailability) run() error {
 
 // ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
 
+// writeAll is a helper function that updates the availability of courses
+// in a transaction
 func (ca *courseAvailability) writeAll(ctx context.Context, courses []*models.Course) error {
-	// Update the courses in a transaction
 	err := ca.db.RunInTransaction(ctx, func(txCtx context.Context) error {
 		for _, course := range courses {
 			if err := ca.dao.UpdateCourse(txCtx, course); err != nil {

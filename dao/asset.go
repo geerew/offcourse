@@ -2,19 +2,17 @@ package dao
 
 import (
 	"context"
-	"fmt"
 
 	"github.com/Masterminds/squirrel"
-	"github.com/geerew/off-course/database"
 	"github.com/geerew/off-course/models"
 	"github.com/geerew/off-course/utils"
+	"github.com/geerew/off-course/utils/types"
 )
 
 // ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
 
 // CreateAsset inserts a new asset record
 func (dao *DAO) CreateAsset(ctx context.Context, asset *models.Asset) error {
-
 	if err := assetValidation(asset); err != nil {
 		return err
 	}
@@ -63,8 +61,15 @@ func (dao *DAO) CountAssets(ctx context.Context, dbOpts *Options) (int, error) {
 // GetAsset gets a record from the assets table based upon the where clause in the options. If
 // there is no where clause, it will return the first record in the table
 //
-// By default, progress is not included. Use `WithUserProgress()` on the options to include it
-// By default, video metadata is not included. Use `WithAssetVideoMetadata()` on the options to include it
+// Asset progress is not included by default. It can be enabled by calling `WithUserProgress()`
+// on the options. This will add an additional db query
+//
+// Asset metadata is not included by default. It can be enabled by calling `WithAssetMetadata()`
+// on the options. This will add an additional db query
+//
+// Note: This could be updated to use a JOIN instead of doing additional queries. However, I
+// don't like nullable fields in the model struct or having to support a second struct with
+// nullable fields. So for now, this function can make up to 2 additional db queries
 func (dao *DAO) GetAsset(ctx context.Context, dbOpts *Options) (*models.Asset, error) {
 	builderOpts := newBuilderOptions(models.ASSET_TABLE).
 		WithColumns(models.AssetColumns()...).
@@ -73,71 +78,34 @@ func (dao *DAO) GetAsset(ctx context.Context, dbOpts *Options) (*models.Asset, e
 
 	includeProgress := dbOpts != nil && dbOpts.IncludeUserProgress
 	includeMetadata := dbOpts != nil && dbOpts.IncludeAssetMetadata
-	includeCourse := dbOpts != nil && dbOpts.IncludeCourse
-	includeLesson := dbOpts != nil && dbOpts.IncludeLesson
 
-	// When no relations are included, use a simpler query
-	if !includeProgress && !includeMetadata && !includeCourse && !includeLesson {
+	if !includeProgress && !includeMetadata {
 		return getGeneric[models.Asset](ctx, dao, *builderOpts)
 	}
 
-	// Add the progress columns and join
+	var principal types.Principal
 	if includeProgress {
-		principal, err := principalFromCtx(ctx)
-		if err != nil {
+		if p, err := principalFromCtx(ctx); err != nil {
 			return nil, err
-		}
-
-		builderOpts = builderOpts.
-			WithColumns(models.AssetProgressRowColumns()...).
-			WithLeftJoin(
-				models.ASSET_PROGRESS_TABLE,
-				fmt.Sprintf(
-					"%s = %s AND %s = '%s'",
-					models.ASSET_PROGRESS_TABLE_ASSET_ID,
-					models.ASSET_TABLE_ID,
-					models.ASSET_PROGRESS_TABLE_USER_ID,
-					principal.UserID,
-				),
-			)
-	}
-	// Add the asset metadata columns and join
-	if includeMetadata {
-		builderOpts = builderOpts.
-			WithColumns(models.AssetMetadataRowColumns()...).
-			WithLeftJoin(models.MEDIA_VIDEO_TABLE,
-				fmt.Sprintf("%s = %s", models.MEDIA_VIDEO_TABLE_ASSET_ID, models.ASSET_TABLE_ID)).
-			WithLeftJoin(models.MEDIA_AUDIO_TABLE,
-				fmt.Sprintf("%s = %s", models.MEDIA_AUDIO_TABLE_ASSET_ID, models.ASSET_TABLE_ID))
-	}
-
-	// Add lesson and course joins if enabled
-	if dbOpts != nil {
-		// If both course and lesson are requested, join lesson first, then course through lesson
-		if dbOpts.IncludeCourse && dbOpts.IncludeLesson {
-			builderOpts = builderOpts.
-				WithJoin(models.LESSON_TABLE, models.ASSET_TABLE_LESSON_ID+" = "+models.LESSON_TABLE_ID).
-				WithJoin(models.COURSE_TABLE, models.LESSON_TABLE_COURSE_ID+" = "+models.COURSE_TABLE_ID)
-		} else if dbOpts.IncludeLesson {
-			// Only lesson join
-			builderOpts = builderOpts.WithJoin(models.LESSON_TABLE, models.ASSET_TABLE_LESSON_ID+" = "+models.LESSON_TABLE_ID)
-		} else if dbOpts.IncludeCourse {
-			// Only course join
-			builderOpts = builderOpts.WithJoin(models.COURSE_TABLE, models.ASSET_TABLE_COURSE_ID+" = "+models.COURSE_TABLE_ID)
+		} else {
+			principal = p
 		}
 	}
 
-	row, err := getGeneric[models.AssetRow](ctx, dao, *builderOpts)
+	asset, err := getGeneric[models.Asset](ctx, dao, *builderOpts)
 	if err != nil {
 		return nil, err
 	}
 
-	if row == nil {
+	if asset == nil {
 		return nil, nil
 	}
 
-	// Map to domain
-	return row.ToDomain(includeProgress, includeMetadata), nil
+	if err := attachAssetRelations(ctx, dao, principal, []*models.Asset{asset}, includeProgress, includeMetadata); err != nil {
+		return nil, err
+	}
+
+	return asset, nil
 }
 
 // ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
@@ -145,8 +113,15 @@ func (dao *DAO) GetAsset(ctx context.Context, dbOpts *Options) (*models.Asset, e
 // ListAssets gets all records from the assets table based upon the where clause and pagination
 // in the options
 //
-// By default, progress is not included. Use `WithUserProgress()` on the options to include it
-// By default, video metadata is not included. Use `WithAssetVideoMetadata()` on the options to include it
+// Asset progress is not included by default. It can be enabled by calling `WithUserProgress()`
+// on the options. This will add an additional db query
+//
+// Asset metadata is not included by default. It can be enabled by calling `WithAssetMetadata()`
+// on the options. This will add an additional db query
+//
+// Note: This could be updated to use a JOIN instead of doing additional queries. However, I
+// don't like nullable fields in the model struct or having to support a second struct with
+// nullable fields. So for now, this function can make up to 2 additional db queries
 func (dao *DAO) ListAssets(ctx context.Context, dbOpts *Options) ([]*models.Asset, error) {
 	builderOpts := newBuilderOptions(models.ASSET_TABLE).
 		WithColumns(models.AssetColumns()...).
@@ -154,72 +129,32 @@ func (dao *DAO) ListAssets(ctx context.Context, dbOpts *Options) ([]*models.Asse
 
 	includeProgress := dbOpts != nil && dbOpts.IncludeUserProgress
 	includeMetadata := dbOpts != nil && dbOpts.IncludeAssetMetadata
-	includeCourse := dbOpts != nil && dbOpts.IncludeCourse
-	includeLesson := dbOpts != nil && dbOpts.IncludeLesson
 
 	// When no relations are included, use a simpler query
-	if !includeProgress && !includeMetadata && !includeCourse && !includeLesson {
+	if !includeProgress && !includeMetadata {
 		return listGeneric[models.Asset](ctx, dao, *builderOpts)
 	}
 
-	// Progress join
+	var principal types.Principal
 	if includeProgress {
-		principal, err := principalFromCtx(ctx)
-		if err != nil {
+		if p, err := principalFromCtx(ctx); err != nil {
 			return nil, err
-		}
-		builderOpts = builderOpts.
-			WithColumns(models.AssetProgressRowColumns()...).
-			WithLeftJoin(
-				models.ASSET_PROGRESS_TABLE,
-				fmt.Sprintf(
-					"%s = %s AND %s = '%s'",
-					models.ASSET_PROGRESS_TABLE_ASSET_ID,
-					models.ASSET_TABLE_ID,
-					models.ASSET_PROGRESS_TABLE_USER_ID,
-					principal.UserID,
-				),
-			)
-	}
-
-	// Metadata joins
-	if includeMetadata {
-		builderOpts = builderOpts.
-			WithColumns(models.AssetMetadataRowColumns()...).
-			WithLeftJoin(models.MEDIA_VIDEO_TABLE,
-				fmt.Sprintf("%s = %s", models.MEDIA_VIDEO_TABLE_ASSET_ID, models.ASSET_TABLE_ID)).
-			WithLeftJoin(models.MEDIA_AUDIO_TABLE,
-				fmt.Sprintf("%s = %s", models.MEDIA_AUDIO_TABLE_ASSET_ID, models.ASSET_TABLE_ID))
-	}
-
-	// Add lesson and course joins if enabled
-	if dbOpts != nil {
-		// If both course and lesson are requested, join lesson first, then course through lesson
-		if dbOpts.IncludeCourse && dbOpts.IncludeLesson {
-			builderOpts = builderOpts.
-				WithJoin(models.LESSON_TABLE, models.ASSET_TABLE_LESSON_ID+" = "+models.LESSON_TABLE_ID).
-				WithJoin(models.COURSE_TABLE, models.LESSON_TABLE_COURSE_ID+" = "+models.COURSE_TABLE_ID)
-		} else if dbOpts.IncludeLesson {
-			// Only lesson join
-			builderOpts = builderOpts.WithJoin(models.LESSON_TABLE, models.ASSET_TABLE_LESSON_ID+" = "+models.LESSON_TABLE_ID)
-		} else if dbOpts.IncludeCourse {
-			// Only course join
-			builderOpts = builderOpts.WithJoin(models.COURSE_TABLE, models.ASSET_TABLE_COURSE_ID+" = "+models.COURSE_TABLE_ID)
+		} else {
+			principal = p
 		}
 	}
 
-	rows, err := listGeneric[models.AssetRow](ctx, dao, *builderOpts)
+	records, err := listGeneric[models.Asset](ctx, dao, *builderOpts)
 	if err != nil {
 		return nil, err
 	}
 
-	if len(rows) == 0 {
+	if len(records) == 0 {
 		return nil, nil
 	}
 
-	records := make([]*models.Asset, 0, len(rows))
-	for i := range rows {
-		records = append(records, rows[i].ToDomain(includeProgress, includeMetadata))
+	if err := attachAssetRelations(ctx, dao, principal, records, includeProgress, includeMetadata); err != nil {
+		return nil, err
 	}
 
 	return records, nil
@@ -277,8 +212,7 @@ func (dao *DAO) DeleteAssets(ctx context.Context, dbOpts *Options) error {
 	builderOpts := newBuilderOptions(models.ASSET_TABLE).SetDbOpts(dbOpts)
 	sqlStr, args, _ := deleteBuilder(*builderOpts)
 
-	q := database.QuerierFromContext(ctx, dao.db)
-	_, err := q.ExecContext(ctx, sqlStr, args...)
+	_, err := dao.db.ExecContext(ctx, sqlStr, args...)
 	return err
 }
 
@@ -308,6 +242,60 @@ func assetValidation(asset *models.Asset) error {
 
 	if asset.Path == "" {
 		return utils.ErrPath
+	}
+
+	return nil
+}
+
+// ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
+
+// attachAssetRelations attaches asset progress and metadata to the given assets
+func attachAssetRelations(ctx context.Context, dao *DAO, principal types.Principal, assetRecords []*models.Asset, includeProgress, includeMetadata bool) error {
+	if len(assetRecords) == 0 {
+		return nil
+	}
+
+	// Map asset IDs to a slice
+	assetIDs := utils.Map(assetRecords, func(asset *models.Asset) string {
+		return asset.ID
+	})
+
+	if includeProgress {
+		dbOpts := NewOptions().WithWhere(squirrel.And{
+			squirrel.Eq{models.ASSET_PROGRESS_ASSET_ID: assetIDs},
+			squirrel.Eq{models.ASSET_PROGRESS_USER_ID: principal.UserID},
+		})
+
+		progressRecords, err := dao.ListAssetProgress(ctx, dbOpts)
+		if err != nil {
+			return err
+		}
+
+		progressMap := make(map[string]*models.AssetProgress, len(progressRecords))
+		for _, pr := range progressRecords {
+			if pr != nil {
+				progressMap[pr.AssetID] = pr
+			}
+		}
+
+		for _, asset := range assetRecords {
+			if progress, ok := progressMap[asset.ID]; ok {
+				asset.Progress = progress
+			} else {
+				asset.Progress = nil
+			}
+		}
+	}
+
+	if includeMetadata {
+		metadataRecords, err := dao.ListAssetMetadataByAssetIDs(ctx, assetIDs)
+		if err != nil {
+			return err
+		}
+
+		for _, asset := range assetRecords {
+			asset.AssetMetadata = metadataRecords[asset.ID]
+		}
 	}
 
 	return nil

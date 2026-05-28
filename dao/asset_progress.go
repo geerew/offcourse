@@ -1,17 +1,103 @@
 package dao
 
 import (
+	"bytes"
 	"context"
 	"database/sql"
-	"fmt"
 	"strings"
+	"text/template"
 
 	"github.com/Masterminds/squirrel"
-	"github.com/geerew/off-course/database"
 	"github.com/geerew/off-course/models"
 	"github.com/geerew/off-course/utils"
 	"github.com/geerew/off-course/utils/types"
 )
+
+// ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
+
+// assetProgressSuffixSQL is the ON CONFLICT DO UPDATE clause for asset progress upsert
+//
+// Rendered once at runtime
+var assetProgressSuffixSQL = func() string {
+	tmpl := template.Must(template.New("assetProgressSuffix").Parse(`
+ON CONFLICT({{.AssetID}}, {{.UserID}}) DO UPDATE SET
+  {{.Position}} = EXCLUDED.{{.Position}},
+  {{.Completed}} = EXCLUDED.{{.Completed}},
+  {{.CompletedAt}} = CASE
+    WHEN {{.TableCompleted}} = 0 AND EXCLUDED.{{.Completed}} = 1 THEN STRFTIME('%Y-%m-%d %H:%M:%f','NOW')
+    WHEN {{.TableCompleted}} = 1 AND EXCLUDED.{{.Completed}} = 0 THEN NULL
+    ELSE {{.TableCompletedAt}}
+  END,
+  {{.ProgressFrac}} = EXCLUDED.{{.ProgressFrac}},
+  {{.UpdatedAt}} = STRFTIME('%Y-%m-%d %H:%M:%f','NOW')
+`))
+
+	data := map[string]string{
+		"AssetID":          models.ASSET_PROGRESS_ASSET_ID,
+		"UserID":           models.ASSET_PROGRESS_USER_ID,
+		"Position":         models.ASSET_PROGRESS_POSITION,
+		"Completed":        models.ASSET_PROGRESS_COMPLETED,
+		"CompletedAt":      models.ASSET_PROGRESS_COMPLETED_AT,
+		"TableCompleted":   models.ASSET_PROGRESS_TABLE_COMPLETED,
+		"TableCompletedAt": models.ASSET_PROGRESS_TABLE_COMPLETED_AT,
+		"ProgressFrac":     models.ASSET_PROGRESS_PROGRESS_FRAC,
+		"UpdatedAt":        models.BASE_UPDATED_AT,
+	}
+
+	var buf bytes.Buffer
+	if err := tmpl.Execute(&buf, data); err != nil {
+		panic("assetProgressSuffix template: " + err.Error())
+	}
+
+	return buf.String()
+}()
+
+// ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
+
+// assetProgressFracSQL is the CASE expression for progress_frac
+//
+// Call with `squirrel.Expr(assetProgressFracSQL, isCompleted, assetID, position, assetID)`
+//
+// Placeholders:
+//   - isCompleted,
+//   - assetID,
+//   - position,
+//   - assetID
+//
+// Rendered once at runtime
+var assetProgressFracSQL = func() string {
+	tmpl := template.Must(template.New("assetProgressFrac").Parse(`
+CASE
+  WHEN ? = 1 THEN 1.0
+  WHEN EXISTS (
+    SELECT 1
+    FROM {{.VideoTable}} v
+    WHERE v.{{.VideoAssetID}} = ?
+  )
+  THEN MIN(
+    1.0,
+    (1.0 * ?) / NULLIF((
+      SELECT v2.{{.VideoDuration}}
+      FROM {{.VideoTable}} v2
+      WHERE v2.{{.VideoAssetID}} = ?
+    ), 0)
+  )
+  ELSE 0.0
+END`))
+
+	data := map[string]string{
+		"VideoTable":    models.ASSET_METADATA_VIDEO_TABLE,
+		"VideoAssetID":  models.ASSET_METADATA_VIDEO_ASSET_ID,
+		"VideoDuration": models.ASSET_METADATA_VIDEO_DURATION,
+	}
+	var buf bytes.Buffer
+	if err := tmpl.Execute(&buf, data); err != nil {
+		panic("assetProgressFrac template: " + err.Error())
+	}
+	return buf.String()
+}()
+
+// ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
 
 // UpsertAssetProgress upserts an asset progress record for a user
 func (dao *DAO) UpsertAssetProgress(ctx context.Context, assetProgress *models.AssetProgress) error {
@@ -33,7 +119,6 @@ func (dao *DAO) UpsertAssetProgress(ctx context.Context, assetProgress *models.A
 		assetProgress.RefreshId()
 	}
 
-	// Build the upsert query. This will insert a new record or update an existing one
 	now := types.NowDateTime()
 	createdAt := now
 
@@ -42,49 +127,33 @@ func (dao *DAO) UpsertAssetProgress(ctx context.Context, assetProgress *models.A
 		completedAt = now
 	}
 
-	upsertBuilder := newBuilderOptions(models.ASSET_PROGRESS_TABLE).
+	isCompleted := 0
+	if assetProgress.Completed {
+		isCompleted = 1
+	}
+
+	builder := newBuilderOptions(models.ASSET_PROGRESS_TABLE).
+		WithSuffix(assetProgressSuffixSQL).
 		WithData(map[string]interface{}{
-			models.BASE_ID:                     assetProgress.ID,
-			models.ASSET_PROGRESS_ASSET_ID:     assetProgress.AssetID,
-			models.ASSET_PROGRESS_USER_ID:      assetProgress.UserID,
-			models.ASSET_PROGRESS_POSITION:     assetProgress.Position,
-			models.ASSET_PROGRESS_COMPLETED:    assetProgress.Completed,
-			models.ASSET_PROGRESS_COMPLETED_AT: completedAt,
-			models.BASE_CREATED_AT:             createdAt,
-			models.BASE_UPDATED_AT:             now,
-		}).
-		WithSuffix(upsertAssetProgressSuffix())
+			models.BASE_ID:                      assetProgress.ID,
+			models.ASSET_PROGRESS_ASSET_ID:      assetProgress.AssetID,
+			models.ASSET_PROGRESS_USER_ID:       assetProgress.UserID,
+			models.ASSET_PROGRESS_POSITION:      assetProgress.Position,
+			models.ASSET_PROGRESS_COMPLETED:     assetProgress.Completed,
+			models.ASSET_PROGRESS_COMPLETED_AT:  completedAt,
+			models.ASSET_PROGRESS_PROGRESS_FRAC: squirrel.Expr(assetProgressFracSQL, isCompleted, assetProgress.AssetID, assetProgress.Position, assetProgress.AssetID),
+			models.BASE_CREATED_AT:              createdAt,
+			models.BASE_UPDATED_AT:              now,
+		})
 
-	// Build the progress fraction update query. This will always update the progress_frac column
-	dbOpts := NewOptions().WithWhere(squirrel.And{
-		squirrel.Eq{models.ASSET_PROGRESS_ASSET_ID: assetProgress.AssetID},
-		squirrel.Eq{models.ASSET_PROGRESS_USER_ID: assetProgress.UserID},
-	})
-
-	progressFracBuilder := newBuilderOptions(models.ASSET_PROGRESS_TABLE).
-		WithData(map[string]interface{}{
-			models.ASSET_PROGRESS_PROGRESS_FRAC: progressFracCaseExpr(),
-		}).
-		SetDbOpts(dbOpts)
-
-	return dao.db.RunInTransaction(ctx, func(txCtx context.Context) error {
-		// Upsert position, completed, completed_at, updated_at
-		if err := createGeneric(txCtx, dao, *upsertBuilder); err != nil {
+	return dao.RunInTransaction(ctx, func(txCtx context.Context) error {
+		if err := createGeneric(txCtx, dao, *builder); err != nil {
 			if strings.HasPrefix(err.Error(), "FOREIGN KEY constraint failed") {
 				return sql.ErrNoRows
 			}
-
 			return err
 		}
-
-		// Update progress_frac
-		if _, err := updateGeneric(txCtx, dao, *progressFracBuilder); err != nil {
-			return err
-		}
-
-		// Sync course progress
-		err := dao.SyncCourseProgress(txCtx, assetProgress.AssetID)
-		return err
+		return dao.SyncCourseProgress(txCtx, assetProgress.AssetID)
 	})
 }
 
@@ -138,119 +207,6 @@ func (dao *DAO) DeleteAssetProgress(ctx context.Context, dbOpts *Options) error 
 	builderOpts := newBuilderOptions(models.ASSET_PROGRESS_TABLE).SetDbOpts(dbOpts)
 	sqlStr, args, _ := deleteBuilder(*builderOpts)
 
-	q := database.QuerierFromContext(ctx, dao.db)
-	_, err := q.ExecContext(ctx, sqlStr, args...)
+	_, err := dao.db.ExecContext(ctx, sqlStr, args...)
 	return err
-}
-
-// ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
-
-// DeleteAssetProgressForCourse deletes all asset progress records for a given user that
-// belong to a course
-func (dao *DAO) DeleteAssetProgressForCourse(ctx context.Context, courseID, userID string) error {
-	if courseID == "" {
-		return utils.ErrCourseId
-	}
-
-	if userID == "" {
-		return utils.ErrUserId
-	}
-
-	where := squirrel.And{
-		squirrel.Eq{models.ASSET_PROGRESS_TABLE_USER_ID: userID},
-		squirrel.Expr(
-			"EXISTS (SELECT 1 FROM "+models.ASSET_TABLE+
-				" WHERE "+models.ASSET_TABLE_ID+" = "+models.ASSET_PROGRESS_TABLE_ASSET_ID+
-				" AND "+models.ASSET_TABLE_COURSE_ID+" = ?)",
-			courseID,
-		),
-	}
-
-	dbOpts := NewOptions().WithWhere(where)
-
-	return dao.DeleteAssetProgress(ctx, dbOpts)
-}
-
-// ~~~ helpers ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
-
-// Builds a query to upsert the asset progress, without updating progress_frac
-func upsertAssetProgressSuffix() string {
-	return fmt.Sprintf(`
-ON CONFLICT(%s, %s) DO UPDATE SET
-  -- Position
-  %s = EXCLUDED.%s,
-
-  -- Completed flag
-  %s = EXCLUDED.%s,
-
-  -- Completed timestamp (edge-aware)
-  %s = CASE
-          WHEN %s.%s = 0 AND EXCLUDED.%s = 1 THEN STRFTIME('%%Y-%%m-%%d %%H:%%M:%%f','NOW')
-          WHEN %s.%s = 1 AND EXCLUDED.%s = 0 THEN NULL
-          ELSE %s.%s
-        END,
-
-  -- Always bump updated_at
-  %s = STRFTIME('%%Y-%%m-%%d %%H:%%M:%%f','NOW')
-`,
-		// conflict target
-		models.ASSET_PROGRESS_ASSET_ID, models.ASSET_PROGRESS_USER_ID,
-
-		// position
-		models.ASSET_PROGRESS_POSITION, models.ASSET_PROGRESS_POSITION,
-
-		// completed
-		models.ASSET_PROGRESS_COMPLETED, models.ASSET_PROGRESS_COMPLETED,
-
-		// completed_at CASE
-		models.ASSET_PROGRESS_COMPLETED_AT,
-		models.ASSET_PROGRESS_TABLE, models.ASSET_PROGRESS_COMPLETED, models.ASSET_PROGRESS_COMPLETED,
-		models.ASSET_PROGRESS_TABLE, models.ASSET_PROGRESS_COMPLETED, models.ASSET_PROGRESS_COMPLETED,
-		models.ASSET_PROGRESS_TABLE, models.ASSET_PROGRESS_COMPLETED_AT,
-
-		// updated_at
-		models.BASE_UPDATED_AT,
-	)
-}
-
-// ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
-
-// Computes progress_frac purely from server-side data.
-//   - completed = 1 => 1.0
-//   - if there is video metadata => position/duration clamped to 1.0
-//   - else (non-video or unknown duration) => 0.0
-func progressFracCaseExpr() squirrel.Sqlizer {
-	return squirrel.Expr(fmt.Sprintf(`
-CASE
-  WHEN %s = 1 THEN 1.0
-  WHEN EXISTS (
-    SELECT 1
-    FROM %s v
-    WHERE v.%s = %s.%s
-  )
-  THEN MIN(
-    1.0,
-    (1.0 * %s) / NULLIF((
-      SELECT v2.%s
-      FROM %s v2
-      WHERE v2.%s = %s.%s
-    ), 0)
-  )
-  ELSE 0.0
-END`,
-		// completed
-		models.ASSET_PROGRESS_COMPLETED,
-
-		// EXISTS asset_media_video
-		models.MEDIA_VIDEO_TABLE,
-		models.META_ASSET_ID, models.ASSET_PROGRESS_TABLE, models.ASSET_PROGRESS_ASSET_ID,
-
-		// numerator: position
-		models.ASSET_PROGRESS_POSITION,
-
-		// denominator: duration_sec subselect
-		models.MEDIA_VIDEO_DURATION,
-		models.MEDIA_VIDEO_TABLE,
-		models.META_ASSET_ID, models.ASSET_PROGRESS_TABLE, models.ASSET_PROGRESS_ASSET_ID,
-	))
 }

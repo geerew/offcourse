@@ -1,5 +1,7 @@
 package cmd
 
+// TODO: Handle password reset when the application is not running (just update the db)
+
 import (
 	"bytes"
 	"context"
@@ -8,13 +10,14 @@ import (
 	"fmt"
 	"net/http"
 	"os"
+	"strings"
 	"time"
 
 	"github.com/Masterminds/squirrel"
 	"github.com/geerew/off-course/dao"
 	"github.com/geerew/off-course/database"
 	"github.com/geerew/off-course/models"
-	"github.com/geerew/off-course/utils/appfs"
+	"github.com/geerew/off-course/utils/filesystem"
 	"github.com/geerew/off-course/utils/auth"
 	"github.com/geerew/off-course/utils/types"
 	"github.com/spf13/afero"
@@ -24,10 +27,10 @@ import (
 
 // ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
 
+// adminResetPasswordCmd resets the password for an admin user
 var adminResetPasswordCmd = &cobra.Command{
 	Use:   "reset-password <username>",
 	Short: "Reset password for an admin user",
-	Long:  "Reset password for an admin user using recovery tokens. This command communicates with the running application.",
 	Args:  cobra.ExactArgs(1),
 	Run: func(cmd *cobra.Command, args []string) {
 		username := args[0]
@@ -40,15 +43,13 @@ var adminResetPasswordCmd = &cobra.Command{
 		// Get configuration
 		dataDir := viper.GetString("data-dir")
 		httpAddr := viper.GetString("http")
-		appFs := appfs.New(afero.NewOsFs())
+		fs := filesystem.New(afero.NewOsFs())
 
-		// Verify user exists and is admin
 		if err := verifyAdminUser(username, dataDir); err != nil {
 			errorMessage("%s", err)
 			os.Exit(1)
 		}
 
-		// Get new password
 		var password string
 		for {
 			password = questionPassword("New Password")
@@ -58,7 +59,6 @@ var adminResetPasswordCmd = &cobra.Command{
 			errorMessage("Password cannot be empty")
 		}
 
-		// Confirm password
 		for {
 			confirmPassword := questionPassword("Confirm Password")
 			if confirmPassword == password {
@@ -69,55 +69,42 @@ var adminResetPasswordCmd = &cobra.Command{
 
 		fmt.Println()
 
-		// Generate recovery token
-		recoveryToken, err := auth.GenerateRecoveryToken(appFs, username, password, dataDir)
-		if err != nil {
-			errorMessage("Failed to generate recovery token: %s", err)
-			os.Exit(1)
-		}
-
-		// Make HTTP request to running application
-		if err := resetPasswordViaAPI(recoveryToken.Token, httpAddr); err != nil {
-			// Clean up token file on error
-			auth.DeleteRecoveryToken(appFs, dataDir)
+		if err := resetPasswordViaAPI(fs, username, password, dataDir, httpAddr); err != nil {
 			errorMessage("Failed to reset password: %s", err)
 			os.Exit(1)
 		}
 
-		// Clean up token file on success
-		auth.DeleteRecoveryToken(appFs, dataDir)
-
-		successMessage("✅ Password reset successfully for admin user '%s'", username)
+		successMessage("✅ Password reset successfully for '%s'", username)
 	},
 }
 
 // ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
 
-// verifyAdminUser checks if the user exists and is an admin
+// verifyAdminUser ensures a user exists and is admin
 func verifyAdminUser(username, dataDir string) error {
 	ctx := context.Background()
-	appFs := appfs.New(afero.NewOsFs())
+	fs := filesystem.New(afero.NewOsFs())
 
-	dbManager, err := database.NewSQLiteManager(&database.DatabaseManagerConfig{
+	dbManagerConfig := &database.DatabaseManagerConfig{
 		DataDir: dataDir,
-		AppFs:   appFs,
+		FS:   fs,
 		Testing: false,
-	})
+	}
 
+	dbManager, err := database.NewSQLiteManager(dbManagerConfig)
 	if err != nil {
 		return fmt.Errorf("failed to create database manager: %w", err)
 	}
 
 	appDao := dao.New(dbManager.DataDb)
-	options := &dao.Options{
-		Where: squirrel.Eq{models.USER_TABLE_USERNAME: username},
-	}
 
-	user, err := appDao.GetUser(ctx, options)
+	dbOpts := dao.NewOptions().WithWhere(squirrel.Eq{models.USER_TABLE_USERNAME: username})
+	user, err := appDao.GetUser(ctx, dbOpts)
 	if err != nil {
 		if err == sql.ErrNoRows {
 			return fmt.Errorf("user '%s' not found", username)
 		}
+
 		return fmt.Errorf("failed to lookup user: %w", err)
 	}
 
@@ -134,11 +121,20 @@ func verifyAdminUser(username, dataDir string) error {
 
 // ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
 
-// resetPasswordViaAPI makes an HTTP request to the running application
-func resetPasswordViaAPI(token, httpAddr string) error {
-	// Prepare request
+// resetPasswordViaAPI generates a recovery token on disk, then makes an HTTP request to
+// the running application to reset the password
+func resetPasswordViaAPI(fs *filesystem.FS, username, password, dataDir, httpAddr string) error {
+	recoveryToken, err := auth.GenerateRecoveryToken(fs, username, password, dataDir)
+	if err != nil {
+		return fmt.Errorf("failed to generate recovery token: %w", err)
+	}
+
+	defer func() {
+		auth.DeleteRecoveryToken(fs, dataDir)
+	}()
+
 	requestBody := map[string]string{
-		"token": token,
+		"token": recoveryToken.Token,
 	}
 
 	jsonData, err := json.Marshal(requestBody)
@@ -146,7 +142,6 @@ func resetPasswordViaAPI(token, httpAddr string) error {
 		return fmt.Errorf("failed to marshal request: %w", err)
 	}
 
-	// Make HTTP request
 	url := fmt.Sprintf("http://%s/api/admin/recovery", httpAddr)
 	req, err := http.NewRequest("POST", url, bytes.NewBuffer(jsonData))
 	if err != nil {
@@ -174,6 +169,19 @@ func resetPasswordViaAPI(token, httpAddr string) error {
 
 // ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
 
+// init adds the admin reset password command to the admin command
 func init() {
 	adminCmd.AddCommand(adminResetPasswordCmd)
+
+	adminResetPasswordCmd.Flags().String("http", "127.0.0.1:9081", "TCP address to listen for the HTTP server")
+	adminResetPasswordCmd.Flags().String("data-dir", "./oc_data", "Directory to store data files")
+
+	// Bind flags
+	viper.SetEnvPrefix("OC")
+	viper.SetEnvKeyReplacer(strings.NewReplacer("-", "_"))
+	viper.AutomaticEnv()
+
+	// Bind each flag
+	_ = viper.BindPFlag("http", adminResetPasswordCmd.Flags().Lookup("http"))
+	_ = viper.BindPFlag("data-dir", adminResetPasswordCmd.Flags().Lookup("data-dir"))
 }

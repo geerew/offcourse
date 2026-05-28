@@ -1,33 +1,17 @@
 package queryparser
 
-// ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
-
 import "strings"
 
 // ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
 
-// QueryExpr is the interface for a boolean expression
+// QueryExpr is an interface that represents a query expression
 type QueryExpr interface {
 	String() string
 }
 
 // ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
 
-// ValueExpr represents free-text
-type ValueExpr struct {
-	Value string
-}
-
-// ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
-
-// String implements the Stringer interface for ValueExpr
-func (v *ValueExpr) String() string {
-	return v.Value
-}
-
-// ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
-
-// FilterExpr represents a filter token (e.g. tag:test or progress:started)
+// FilterExpr is one predicate; Key is lowercased by the parser
 type FilterExpr struct {
 	Key   string
 	Value string
@@ -35,43 +19,45 @@ type FilterExpr struct {
 
 // ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
 
-// String implements the Stringer interface for FilterExpr
+// String returns a string representation of the FilterExpr
 func (f *FilterExpr) String() string {
 	return f.Key + ":" + f.Value
 }
 
 // ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
 
-// AndExpr represents an AND expression.
+// AndExpr is implicit or explicit AND of two or more children
 type AndExpr struct {
 	Children []QueryExpr
 }
 
 // ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
 
-// String implements the Stringer interface for AndExpr
+// String returns a string representation of the AndExpr
 func (a *AndExpr) String() string {
 	var parts []string
 	for _, child := range a.Children {
 		parts = append(parts, child.String())
 	}
+
 	return "(" + strings.Join(parts, " AND ") + ")"
 }
 
 // ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
 
-// OrExpr represents an OR expression
+// OrExpr is left-associative OR of exactly two children per node (nested for longer chains)
 type OrExpr struct {
 	Children []QueryExpr
 }
 
 // ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
 
-// String implements the Stringer interface for OrExpr
+// String returns a string representation of the OrExpr
 func (o *OrExpr) String() string {
 	var parts []string
 	for _, child := range o.Children {
 		parts = append(parts, child.String())
 	}
+
 	return "(" + strings.Join(parts, " OR ") + ")"
 }

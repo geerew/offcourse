@@ -11,7 +11,7 @@ import (
 	"github.com/geerew/off-course/database"
 	"github.com/geerew/off-course/models"
 	"github.com/geerew/off-course/utils"
-	"github.com/geerew/off-course/utils/appfs"
+	"github.com/geerew/off-course/utils/filesystem"
 	"github.com/geerew/off-course/utils/cardcache"
 	"github.com/geerew/off-course/utils/logger"
 	"github.com/geerew/off-course/utils/media"
@@ -25,45 +25,38 @@ import (
 func setup(t *testing.T) (*CourseScan, context.Context) {
 	t.Helper()
 
-	// Create a test logger
 	testLogger := logger.NilLogger()
-
-	appFs := appfs.New(afero.NewMemMapFs())
+	fs := filesystem.New(afero.NewMemMapFs())
+	dataDir := "./oc_data"
 
 	dbManager, err := database.NewSQLiteManager(&database.DatabaseManagerConfig{
-		DataDir: "./oc_data",
-		AppFs:   appFs,
+		DataDir: dataDir,
+		FS:   fs,
 		Testing: true,
 	})
-
 	require.NoError(t, err)
 	require.NotNil(t, dbManager)
 
-	// Create a mock FFmpeg for testing
-	ffmpeg, err := media.NewFFmpeg()
+	tools, err := media.NewTools()
 	if err != nil {
-		// If FFmpeg is not available, skip the test
-		t.Skip("FFmpeg not available; skipping test")
+		t.Skip("ffmpeg/ffprobe not available; skipping test")
 	}
 
-	// Create CardCache for testing
-	cardCache, err := cardcache.NewCardCache(&cardcache.CardCacheConfig{
-		CachePath: "./oc_data",
-		AppFs:     appFs,
-		Logger:    testLogger.WithCardCache(),
-		FFmpeg:    ffmpeg,
+	cardCache, err := cardcache.New(&cardcache.CardCacheConfig{
+		CachePath: dataDir,
+		FS:   fs,
+		Logger:    testLogger,
 	})
 	require.NoError(t, err)
 
 	courseScan := New(&CourseScanConfig{
 		Db:        dbManager.DataDb,
-		AppFs:     appFs,
-		Logger:    testLogger.WithCourseScan(),
-		FFmpeg:    ffmpeg,
+		FS:   fs,
+		Logger:    testLogger,
+		Tools:     tools,
 		CardCache: cardCache,
 	})
 
-	// Create a user for the context
 	user := &models.User{
 		Username:     "test-user",
 		DisplayName:  "Test User",

@@ -9,7 +9,7 @@ import (
 
 // ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
 
-// MockBatchWriter is a mock implementation for testing DbWriter
+// MockBatchWriter is a mock BatchFlushFunc target for logger tests
 type MockBatchWriter struct {
 	mu           sync.Mutex
 	logs         []*models.Log

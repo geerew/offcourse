@@ -2,11 +2,20 @@ package dao
 
 import (
 	"context"
+	"fmt"
 
 	"github.com/Masterminds/squirrel"
-	"github.com/geerew/off-course/database"
 	"github.com/geerew/off-course/models"
 	"github.com/geerew/off-course/utils"
+	"github.com/geerew/off-course/utils/queryparser"
+)
+
+// ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
+
+var (
+	UserListApiAllowedFilters = []string{"name", "role"}
+
+	defaultUsersListOrderBy = []string{models.USER_TABLE_CREATED_AT + " desc"}
 )
 
 // ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
@@ -74,6 +83,12 @@ func (dao *DAO) GetUser(ctx context.Context, dbOpts *Options) (*models.User, err
 // ListUsers gets all records from the user table based upon the where clause and pagination
 // in the options
 func (dao *DAO) ListUsers(ctx context.Context, dbOpts *Options) ([]*models.User, error) {
+	if err := parseUserApiQuery(dbOpts); err != nil {
+		return nil, err
+	}
+
+	applyDefaultOrderBy(dbOpts, defaultUsersListOrderBy)
+
 	builderOpts := newBuilderOptions(models.USER_TABLE).
 		WithColumns(models.UserColumns()...).
 		SetDbOpts(dbOpts)
@@ -129,7 +144,65 @@ func (dao *DAO) DeleteUsers(ctx context.Context, dbOpts *Options) error {
 	builderOpts := newBuilderOptions(models.USER_TABLE).SetDbOpts(dbOpts)
 	sqlStr, args, _ := deleteBuilder(*builderOpts)
 
-	q := database.QuerierFromContext(ctx, dao.db)
-	_, err := q.ExecContext(ctx, sqlStr, args...)
+	_, err := dao.db.ExecContext(ctx, sqlStr, args...)
 	return err
+}
+
+// ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
+
+// parseUserApiQuery parses dbOpts.ApiQuery and sets a WHERE clause
+func parseUserApiQuery(dbOpts *Options) error {
+	if dbOpts == nil || dbOpts.ApiQuery == "" {
+		return nil
+	}
+
+	parsed, err := queryparser.Parse(dbOpts.ApiQuery, UserListApiAllowedFilters)
+	if err != nil {
+		return fmt.Errorf("%w: %w", utils.ErrApiQueryParse, err)
+	}
+
+	if parsed == nil {
+		return nil
+	}
+
+	dbOpts.WithWhere(usersWhereBuilder(parsed.Expr))
+
+	return nil
+}
+
+// ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
+
+// usersWhereBuilder builds a squirrel WHERE expression from a queryparser.QueryExpr
+func usersWhereBuilder(expr queryparser.QueryExpr) squirrel.Sqlizer {
+	switch node := expr.(type) {
+	case *queryparser.FilterExpr:
+		switch node.Key {
+		case "name":
+			return squirrel.Or{
+				squirrel.Like{"LOWER(" + models.USER_TABLE_USERNAME + ")": "%" + node.Value + "%"},
+				squirrel.Like{"LOWER(" + models.USER_TABLE_DISPLAY_NAME + ")": "%" + node.Value + "%"},
+			}
+		case "role":
+			return squirrel.Eq{models.USER_TABLE_ROLE: node.Value}
+
+		default:
+			return nil
+		}
+	case *queryparser.AndExpr:
+		var andSlice []squirrel.Sqlizer
+		for _, child := range node.Children {
+			andSlice = append(andSlice, usersWhereBuilder(child))
+		}
+
+		return squirrel.And(andSlice)
+	case *queryparser.OrExpr:
+		var orSlice []squirrel.Sqlizer
+		for _, child := range node.Children {
+			orSlice = append(orSlice, usersWhereBuilder(child))
+		}
+
+		return squirrel.Or(orSlice)
+	default:
+		return nil
+	}
 }

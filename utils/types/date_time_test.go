@@ -9,15 +9,17 @@ import (
 
 // ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
 
+// Test successfully creating a new DateTime
 func Test_NowDateTime(t *testing.T) {
-	now := time.Now().UTC().Format("2006-01-02 15:04:05") // without ms part for test consistency
-	dt := NowDateTime()
+	now := time.Now().UTC().Format(DefaultDateLayout)
+	dateTime := NowDateTime()
 
-	require.Contains(t, dt.String(), now)
+	require.Equal(t, dateTime.String(), now)
 }
 
 // ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
 
+// Test successfully parsing a various values into a DateTime
 func Test_ParseDateTime(t *testing.T) {
 	nowTime := time.Now().UTC()
 	nowDateTime, _ := ParseDateTime(nowTime)
@@ -51,70 +53,57 @@ func Test_ParseDateTime(t *testing.T) {
 
 // ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
 
-func Test_DateTimeTime(t *testing.T) {
-	str := "2022-01-01 11:23:45.678Z"
-
-	expected, err := time.Parse(DefaultDateLayout, str)
-	require.NoError(t, err)
-
-	dt, err := ParseDateTime(str)
-	require.NoError(t, err)
-
-	result := dt.Time()
-	require.Equal(t, expected, result)
-}
-
-// ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
-
+// Test successfully checking if DateTime is zero
 func TestDateTime_IsZero(t *testing.T) {
-	dt0 := DateTime{}
-	require.True(t, dt0.IsZero())
+	dateTime := DateTime{}
+	require.True(t, dateTime.IsZero())
 
-	dt1 := NowDateTime()
-	require.False(t, dt1.IsZero())
+	dateTime = NowDateTime()
+	require.False(t, dateTime.IsZero())
 }
 
 // ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
 
+// Test successfully checking if two DateTime are the same
 func TestDateTime_Equal(t *testing.T) {
 	scenarios := []struct {
-		dt1      DateTime
-		dt2      DateTime
-		expected bool
+		dateTime1 DateTime
+		dateTime2 DateTime
+		expected  bool
 	}{
-		{DateTime{}, DateTime{}, true},        // Both zero values
-		{NowDateTime(), NowDateTime(), false}, // Different current times
-		{NowDateTime(), NowDateTime(), false}, // Another set of different times
+		{DateTime{}, DateTime{}, true},
 		{
-			dt1:      DateTime(time.Date(2022, 1, 1, 11, 23, 45, 678000000, time.UTC)),
-			dt2:      DateTime(time.Date(2022, 1, 1, 11, 23, 45, 678000000, time.UTC)),
-			expected: true, // Matching times
+			dateTime1: DateTime(time.Date(2022, 1, 1, 11, 23, 45, 678000000, time.UTC)),
+			dateTime2: DateTime(time.Date(2022, 1, 1, 11, 23, 45, 678000000, time.UTC)),
+			expected:  true,
 		},
 		{
-			dt1:      DateTime(time.Date(2022, 1, 1, 11, 23, 45, 0, time.UTC)),
-			dt2:      DateTime(time.Date(2022, 1, 1, 11, 23, 46, 0, time.UTC)),
-			expected: false, // Different times
+			dateTime1: DateTime(time.Date(2022, 1, 1, 11, 23, 45, 0, time.UTC)),
+			dateTime2: DateTime(time.Date(2022, 1, 1, 11, 23, 46, 0, time.UTC)),
+			expected:  false,
 		},
 	}
 
 	for i, s := range scenarios {
-		require.True(t, s.dt1.Equal(s.dt1), "(%d) Expected %v.Equal(%v) to be true", i, s.dt1, s.dt1)
+		require.Equal(t, s.expected, s.dateTime1.Equal(s.dateTime2), "(%d) Expected %v.Equal(%v) to be %v", i, s.dateTime1, s.dateTime2, s.expected)
 	}
 }
 
 // ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
 
+// Test successfully getting the string representation of a DateTime
 func TestDateTime_String(t *testing.T) {
-	dt0 := DateTime{}
-	require.Empty(t, dt0.String())
+	dateTime := DateTime{}
+	require.Empty(t, dateTime.String())
 
 	expected := "2022-01-01 11:23:45.678Z"
-	dt1, _ := ParseDateTime(expected)
-	require.Equal(t, expected, dt1.String())
+	dateTime, _ = ParseDateTime(expected)
+	require.Equal(t, expected, dateTime.String())
 }
 
 // ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
 
+// Test successfully marshalling a DateTime to JSON
 func TestDateTime_MarshalJSON(t *testing.T) {
 	scenarios := []struct {
 		date     string
@@ -131,33 +120,53 @@ func TestDateTime_MarshalJSON(t *testing.T) {
 		result, err := dt.MarshalJSON()
 		require.Nil(t, err, "(%d) %v", i, err)
 		require.Equal(t, s.expected, string(result), "(%d) Expected %q, got %q", i, s.expected, string(result))
-
 	}
 }
 
 // ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
 
 func TestDateTime_UnmarshalJSON(t *testing.T) {
-	scenarios := []struct {
-		date     string
-		expected string
-	}{
-		{"", ""},
-		{"invalid_json", ""},
-		{"'123'", ""},
-		{"2022-01-01 11:23:45.678", ""},
-		{`"2022-01-01 11:23:45.678"`, "2022-01-01 11:23:45.678Z"},
-	}
+	// Test successfully unmarshalling a DateTime from JSON
+	t.Run("success", func(t *testing.T) {
+		scenarios := []struct {
+			date     string
+			expected string
+		}{
+			{`"2022-01-01 11:23:45.678"`, "2022-01-01 11:23:45.678Z"},
+			{`1641024040`, "2022-01-01 08:00:40.000Z"},
+		}
 
-	for i, s := range scenarios {
-		var dt DateTime
-		dt.UnmarshalJSON([]byte(s.date))
-		require.Equal(t, s.expected, dt.String(), "(%d) Expected %q, got %q", i, s.expected, dt.String())
-	}
+		for i, s := range scenarios {
+			var dt DateTime
+			dt.UnmarshalJSON([]byte(s.date))
+			require.Equal(t, s.expected, dt.String(), "(%d) Expected %q, got %q", i, s.expected, dt.String())
+		}
+	})
+
+	// Test erroring when an invalid JSON is provided
+	t.Run("error", func(t *testing.T) {
+		tests := []struct {
+			date     string
+			expected string
+		}{
+			{"", ""},
+			{"invalid_json", ""},
+			{"'123'", ""},
+			{"2022-01-01 11:23:45.678", ""},
+		}
+
+		for _, tt := range tests {
+			var dt DateTime
+			err := dt.UnmarshalJSON([]byte(tt.date))
+			require.Error(t, err)
+			require.Contains(t, err.Error(), tt.expected)
+		}
+	})
 }
 
 // ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
 
+// Test successfully getting the value of a DateTime
 func TestDateTime_Value(t *testing.T) {
 	scenarios := []struct {
 		value    any
@@ -180,8 +189,9 @@ func TestDateTime_Value(t *testing.T) {
 
 // ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
 
+// Test successfully scanning a DateTime
 func TestDateTime_Scan(t *testing.T) {
-	now := time.Now().UTC().Format("2006-01-02 15:04:05") // without ms part for test consistency
+	now := time.Now().UTC().Format("2006-01-02 15:04:05")
 
 	scenarios := []struct {
 		value    any
@@ -198,10 +208,10 @@ func TestDateTime_Scan(t *testing.T) {
 	}
 
 	for i, s := range scenarios {
-		var dt DateTime
+		var dateTime DateTime
 
-		err := dt.Scan(s.value)
+		err := dateTime.Scan(s.value)
 		require.Nil(t, err, "(%d) %v", i, err)
-		require.Contains(t, dt.String(), s.expected, "(%d) Expected %q, got %q", i, s.expected, dt.String())
+		require.Contains(t, dateTime.String(), s.expected, "(%d) Expected %q, got %q", i, s.expected, dateTime.String())
 	}
 }

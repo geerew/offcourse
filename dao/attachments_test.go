@@ -16,6 +16,7 @@ import (
 // ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
 
 func Test_CreateAttachments(t *testing.T) {
+	// Test successfully inserting an attachment record
 	t.Run("success", func(t *testing.T) {
 		dao, ctx := setup(t)
 
@@ -31,6 +32,7 @@ func Test_CreateAttachments(t *testing.T) {
 		require.NoError(t, dao.CreateLesson(ctx, lesson))
 
 		attachment := &models.Attachment{
+			CourseID: course.ID,
 			LessonID: lesson.ID,
 			Title:    "Attachment 1",
 			Path:     "/course-1/attachment-1",
@@ -38,12 +40,14 @@ func Test_CreateAttachments(t *testing.T) {
 		require.NoError(t, dao.CreateAttachment(ctx, attachment))
 	})
 
+	// Test error due to nil pointer
 	t.Run("nil pointer", func(t *testing.T) {
 		dao, ctx := setup(t)
 
 		require.ErrorIs(t, dao.CreateAttachment(ctx, nil), utils.ErrNilPtr)
 	})
 
+	// Test error due to invalid fields
 	t.Run("invalid", func(t *testing.T) {
 		dao, ctx := setup(t)
 
@@ -60,6 +64,7 @@ func Test_CreateAttachments(t *testing.T) {
 
 		// Empty title
 		attachment := &models.Attachment{
+			CourseID: course.ID,
 			LessonID: lesson.ID,
 			Path:     "/course-1/attachment-1",
 		}
@@ -67,6 +72,7 @@ func Test_CreateAttachments(t *testing.T) {
 
 		// Empty path
 		attachment = &models.Attachment{
+			CourseID: course.ID,
 			LessonID: lesson.ID,
 			Title:    "Attachment 1",
 		}
@@ -74,7 +80,17 @@ func Test_CreateAttachments(t *testing.T) {
 
 		// Invalid lesson ID
 		attachment = &models.Attachment{
+			CourseID: course.ID,
 			LessonID: "invalid",
+			Title:    "Attachment 1",
+			Path:     "/course-1/attachment-1",
+		}
+		require.ErrorContains(t, dao.CreateAttachment(ctx, attachment), "FOREIGN KEY constraint failed")
+
+		// Invalid course ID
+		attachment = &models.Attachment{
+			CourseID: "invalid",
+			LessonID: lesson.ID,
 			Title:    "Attachment 1",
 			Path:     "/course-1/attachment-1",
 		}
@@ -85,6 +101,7 @@ func Test_CreateAttachments(t *testing.T) {
 // ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
 
 func Test_GetAttachment(t *testing.T) {
+	// Test successfully retrieving an attachment record
 	t.Run("success", func(t *testing.T) {
 		dao, ctx := setup(t)
 
@@ -100,6 +117,7 @@ func Test_GetAttachment(t *testing.T) {
 		require.NoError(t, dao.CreateLesson(ctx, lesson))
 
 		attachment := &models.Attachment{
+			CourseID: course.ID,
 			LessonID: lesson.ID,
 			Title:    "Attachment 1",
 			Path:     "/course-1/attachment-1",
@@ -112,6 +130,7 @@ func Test_GetAttachment(t *testing.T) {
 		require.Equal(t, attachment.ID, record.ID)
 	})
 
+	// Test no error when retrieving a non-existent attachment record
 	t.Run("not found", func(t *testing.T) {
 		dao, ctx := setup(t)
 
@@ -124,6 +143,7 @@ func Test_GetAttachment(t *testing.T) {
 // ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
 
 func Test_ListAttachments(t *testing.T) {
+	// Test successfully retrieving all attachment records
 	t.Run("success", func(t *testing.T) {
 		dao, ctx := setup(t)
 
@@ -141,6 +161,7 @@ func Test_ListAttachments(t *testing.T) {
 		attachments := []*models.Attachment{}
 		for i := range 3 {
 			attachment := &models.Attachment{
+				CourseID: course.ID,
 				LessonID: lesson.ID,
 				Title:    fmt.Sprintf("Attachment %d", i),
 				Path:     fmt.Sprintf("/course-1/attachment-%d", i),
@@ -159,6 +180,7 @@ func Test_ListAttachments(t *testing.T) {
 		}
 	})
 
+	// Test successfully retrieving no attachment records
 	t.Run("empty", func(t *testing.T) {
 		dao, ctx := setup(t)
 
@@ -167,6 +189,7 @@ func Test_ListAttachments(t *testing.T) {
 		require.Empty(t, records)
 	})
 
+	// Test successfully retrieving ordered attachment records
 	t.Run("order by", func(t *testing.T) {
 		dao, ctx := setup(t)
 
@@ -184,6 +207,7 @@ func Test_ListAttachments(t *testing.T) {
 		attachments := []*models.Attachment{}
 		for i := range 3 {
 			attachment := &models.Attachment{
+				CourseID: course.ID,
 				LessonID: lesson.ID,
 				Title:    fmt.Sprintf("Attachment %d", i),
 				Path:     fmt.Sprintf("/course-1/attachment-%d", i),
@@ -216,6 +240,7 @@ func Test_ListAttachments(t *testing.T) {
 		}
 	})
 
+	// Test successfully retrieving selected attachment records
 	t.Run("where", func(t *testing.T) {
 		dao, ctx := setup(t)
 
@@ -231,6 +256,7 @@ func Test_ListAttachments(t *testing.T) {
 		require.NoError(t, dao.CreateLesson(ctx, lesson))
 
 		attachment := &models.Attachment{
+			CourseID: course.ID,
 			LessonID: lesson.ID,
 			Title:    "Attachment 1",
 			Path:     "/course-1/attachment-1",
@@ -244,6 +270,7 @@ func Test_ListAttachments(t *testing.T) {
 		require.Equal(t, attachment.ID, records[0].ID)
 	})
 
+	// Test successfully retrieving paginated attachment records
 	t.Run("pagination", func(t *testing.T) {
 		dao, ctx := setup(t)
 
@@ -261,6 +288,7 @@ func Test_ListAttachments(t *testing.T) {
 		attachments := []*models.Attachment{}
 		for i := range 17 {
 			attachment := &models.Attachment{
+				CourseID: course.ID,
 				LessonID: lesson.ID,
 				Title:    fmt.Sprintf("Attachment %d", i),
 				Path:     fmt.Sprintf("/course-1/attachment-%d", i),
@@ -271,7 +299,10 @@ func Test_ListAttachments(t *testing.T) {
 		}
 
 		// First page with 10 records
-		p := NewOptions().WithPagination(pagination.New(1, 10))
+		p := NewOptions().
+			WithOrderBy(models.ATTACHMENT_TABLE_CREATED_AT + " ASC").
+			WithPagination(pagination.New(1, 10))
+
 		records, err := dao.ListAttachments(ctx, p)
 		require.Nil(t, err)
 		require.Len(t, records, 10)
@@ -279,7 +310,10 @@ func Test_ListAttachments(t *testing.T) {
 		require.Equal(t, attachments[9].ID, records[9].ID)
 
 		// Second page with remaining 7 records
-		p = NewOptions().WithPagination(pagination.New(2, 10))
+		p = NewOptions().
+			WithOrderBy(models.ATTACHMENT_TABLE_CREATED_AT + " ASC").
+			WithPagination(pagination.New(2, 10))
+
 		records, err = dao.ListAttachments(ctx, p)
 		require.Nil(t, err)
 		require.Len(t, records, 7)
@@ -290,90 +324,8 @@ func Test_ListAttachments(t *testing.T) {
 
 // ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
 
-func Test_UpdateAttachment(t *testing.T) {
-	t.Run("success", func(t *testing.T) {
-		dao, ctx := setup(t)
-
-		course := &models.Course{Title: "Course 1", Path: "/course-1", Available: true, CardPath: "/course-1/card-1"}
-		require.NoError(t, dao.CreateCourse(ctx, course))
-
-		lesson := &models.Lesson{
-			CourseID: course.ID,
-			Title:    "Asset Group 1",
-			Prefix:   sql.NullInt16{Int16: 1, Valid: true},
-			Module:   "Module 1",
-		}
-		require.NoError(t, dao.CreateLesson(ctx, lesson))
-
-		originalAttachment := &models.Attachment{
-			LessonID: lesson.ID,
-			Title:    "Attachment 1",
-			Path:     "/course-1/attachment-1",
-		}
-		require.NoError(t, dao.CreateAttachment(ctx, originalAttachment))
-
-		time.Sleep(1 * time.Millisecond)
-
-		updatedAttachment := &models.Attachment{
-			Base:     originalAttachment.Base,
-			LessonID: "1234",                         // Immutable
-			Title:    "Updated Attachment",           // Mutable
-			Path:     "/course-1/updated-attachment", // Mutable
-		}
-		require.NoError(t, dao.UpdateAttachment(ctx, updatedAttachment))
-
-		dbOpts := NewOptions().WithWhere(squirrel.Eq{models.ATTACHMENT_TABLE_ID: originalAttachment.ID})
-		record, err := dao.GetAttachment(ctx, dbOpts)
-		require.Nil(t, err)
-		require.Equal(t, originalAttachment.ID, record.ID)                     // No change
-		require.Equal(t, originalAttachment.LessonID, record.LessonID)         // No change
-		require.True(t, record.CreatedAt.Equal(originalAttachment.CreatedAt))  // No change
-		require.Equal(t, updatedAttachment.Title, record.Title)                // Changed
-		require.Equal(t, updatedAttachment.Path, record.Path)                  // Changed
-		require.False(t, record.UpdatedAt.Equal(originalAttachment.UpdatedAt)) // Changed
-	})
-
-	t.Run("invalid", func(t *testing.T) {
-		dao, ctx := setup(t)
-
-		course := &models.Course{Title: "Course 1", Path: "/course-1", Available: true, CardPath: "/course-1/card-1"}
-		require.NoError(t, dao.CreateCourse(ctx, course))
-
-		lesson := &models.Lesson{
-			CourseID: course.ID,
-			Title:    "Asset Group 1",
-			Prefix:   sql.NullInt16{Int16: 1, Valid: true},
-			Module:   "Module 1",
-		}
-		require.NoError(t, dao.CreateLesson(ctx, lesson))
-
-		attachment := &models.Attachment{
-			LessonID: lesson.ID,
-			Title:    "Attachment 1",
-			Path:     "/course-1/attachment-1",
-		}
-		require.NoError(t, dao.CreateAttachment(ctx, attachment))
-
-		// Empty path
-		attachment.Path = ""
-		require.ErrorIs(t, dao.UpdateAttachment(ctx, attachment), utils.ErrPath)
-
-		// Empty title
-		attachment.Title = ""
-		require.ErrorIs(t, dao.UpdateAttachment(ctx, attachment), utils.ErrTitle)
-
-		// Empty ID
-		attachment.ID = ""
-		require.ErrorIs(t, dao.UpdateAttachment(ctx, attachment), utils.ErrId)
-
-		// Nil Model
-		require.ErrorIs(t, dao.UpdateAttachment(ctx, nil), utils.ErrNilPtr)
-	})
-}
-
-// ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
-
 func Test_DeleteAttachments(t *testing.T) {
+	// Test successfully deleting an attachment record
 	t.Run("success", func(t *testing.T) {
 		dao, ctx := setup(t)
 
@@ -389,6 +341,7 @@ func Test_DeleteAttachments(t *testing.T) {
 		require.NoError(t, dao.CreateLesson(ctx, lesson))
 
 		attachment := &models.Attachment{
+			CourseID: course.ID,
 			LessonID: lesson.ID,
 			Title:    "Attachment 1",
 			Path:     "/course-1/attachment-1",
@@ -403,6 +356,7 @@ func Test_DeleteAttachments(t *testing.T) {
 		require.Empty(t, records)
 	})
 
+	// Test no error when deleting a non-existent attachment record
 	t.Run("not found", func(t *testing.T) {
 		dao, ctx := setup(t)
 
@@ -418,6 +372,7 @@ func Test_DeleteAttachments(t *testing.T) {
 		require.NoError(t, dao.CreateLesson(ctx, lesson))
 
 		attachment := &models.Attachment{
+			CourseID: course.ID,
 			LessonID: lesson.ID,
 			Title:    "Attachment 1",
 			Path:     "/course-1/attachment-1",
@@ -433,6 +388,7 @@ func Test_DeleteAttachments(t *testing.T) {
 		require.Equal(t, attachment.ID, records[0].ID)
 	})
 
+	// Test error due to missing where clause
 	t.Run("missing where", func(t *testing.T) {
 		dao, ctx := setup(t)
 
@@ -448,6 +404,7 @@ func Test_DeleteAttachments(t *testing.T) {
 		require.NoError(t, dao.CreateLesson(ctx, lesson))
 
 		attachment := &models.Attachment{
+			CourseID: course.ID,
 			LessonID: lesson.ID,
 			Title:    "Attachment 1",
 			Path:     "/course-1/attachment-1",
@@ -462,6 +419,7 @@ func Test_DeleteAttachments(t *testing.T) {
 		require.Equal(t, attachment.ID, records[0].ID)
 	})
 
+	// Test cascading delete of attachment records when deleting a course
 	t.Run("cascade course", func(t *testing.T) {
 		dao, ctx := setup(t)
 
@@ -477,6 +435,7 @@ func Test_DeleteAttachments(t *testing.T) {
 		require.NoError(t, dao.CreateLesson(ctx, lesson))
 
 		attachment := &models.Attachment{
+			CourseID: course.ID,
 			LessonID: lesson.ID,
 			Title:    "Attachment 1",
 			Path:     "/course-1/attachment-1",
@@ -492,7 +451,8 @@ func Test_DeleteAttachments(t *testing.T) {
 
 	})
 
-	t.Run("cascade lesson", func(t *testing.T) {
+	// Test cascading delete of attachment records when deleting a lesson
+	t.Run("cascade", func(t *testing.T) {
 		dao, ctx := setup(t)
 
 		course := &models.Course{Title: "Course 1", Path: "/course-1", Available: true, CardPath: "/course-1/card-1"}
@@ -507,17 +467,18 @@ func Test_DeleteAttachments(t *testing.T) {
 		require.NoError(t, dao.CreateLesson(ctx, lesson))
 
 		attachment := &models.Attachment{
+			CourseID: course.ID,
 			LessonID: lesson.ID,
 			Title:    "Attachment 1",
 			Path:     "/course-1/attachment-1",
 		}
 		require.NoError(t, dao.CreateAttachment(ctx, attachment))
 
-		// TODO change to deleteLesson when donee
-		// require.Nil(t, Delete(ctx, dao, lesson, nil))
+		opts := NewOptions().WithWhere(squirrel.Eq{models.LESSON_TABLE_ID: lesson.ID})
+		require.Nil(t, dao.DeleteLessons(ctx, opts))
 
-		// records, err := dao.ListAttachments(ctx, nil)
-		// require.NoError(t, err)
-		// require.Empty(t, records)
+		records, err := dao.ListAttachments(ctx, nil)
+		require.NoError(t, err)
+		require.Empty(t, records)
 	})
 }

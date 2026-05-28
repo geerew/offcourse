@@ -12,10 +12,10 @@
 	let { selected = $bindable([]) }: Props = $props();
 
 	const logLevels = [
-		{ value: '-1', label: 'Debug' },
-		{ value: '0', label: 'Info' },
-		{ value: '2', label: 'Warn' },
-		{ value: '1', label: 'Error' }
+		{ value: 'debug', label: 'Debug' },
+		{ value: 'info', label: 'Info' },
+		{ value: 'warn', label: 'Warn' },
+		{ value: 'error', label: 'Error' }
 	];
 
 	// Compute filter string for highlighting

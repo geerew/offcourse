@@ -17,6 +17,9 @@ var (
 	ErrNotSlice      = errors.New("not a slice")
 	ErrNoTable       = errors.New("table name cannot be empty")
 
+	// API
+	ErrApiQueryParse = errors.New("list query parse error")
+
 	// DB
 	ErrWhere     = errors.New("where clause cannot be empty")
 	ErrPrincipal = errors.New("principal not found in context")

@@ -8,25 +8,13 @@ import (
 	"strconv"
 	"strings"
 
-	"github.com/geerew/off-course/dao"
 	"github.com/geerew/off-course/models"
-	"github.com/geerew/off-course/utils/appfs"
+	"github.com/geerew/off-course/utils/filesystem"
 	"github.com/geerew/off-course/utils/pagination"
-	"github.com/geerew/off-course/utils/queryparser"
 	"github.com/geerew/off-course/utils/types"
 	"github.com/gofiber/fiber/v2"
-	"github.com/gofiber/fiber/v2/middleware/filesystem"
+	fiberfs "github.com/gofiber/fiber/v2/middleware/filesystem"
 	"github.com/spf13/afero"
-)
-
-// ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
-var (
-	defaultCoursesOrderBy                 = []string{models.COURSE_TABLE_CREATED_AT + " desc"}
-	defaultCourseLessonsOrderBy           = []string{models.LESSON_TABLE_MODULE + " asc", models.LESSON_TABLE_PREFIX + " asc"}
-	defaultCourseLessonAttachmentsOrderBy = []string{models.ATTACHMENT_TABLE_TITLE + " asc"}
-	defaultTagsOrderBy                    = []string{models.TAG_TABLE_TAG + " asc"}
-	defaultUsersOrderBy                   = []string{models.USER_TABLE_CREATED_AT + " desc"}
-	defaultLogsOrderBy                    = []string{models.LOG_TABLE_CREATED_AT + " desc", "rowid desc"}
 )
 
 // ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
@@ -69,64 +57,6 @@ func validatePassword(password string) error {
 
 // ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
 
-// builderOptions is a struct to hold the options for the optionsBuilder
-type builderOptions struct {
-	// A default order by clause to use if none is found in the query
-	DefaultOrderBy []string
-
-	// A slice of allowed filters to match on in the query
-	AllowedFilters []string
-
-	// Whether to paginate the results
-	Paginate bool
-
-	// A function to run after the query has been parsed. It will only run if the query is not nil
-	AfterParseHook func(*queryparser.QueryResult, *dao.Options, string)
-}
-
-// ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
-
-// optionsBuilder builds a dao.Options based on a `q` query parameter
-func optionsBuilder(c *fiber.Ctx, builderOptions builderOptions, userId string) (*dao.Options, error) {
-	dbOpts := dao.NewOptions()
-
-	orderBy := []string{models.BASE_CREATED_AT + " desc"}
-	if len(builderOptions.DefaultOrderBy) > 0 {
-		orderBy = builderOptions.DefaultOrderBy
-	}
-	dbOpts.WithOrderBy(orderBy...)
-
-	if builderOptions.Paginate {
-		dbOpts.WithPagination(pagination.NewFromApi(c))
-	}
-
-	q := c.Query("q", "")
-	if q == "" {
-		return dbOpts, nil
-	}
-
-	parsed, err := queryparser.Parse(q, builderOptions.AllowedFilters)
-	if err != nil {
-		return nil, err
-	}
-
-	if parsed == nil {
-		return dbOpts, nil
-	}
-
-	if len(parsed.Sort) > 0 {
-		dbOpts.OverrideOrderBy(parsed.Sort...)
-	}
-
-	if builderOptions.AfterParseHook != nil {
-		builderOptions.AfterParseHook(parsed, dbOpts, userId)
-	}
-
-	return dbOpts, nil
-}
-
-// ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
-
 const bufferSize = 1024 * 8                 // 8KB per chunk, adjust as needed
 const maxInitialChunkSize = 1024 * 1024 * 5 // 5MB, adjust as needed
 
@@ -147,10 +77,20 @@ func principalCtx(c *fiber.Ctx) (types.Principal, context.Context, error) {
 
 // ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
 
+// paginationFromCtx builds pagination from page and perPage query parameters.
+func paginationFromCtx(c *fiber.Ctx) *pagination.Pagination {
+	return pagination.New(
+		pagination.ParsePage(c.Query(pagination.PageQueryParam)),
+		pagination.ParsePerPage(c.Query(pagination.PerPageQueryParam)),
+	)
+}
+
+// ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
+
 // handleVideo handles the video streaming logic
-func handleVideo(c *fiber.Ctx, appFs *appfs.AppFs, asset *models.Asset) error {
+func handleVideo(c *fiber.Ctx, fs *filesystem.FS, asset *models.Asset) error {
 	// Open the video
-	file, err := appFs.Fs.Open(asset.Path)
+	file, err := fs.Open(asset.Path)
 	if err != nil {
 		return errorResponse(c, fiber.StatusInternalServerError, "Error opening file", err)
 	}
@@ -165,7 +105,7 @@ func handleVideo(c *fiber.Ctx, appFs *appfs.AppFs, asset *models.Asset) error {
 	// Get the range header and return the entire video if there is no range header
 	rangeHeader := c.Get("Range", "")
 	if rangeHeader == "" {
-		return filesystem.SendFile(c, afero.NewHttpFs(appFs.Fs), asset.Path)
+		return fiberfs.SendFile(c, afero.NewHttpFs(fs), asset.Path)
 	}
 
 	// Parse the "bytes=START-END" format
@@ -222,8 +162,8 @@ func handleVideo(c *fiber.Ctx, appFs *appfs.AppFs, asset *models.Asset) error {
 // ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
 
 // handleText handles serving text files and markdown files
-func handleText(c *fiber.Ctx, appFs *appfs.AppFs, asset *models.Asset) error {
-	file, err := appFs.Fs.Open(asset.Path)
+func handleText(c *fiber.Ctx, fs *filesystem.FS, asset *models.Asset) error {
+	file, err := fs.Open(asset.Path)
 	if err != nil {
 		return errorResponse(c, fiber.StatusInternalServerError, "Error opening text file", err)
 	}

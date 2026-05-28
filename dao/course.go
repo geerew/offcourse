@@ -7,26 +7,27 @@ import (
 	"strings"
 
 	"github.com/Masterminds/squirrel"
-	"github.com/geerew/off-course/database"
 	"github.com/geerew/off-course/models"
 	"github.com/geerew/off-course/utils"
+	"github.com/geerew/off-course/utils/queryparser"
 	"github.com/geerew/off-course/utils/types"
+	"github.com/spf13/cast"
+)
+
+// ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
+
+var (
+	CourseListApiAllowedFilters = []string{"title", "available", "tag", "progress", "favourite"}
+
+	defaultCoursesListOrderBy = []string{models.COURSE_TABLE_CREATED_AT + " desc"}
 )
 
 // ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
 
 // CreateCourse inserts a new course record
 func (dao *DAO) CreateCourse(ctx context.Context, course *models.Course) error {
-	if course == nil {
-		return utils.ErrNilPtr
-	}
-
-	if course.Title == "" {
-		return utils.ErrTitle
-	}
-
-	if course.Path == "" {
-		return utils.ErrPath
+	if err := courseValidation(course); err != nil {
+		return err
 	}
 
 	if course.ID == "" {
@@ -67,7 +68,12 @@ func (dao *DAO) CreateCourse(ctx context.Context, course *models.Course) error {
 // GetCourse gets a record from the courses table based upon the where clause in the options. If
 // there is no where clause, it will return the first record in the table
 //
-// By default, progress is not included. Use `WithUserProgress()` on the options to include it
+// Course progress is not included by default. It can be enabled by calling `WithUserProgress()`
+// on the options. This will add 2 additional db queries
+//
+// Note: This could be updated to use a JOIN instead of doing additional queries. However, I
+// don't like nullable fields in the model struct or having to support a second struct with
+// nullable fields. So for now, this function can make up to 2 additional db queries
 func (dao *DAO) GetCourse(ctx context.Context, dbOpts *Options) (*models.Course, error) {
 	builderOpts := newBuilderOptions(models.COURSE_TABLE).
 		WithColumns(models.CourseColumns()...).
@@ -76,33 +82,29 @@ func (dao *DAO) GetCourse(ctx context.Context, dbOpts *Options) (*models.Course,
 
 	includeProgress := dbOpts != nil && dbOpts.IncludeUserProgress
 
-	// When progress is not included, use a simpler query
 	if !includeProgress {
 		return getGeneric[models.Course](ctx, dao, *builderOpts)
 	}
 
-	// Include progress in the query
 	principal, err := principalFromCtx(ctx)
 	if err != nil {
 		return nil, err
 	}
 
-	builderOpts = builderOpts.
-		WithColumns(models.CourseProgressRowColumns()...).
-		WithColumns(fmt.Sprintf("%s AS favourite_id", models.COURSE_FAVOURITE_TABLE_ID)).
-		WithLeftJoin(models.COURSE_PROGRESS_TABLE, fmt.Sprintf("%s = %s AND %s = '%s'", models.COURSE_PROGRESS_TABLE_COURSE_ID, models.COURSE_TABLE_ID, models.COURSE_PROGRESS_TABLE_USER_ID, principal.UserID)).
-		WithLeftJoin(models.COURSE_FAVOURITE_TABLE, fmt.Sprintf("%s = %s AND %s = '%s'", models.COURSE_FAVOURITE_TABLE_COURSE_ID, models.COURSE_TABLE_ID, models.COURSE_FAVOURITE_TABLE_USER_ID, principal.UserID))
-
-	row, err := getGeneric[models.CourseRow](ctx, dao, *builderOpts)
+	course, err := getGeneric[models.Course](ctx, dao, *builderOpts)
 	if err != nil {
 		return nil, err
 	}
 
-	if row == nil {
+	if course == nil {
 		return nil, nil
 	}
 
-	return row.ToDomain(), nil
+	if err := attachCourseRelations(ctx, dao, principal.UserID, []*models.Course{course}); err != nil {
+		return nil, err
+	}
+
+	return course, nil
 }
 
 // ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
@@ -110,67 +112,61 @@ func (dao *DAO) GetCourse(ctx context.Context, dbOpts *Options) (*models.Course,
 // ListCourses gets all records from the courses table based upon the where clause and pagination
 // in the options
 //
-// By default, progress is not included. Use `WithUserProgress()` on the options to include it
+// Course progress is not included by default. It can be enabled by calling `WithUserProgress()`
+// on the options. This will add 2 additional db queries
+//
+// Note: This could be updated to use a JOIN instead of doing additional queries. However, I
+// don't like nullable fields in the model struct or having to support a second struct with
+// nullable fields. So for now, this function can make up to 2 additional db queries
 func (dao *DAO) ListCourses(ctx context.Context, dbOpts *Options) ([]*models.Course, error) {
+	if err := parseCourseApiQuery(ctx, dbOpts); err != nil {
+		return nil, err
+	}
+
+	applyDefaultOrderBy(dbOpts, defaultCoursesListOrderBy)
+
 	builderOpts := newBuilderOptions(models.COURSE_TABLE).
 		WithColumns(models.CourseColumns()...).
 		SetDbOpts(dbOpts)
 
 	includeProgress := dbOpts != nil && dbOpts.IncludeUserProgress
 
-	// When progress is not included, use a simpler query
 	if !includeProgress {
 		return listGeneric[models.Course](ctx, dao, *builderOpts)
 	}
 
-	// Include progress in the query
+	// Validate principal early
 	principal, err := principalFromCtx(ctx)
 	if err != nil {
 		return nil, err
 	}
 
-	builderOpts = builderOpts.
-		WithColumns(models.CourseProgressRowColumns()...).
-		WithColumns(fmt.Sprintf("%s AS favourite_id", models.COURSE_FAVOURITE_TABLE_ID)).
-		WithLeftJoin(models.COURSE_PROGRESS_TABLE, fmt.Sprintf("%s = %s AND %s = '%s'", models.COURSE_PROGRESS_TABLE_COURSE_ID, models.COURSE_TABLE_ID, models.COURSE_PROGRESS_TABLE_USER_ID, principal.UserID)).
-		WithLeftJoin(models.COURSE_FAVOURITE_TABLE, fmt.Sprintf("%s = %s AND %s = '%s'", models.COURSE_FAVOURITE_TABLE_COURSE_ID, models.COURSE_TABLE_ID, models.COURSE_FAVOURITE_TABLE_USER_ID, principal.UserID))
-
-	rows, err := listGeneric[models.CourseRow](ctx, dao, *builderOpts)
+	courses, err := listGeneric[models.Course](ctx, dao, *builderOpts)
 	if err != nil {
 		return nil, err
 	}
 
-	if len(rows) == 0 {
+	if len(courses) == 0 {
 		return nil, nil
 	}
 
-	records := make([]*models.Course, 0, len(rows))
-	for i := range rows {
-		r := rows[i]
-		records = append(records, r.ToDomain())
+	if err := attachCourseRelations(ctx, dao, principal.UserID, courses); err != nil {
+		return nil, err
 	}
 
-	return records, nil
+	return courses, nil
 }
 
 // ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
 
 // UpdateCourse updates a course record
 func (dao *DAO) UpdateCourse(ctx context.Context, course *models.Course) error {
-	if course == nil {
-		return utils.ErrNilPtr
+	if err := courseValidation(course); err != nil {
+		return err
 	}
 
 	if course.ID == "" {
 		return utils.ErrId
-	}
-
-	if course.Title == "" {
-		return utils.ErrTitle
-	}
-
-	if course.Path == "" {
-		return utils.ErrPath
 	}
 
 	course.RefreshUpdatedAt()
@@ -212,21 +208,19 @@ func (dao *DAO) DeleteCourses(ctx context.Context, dbOpts *Options) error {
 	builderOpts := newBuilderOptions(models.COURSE_TABLE).SetDbOpts(dbOpts)
 	sqlStr, args, _ := deleteBuilder(*builderOpts)
 
-	q := database.QuerierFromContext(ctx, dao.db)
-	_, err := q.ExecContext(ctx, sqlStr, args...)
+	_, err := dao.db.ExecContext(ctx, sqlStr, args...)
 	return err
 }
 
 // ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
 
-// ClassifyCoursePaths classifies the given paths into one of the following categories:
+// ClassifyCoursePaths classifies the given paths into one of the following categories
 //   - PathClassificationNone: The path does not exist in the courses table
-//   - PathClassificationAncestor: The path is an ancestor of a course path
+//   - PathClassificationAncestor: The path is an ancestor of a course path (parent, grandparent, etc.)
 //   - PathClassificationCourse: The path is an exact match to a course path
-//   - PathClassificationDescendant: The path is a descendant of a course path
+//   - PathClassificationDescendant: The path is a descendant of a course path (child, grandchild, etc.)
 //
-// The paths are returned as a map with the original path as the key and the classification as the
-// value
+// The paths are returned as a path/classification map
 func (dao *DAO) ClassifyCoursePaths(ctx context.Context, paths []string) (map[string]types.PathClassification, error) {
 	paths = slices.DeleteFunc(paths, func(s string) bool {
 		return s == ""
@@ -246,34 +240,16 @@ func (dao *DAO) ClassifyCoursePaths(ctx context.Context, paths []string) (map[st
 		whereClause[i] = squirrel.Like{models.COURSE_TABLE_PATH: path + "%"}
 	}
 
-	query, args, _ := squirrel.
-		StatementBuilder.
-		Select(models.COURSE_TABLE_PATH).
-		From(models.COURSE_TABLE).
-		Where(squirrel.Or(whereClause)).
-		ToSql()
+	dbOpts := NewOptions().WithWhere(squirrel.Or(whereClause))
+	builderOpts := newBuilderOptions(models.COURSE_TABLE).
+		WithColumns(models.COURSE_TABLE_PATH).
+		SetDbOpts(dbOpts)
 
-	q := database.QuerierFromContext(ctx, dao.db)
-	rows, err := q.QueryContext(ctx, query, args...)
+	coursePaths, err := pluck[string](ctx, dao, *builderOpts)
 	if err != nil {
 		return nil, err
 	}
-	defer rows.Close()
 
-	var coursePath string
-	coursePaths := []string{}
-	for rows.Next() {
-		if err := rows.Scan(&coursePath); err != nil {
-			return nil, err
-		}
-		coursePaths = append(coursePaths, coursePath)
-	}
-
-	if err := rows.Err(); err != nil {
-		return nil, err
-	}
-
-	// Process
 	for _, path := range paths {
 		for _, coursePath := range coursePaths {
 			if coursePath == path {
@@ -290,4 +266,255 @@ func (dao *DAO) ClassifyCoursePaths(ctx context.Context, paths []string) (map[st
 	}
 
 	return results, nil
+}
+
+// ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
+
+// assetValidation validates the asset fields
+func courseValidation(course *models.Course) error {
+	if course == nil {
+		return utils.ErrNilPtr
+	}
+
+	if course.Title == "" {
+		return utils.ErrTitle
+	}
+
+	if course.Path == "" {
+		return utils.ErrPath
+	}
+
+	return nil
+}
+
+// ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
+
+// attachCourseRelations attaches course progress and favourited courses to the given courses
+func attachCourseRelations(ctx context.Context, dao *DAO, userID string, courses []*models.Course) error {
+	if len(courses) == 0 {
+		return nil
+	}
+
+	// Map courses IDs to a slice
+	courseIDs := utils.Map(courses, func(course *models.Course) string {
+		return course.ID
+	})
+
+	// Get associated course progress records
+	dbOpts := NewOptions().WithWhere(squirrel.And{
+		squirrel.Eq{models.COURSE_PROGRESS_USER_ID: userID},
+		squirrel.Eq{models.COURSE_PROGRESS_COURSE_ID: courseIDs},
+	})
+
+	progressRecords, err := dao.ListCourseProgress(ctx, dbOpts)
+	if err != nil {
+		return err
+	}
+
+	progressMap := make(map[string]*models.CourseProgress)
+	for _, p := range progressRecords {
+		progressMap[p.CourseID] = p
+	}
+
+	// Get associated course favourite records
+	dbOpts = NewOptions().WithWhere(squirrel.And{
+		squirrel.Eq{models.COURSE_FAVOURITE_USER_ID: userID},
+		squirrel.Eq{models.COURSE_FAVOURITE_COURSE_ID: courseIDs},
+	})
+
+	favouritesRecords, err := dao.ListCourseFavourites(ctx, dbOpts)
+	if err != nil {
+		return err
+	}
+
+	favouritedMap := make(map[string]bool)
+	for _, f := range favouritesRecords {
+		favouritedMap[f.CourseID] = true
+	}
+
+	for _, c := range courses {
+		if p, ok := progressMap[c.ID]; ok {
+			c.Progress = p
+		} else {
+			c.Progress = nil
+		}
+
+		c.Favourited = favouritedMap[c.ID]
+	}
+
+	return nil
+}
+
+// ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
+
+// parseCourseApiQuery parses dbOpts.ApiQuery and sets a WHERE clause
+func parseCourseApiQuery(ctx context.Context, dbOpts *Options) error {
+	if dbOpts == nil || dbOpts.ApiQuery == "" {
+		return nil
+	}
+
+	parsed, err := queryparser.Parse(dbOpts.ApiQuery, CourseListApiAllowedFilters)
+	if err != nil {
+		return fmt.Errorf("%w: %w", utils.ErrApiQueryParse, err)
+	}
+
+	if parsed == nil {
+		return nil
+	}
+
+	// When filtering by progress or favourite, get the principal user ID
+	userID := ""
+	if parsed.FoundFilter("progress") || parsed.FoundFilter("favourite") {
+		principal, err := principalFromCtx(ctx)
+		if err != nil {
+			return err
+		}
+
+		userID = principal.UserID
+	}
+
+	dbOpts.WithWhere(courseWhereBuilder(parsed.Expr, userID))
+
+	return nil
+}
+
+// ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
+
+// courseWhereBuilder builds a squirrel WHERE expression from a queryparser.QueryExpr
+func courseWhereBuilder(expr queryparser.QueryExpr, userID string) squirrel.Sqlizer {
+	switch node := expr.(type) {
+	case *queryparser.FilterExpr:
+		switch node.Key {
+		case "title":
+			return squirrel.Like{models.COURSE_TABLE_TITLE: "%" + node.Value + "%"}
+		case "available":
+			value, err := cast.ToBoolE(node.Value)
+			if err != nil {
+				return squirrel.Expr("1=0")
+			}
+			return squirrel.Eq{models.COURSE_TABLE_AVAILABLE: value}
+		case "tag":
+			return courseTagsBuilder([]string{node.Value})
+		case "progress":
+			return courseProgressFilterBuilder(node.Value, userID)
+		case "favourite":
+			return courseFavouriteFilterBuilder(node.Value, userID)
+		default:
+			return nil
+		}
+	case *queryparser.AndExpr:
+		var andSlice []squirrel.Sqlizer
+		var tags []string
+		onlyTags := true
+
+		for _, child := range node.Children {
+			if f, ok := child.(*queryparser.FilterExpr); ok && f.Key == "tag" {
+				tags = append(tags, f.Value)
+			} else {
+				onlyTags = false
+				andSlice = append(andSlice, courseWhereBuilder(child, userID))
+			}
+		}
+
+		var tagCond squirrel.Sqlizer
+		if len(tags) > 0 {
+			tagCond = courseTagsBuilder(tags)
+
+			if onlyTags {
+				return tagCond
+			} else if tagCond != nil {
+				andSlice = append(andSlice, tagCond)
+			}
+		}
+
+		return squirrel.And(andSlice)
+	case *queryparser.OrExpr:
+		var orSlice []squirrel.Sqlizer
+		for _, child := range node.Children {
+			orSlice = append(orSlice, courseWhereBuilder(child, userID))
+		}
+
+		return squirrel.Or(orSlice)
+	default:
+		return nil
+	}
+}
+
+// ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
+
+// courseProgressFilterBuilder builds a squirrel WHERE expression for the progress filter
+func courseProgressFilterBuilder(value, userID string) squirrel.Sqlizer {
+	baseWhere := squirrel.And{
+		squirrel.Expr(models.COURSE_PROGRESS_TABLE_COURSE_ID + " = " + models.COURSE_TABLE_ID),
+		squirrel.Eq{models.COURSE_PROGRESS_TABLE_USER_ID: userID},
+	}
+
+	switch strings.ToLower(value) {
+	case "not started":
+		noProgress := squirrel.Expr("NOT EXISTS (?)",
+			squirrel.Select("1").From(models.COURSE_PROGRESS_TABLE).Where(baseWhere))
+		startedFalse := squirrel.Expr("EXISTS (?)",
+			squirrel.Select("1").From(models.COURSE_PROGRESS_TABLE).
+				Where(baseWhere).
+				Where(squirrel.Eq{models.COURSE_PROGRESS_TABLE_STARTED: false}))
+		return squirrel.Or{noProgress, startedFalse}
+	case "started":
+		return squirrel.Expr("EXISTS (?)",
+			squirrel.Select("1").From(models.COURSE_PROGRESS_TABLE).
+				Where(baseWhere).
+				Where(squirrel.Eq{models.COURSE_PROGRESS_TABLE_STARTED: true}).
+				Where(squirrel.NotEq{models.COURSE_PROGRESS_TABLE_PERCENT: 100}))
+	case "completed":
+		return squirrel.Expr("EXISTS (?)",
+			squirrel.Select("1").From(models.COURSE_PROGRESS_TABLE).
+				Where(baseWhere).
+				Where(squirrel.Eq{models.COURSE_PROGRESS_TABLE_PERCENT: 100}))
+	default:
+		return nil
+	}
+}
+
+// ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
+
+func courseFavouriteFilterBuilder(value, userID string) squirrel.Sqlizer {
+	where := squirrel.And{
+		squirrel.Expr(models.COURSE_FAVOURITE_TABLE_COURSE_ID + " = " + models.COURSE_TABLE_ID),
+		squirrel.Eq{models.COURSE_FAVOURITE_TABLE_USER_ID: userID},
+	}
+	existsSubq := squirrel.Select("1").From(models.COURSE_FAVOURITE_TABLE).Where(where)
+
+	switch strings.ToLower(value) {
+	case "true":
+		return squirrel.Expr("EXISTS (?)", existsSubq)
+	case "false":
+		return squirrel.Expr("NOT EXISTS (?)", existsSubq)
+	default:
+		return nil
+	}
+}
+
+// ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
+
+// courseTagsBuilder builds a squirrel WHERE expression for the tags filter
+func courseTagsBuilder(tags []string) squirrel.Sqlizer {
+	if len(tags) == 0 {
+		return squirrel.Expr("1=1")
+	}
+
+	baseQuery := squirrel.
+		Select("1").
+		From(models.COURSE_TAG_TABLE).
+		Join(models.TAG_TABLE + " ON " + models.TAG_TABLE_ID + " = " + models.COURSE_TAG_TABLE_TAG_ID).
+		Where(models.COURSE_TAG_TABLE_COURSE_ID + " = " + models.COURSE_TABLE_ID)
+
+	if len(tags) == 1 {
+		baseQuery = baseQuery.Where(squirrel.Eq{models.TAG_TABLE_TAG: tags[0]})
+	} else if len(tags) > 1 {
+		baseQuery = baseQuery.
+			Where(squirrel.Eq{models.TAG_TABLE_TAG: tags}).
+			GroupBy(models.COURSE_TAG_TABLE_COURSE_ID).
+			Having("COUNT(DISTINCT "+models.TAG_TABLE_TAG+") = ?", len(tags))
+	}
+
+	return squirrel.Expr("EXISTS (?)", baseQuery)
 }

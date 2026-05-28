@@ -4,7 +4,6 @@ import (
 	"context"
 
 	"github.com/Masterminds/squirrel"
-	"github.com/geerew/off-course/database"
 	"github.com/geerew/off-course/models"
 	"github.com/geerew/off-course/utils"
 )
@@ -113,7 +112,6 @@ func (dao *DAO) DeleteParams(ctx context.Context, dbOpts *Options) error {
 	builderOpts := newBuilderOptions(models.PARAM_TABLE).SetDbOpts(dbOpts)
 	sqlStr, args, _ := deleteBuilder(*builderOpts)
 
-	q := database.QuerierFromContext(ctx, dao.db)
-	_, err := q.ExecContext(ctx, sqlStr, args...)
+	_, err := dao.db.ExecContext(ctx, sqlStr, args...)
 	return err
 }

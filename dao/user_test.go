@@ -16,6 +16,7 @@ import (
 // ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
 
 func Test_CreateUser(t *testing.T) {
+	// Test successfully creating a user record
 	t.Run("success", func(t *testing.T) {
 		dao, ctx := setup(t)
 
@@ -23,6 +24,7 @@ func Test_CreateUser(t *testing.T) {
 		require.NoError(t, dao.CreateUser(ctx, user))
 	})
 
+	// Test error due to duplicate record
 	t.Run("duplicate", func(t *testing.T) {
 		dao, ctx := setup(t)
 
@@ -36,11 +38,13 @@ func Test_CreateUser(t *testing.T) {
 		require.ErrorContains(t, dao.CreateUser(ctx, user), "UNIQUE constraint failed: "+models.USER_TABLE_USERNAME)
 	})
 
+	// Test error due to nil pointer
 	t.Run("nil pointer", func(t *testing.T) {
 		dao, ctx := setup(t)
 		require.ErrorIs(t, dao.CreateUser(ctx, nil), utils.ErrNilPtr)
 	})
 
+	// Test error due to empty username
 	t.Run("empty username", func(t *testing.T) {
 		dao, ctx := setup(t)
 
@@ -48,6 +52,7 @@ func Test_CreateUser(t *testing.T) {
 		require.ErrorIs(t, dao.CreateUser(ctx, user), utils.ErrUsername)
 	})
 
+	// Test error due to empty password
 	t.Run("empty password", func(t *testing.T) {
 		dao, ctx := setup(t)
 
@@ -59,6 +64,7 @@ func Test_CreateUser(t *testing.T) {
 // ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
 
 func Test_GetUser(t *testing.T) {
+	// Test successfully retrieving a user record
 	t.Run("success", func(t *testing.T) {
 		dao, ctx := setup(t)
 
@@ -75,6 +81,7 @@ func Test_GetUser(t *testing.T) {
 		require.Equal(t, user.ID, record.ID)
 	})
 
+	// Test no error when retrieving a non-existent user record
 	t.Run("not found", func(t *testing.T) {
 		dao, ctx := setup(t)
 
@@ -91,6 +98,7 @@ func Test_GetUser(t *testing.T) {
 // ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
 
 func Test_ListUsers(t *testing.T) {
+	// Test successfully retrieving all user records
 	t.Run("success", func(t *testing.T) {
 		dao, ctx := setup(t)
 
@@ -122,6 +130,7 @@ func Test_ListUsers(t *testing.T) {
 		}
 	})
 
+	// Test successfully retrieving no user records
 	t.Run("empty", func(t *testing.T) {
 		dao, ctx := setup(t)
 
@@ -134,6 +143,7 @@ func Test_ListUsers(t *testing.T) {
 		require.Empty(t, records)
 	})
 
+	// Test successfully retrieving ordered user records
 	t.Run("order by", func(t *testing.T) {
 		dao, ctx := setup(t)
 
@@ -177,6 +187,7 @@ func Test_ListUsers(t *testing.T) {
 		}
 	})
 
+	// Test successfully retrieving selected user records
 	t.Run("where", func(t *testing.T) {
 		dao, ctx := setup(t)
 
@@ -199,6 +210,7 @@ func Test_ListUsers(t *testing.T) {
 		require.Equal(t, user.ID, records[0].ID)
 	})
 
+	// Test successfully retrieving paginated user records
 	t.Run("pagination", func(t *testing.T) {
 		dao, ctx := setup(t)
 
@@ -220,7 +232,10 @@ func Test_ListUsers(t *testing.T) {
 		}
 
 		// First page with 10 records
-		p := NewOptions().WithPagination(pagination.New(1, 10))
+		p := NewOptions().
+			WithOrderBy(models.USER_TABLE_CREATED_AT + " ASC").
+			WithPagination(pagination.New(1, 10))
+
 		records, err := dao.ListUsers(ctx, p)
 		require.Nil(t, err)
 		require.Len(t, records, 10)
@@ -228,7 +243,10 @@ func Test_ListUsers(t *testing.T) {
 		require.Equal(t, users[9].ID, records[9].ID)
 
 		// Second page with remaining 7 records
-		p = NewOptions().WithPagination(pagination.New(2, 10))
+		p = NewOptions().
+			WithOrderBy(models.USER_TABLE_CREATED_AT + " ASC").
+			WithPagination(pagination.New(2, 10))
+
 		records, err = dao.ListUsers(ctx, p)
 		require.Nil(t, err)
 		require.Len(t, records, 7)
@@ -240,6 +258,7 @@ func Test_ListUsers(t *testing.T) {
 // ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
 
 func Test_UpdateUser(t *testing.T) {
+	// Test successfully updating a user record
 	t.Run("success", func(t *testing.T) {
 		dao, ctx := setup(t)
 
@@ -273,6 +292,7 @@ func Test_UpdateUser(t *testing.T) {
 		require.False(t, record.UpdatedAt.Equal(OriginalUser.UpdatedAt)) // Changed
 	})
 
+	// Test error due to invalid user
 	t.Run("invalid", func(t *testing.T) {
 		dao, ctx := setup(t)
 
@@ -291,6 +311,7 @@ func Test_UpdateUser(t *testing.T) {
 // ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
 
 func Test_DeleteUsers(t *testing.T) {
+	// Test successfully deleting a user record
 	t.Run("success", func(t *testing.T) {
 		dao, ctx := setup(t)
 
@@ -309,6 +330,7 @@ func Test_DeleteUsers(t *testing.T) {
 		require.Empty(t, records)
 	})
 
+	// Test no error when deleting a non-existent user record
 	t.Run("not found", func(t *testing.T) {
 		dao, ctx := setup(t)
 
@@ -328,6 +350,7 @@ func Test_DeleteUsers(t *testing.T) {
 		require.Equal(t, user.ID, records[0].ID)
 	})
 
+	// Test error due to missing where clause
 	t.Run("missing where", func(t *testing.T) {
 		dao, ctx := setup(t)
 

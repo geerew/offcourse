@@ -20,6 +20,7 @@ ARG COMMIT
 RUN apk add --no-cache \
     gcc \
     git \
+    libwebp-dev \
     musl-dev \
     sqlite-dev
 
@@ -48,6 +49,8 @@ FROM alpine:latest
 RUN apk add --no-cache \
     ca-certificates \
     ffmpeg \
+    libwebp \
+    sqlite-libs \
     libva-utils \
     mesa-va-gallium
 

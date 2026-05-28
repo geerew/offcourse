@@ -5,10 +5,6 @@ help:
 	@echo 'Usage:'
 	@sed -n 's/^##//p' ${MAKEFILE_LIST} | column -t -s ':' |  sed -e 's/^/ /'
 
-# ==================================================================================== #
-# QUALITY CONTROL
-# ==================================================================================== #
-
 ## tidy: format code and tidy modfile
 .PHONY: tidy
 tidy:
@@ -23,10 +19,6 @@ audit:
 	go run honnef.co/go/tools/cmd/staticcheck@latest -checks=all,-ST1000,-ST1003,-U1000 ./...
 	go run golang.org/x/vuln/cmd/govulncheck@latest ./...
 	go test -race -buildvcs -vet=off ./...
-
-# ==================================================================================== #
-# DEVELOPMENT
-# ==================================================================================== #
 
 ## test: run all tests
 .PHONY: test
@@ -43,10 +35,6 @@ race_test:
 test/cover:
 	go test -v -tags dev -race -buildvcs -coverprofile=/tmp/coverage.out ./...
 	go tool cover -html=/tmp/coverage.out
-
-# ==================================================================================== #
-# BUILD
-# ==================================================================================== #
 
 ## build: build the application
 .PHONY: build

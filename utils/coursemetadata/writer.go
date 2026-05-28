@@ -5,7 +5,7 @@ import (
 	"path/filepath"
 	"sync"
 
-	"github.com/geerew/off-course/utils"
+	"github.com/geerew/off-course/utils/concurrency"
 	"github.com/geerew/off-course/utils/logger"
 	"github.com/spf13/afero"
 )
@@ -19,7 +19,7 @@ type MetadataWriter struct {
 	logger *logger.Logger
 
 	// Per-course mutexes to ensure sequential writes
-	mutexes utils.CMap[string, *sync.Mutex]
+	mutexes concurrency.Map[string, *sync.Mutex]
 }
 
 // ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
@@ -29,7 +29,7 @@ func NewMetadataWriter(fs afero.Fs, logger *logger.Logger) *MetadataWriter {
 	return &MetadataWriter{
 		fs:      fs,
 		logger:  logger,
-		mutexes: utils.NewCMap[string, *sync.Mutex](),
+		mutexes: concurrency.NewMap[string, *sync.Mutex](),
 	}
 }
 
@@ -44,9 +44,7 @@ func (w *MetadataWriter) WriteMetadataAsync(courseID, coursePath string, metadat
 	}
 
 	// Get or create mutex for this course
-	mutex, _ := w.mutexes.GetOrCreate(courseID, func() *sync.Mutex {
-		return &sync.Mutex{}
-	})
+	mutex, _ := w.mutexes.GetOrSet(courseID, &sync.Mutex{})
 
 	// Start async write in goroutine
 	go func() {
@@ -117,9 +115,7 @@ func (w *MetadataWriter) WriteMetadataSync(courseID, coursePath string, metadata
 	}
 
 	// Get or create mutex for this course
-	mutex, _ := w.mutexes.GetOrCreate(courseID, func() *sync.Mutex {
-		return &sync.Mutex{}
-	})
+	mutex, _ := w.mutexes.GetOrSet(courseID, &sync.Mutex{})
 
 	mutex.Lock()
 	defer mutex.Unlock()

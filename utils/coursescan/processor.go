@@ -106,7 +106,7 @@ func Processor(ctx context.Context, s *CourseScan, scanState *ScanState) error {
 		return err
 	}
 
-	if _, err := s.appFs.Fs.Stat(course.Path); err != nil {
+	if _, err := s.fs.Stat(course.Path); err != nil {
 		if os.IsNotExist(err) {
 			s.logger.Warn().
 				Str("course_id", courseID).
@@ -125,7 +125,7 @@ func Processor(ctx context.Context, s *CourseScan, scanState *ScanState) error {
 
 	// Read course metadata if it exists
 	scanState.UpdateMessage("Reading course metadata")
-	metadata, err := coursemetadata.ReadMetadata(s.appFs.Fs, course.Path)
+	metadata, err := coursemetadata.ReadMetadata(s.fs, course.Path)
 	if err != nil {
 		s.logger.Warn().
 			Err(err).
@@ -446,36 +446,30 @@ func handleCourseCard(
 	courseID, coursePath string,
 	scanState *ScanState,
 ) (bool, error) {
-	cardChanged := course.CardPath != scannedCardPath
-	if !cardChanged {
-		return false, nil
-	}
+	pathChanged := course.CardPath != scannedCardPath
 
-	// Card was deleted
+	// Card was deleted from disk
 	if scannedCardPath == "" {
-		// Delete optimized card if it exists
-		if course.CardPath != "" {
-			optimizedCardPath := s.cardCache.GetCardPath(course.ID)
-			if err := s.cardCache.DeleteCard(optimizedCardPath); err != nil {
-				s.logger.Warn().
-					Err(err).
-					Str("course_id", courseID).
-					Str("course_path", coursePath).
-					Str("card_path", optimizedCardPath).
-					Msg("Failed to delete optimized card")
-			}
+		if course.CardPath == "" {
+			return false, nil
 		}
+
+		if err := s.cardCache.Delete(course.ID); err != nil {
+			s.logger.Warn().
+				Err(err).
+				Str("course_id", courseID).
+				Str("course_path", coursePath).
+				Msg("Failed to delete optimized card")
+		}
+
 		course.CardPath = ""
 		course.CardHash = ""
 		course.CardModTime = ""
 		return true, nil
 	}
 
-	// Card was added or changed
-	course.CardPath = scannedCardPath
-
-	// Calculate card hash and mod time
-	cardHash, err := hashFilePartial(s.appFs.Fs, scannedCardPath, 1024*1024)
+	// Calculate card hash and mod time for the scanned source file
+	cardHash, err := hashFilePartial(s.fs, scannedCardPath, 1024*1024)
 	if err != nil {
 		s.logger.Warn().
 			Err(err).
@@ -483,13 +477,14 @@ func handleCourseCard(
 			Str("course_path", coursePath).
 			Str("card_path", scannedCardPath).
 			Msg("Failed to calculate card hash, continuing without optimization")
+		hadMetadata := course.CardHash != "" || course.CardModTime != ""
+		course.CardPath = scannedCardPath
 		course.CardHash = ""
 		course.CardModTime = ""
-		return true, nil
+		return pathChanged || hadMetadata, nil
 	}
 
-	// Get card mod time
-	stat, err := s.appFs.Fs.Stat(scannedCardPath)
+	stat, err := s.fs.Stat(scannedCardPath)
 	if err != nil {
 		s.logger.Warn().
 			Err(err).
@@ -497,36 +492,30 @@ func handleCourseCard(
 			Str("course_path", coursePath).
 			Str("card_path", scannedCardPath).
 			Msg("Failed to get card mod time, continuing without optimization")
+		hadMetadata := course.CardHash != "" || course.CardModTime != ""
+		course.CardPath = scannedCardPath
 		course.CardHash = ""
 		course.CardModTime = ""
-		return true, nil
+		return pathChanged || hadMetadata, nil
 	}
 
-	course.CardHash = cardHash
-	course.CardModTime = stat.ModTime().UTC().Format(time.RFC3339Nano)
+	cardModTime := stat.ModTime().UTC().Format(time.RFC3339Nano)
+	contentChanged := course.CardHash != cardHash || course.CardModTime != cardModTime
 
-	// Generate optimized card
-	optimizedCardPath := s.cardCache.GetCardPath(course.ID)
+	course.CardPath = scannedCardPath
+	course.CardHash = cardHash
+	course.CardModTime = cardModTime
+
+	if !pathChanged && !contentChanged {
+		return false, nil
+	}
+
 	scanState.UpdateMessage("Optimizing course card")
-	if err := s.cardCache.GenerateOptimizedCard(ctx, scannedCardPath, optimizedCardPath); err != nil {
+	err = s.cardCache.OptimizeCard(ctx, course.ID, scannedCardPath, cardHash)
+	if err != nil {
 		if err == context.Canceled || err == context.DeadlineExceeded {
 			return true, err
 		}
-		s.logger.Warn().
-			Err(err).
-			Str("course_id", courseID).
-			Str("course_path", coursePath).
-			Str("card_path", scannedCardPath).
-			Str("optimized_path", optimizedCardPath).
-			Msg("Failed to generate optimized card, course will use fallback")
-		// Continue scan even if optimization fails - course will use fallback
-	} else {
-		s.logger.Info().
-			Str("course_id", courseID).
-			Str("course_path", coursePath).
-			Str("card_path", scannedCardPath).
-			Str("optimized_path", optimizedCardPath).
-			Msg("Generated optimized card")
 	}
 
 	return true, nil
@@ -557,7 +546,7 @@ func fetchCourse(ctx context.Context, s *CourseScan, courseID string) (*models.C
 // checkAndSetCourseAvailability checks if the course is available and updates its status
 // accordingly
 func checkAndSetCourseAvailability(ctx context.Context, s *CourseScan, course *models.Course) (bool, error) {
-	_, err := s.appFs.Fs.Stat(course.Path)
+	_, err := s.fs.Stat(course.Path)
 	if os.IsNotExist(err) {
 		s.logger.Debug().
 			Str("course_id", course.ID).
@@ -690,7 +679,7 @@ func scanFiles(s *CourseScan, course *models.Course) (*scannedResults, error) {
 		Str("course_path", course.Path).
 		Msg("Scanning course directory")
 
-	files, err := s.appFs.ReadDirFlat(course.Path, 2)
+	files, err := s.fs.ReadDirFlat(course.Path, 2)
 	if err != nil {
 		return nil, err
 	}
@@ -766,7 +755,7 @@ func scanFiles(s *CourseScan, course *models.Course) (*scannedResults, error) {
 
 			if len(bucket.groupedFiles) > 0 {
 				for _, parsedFile := range bucket.groupedFiles {
-					asset, err := parsedFile.toAsset(s.appFs.Fs, module, course.ID)
+					asset, err := parsedFile.toAsset(s.fs, module, course.ID)
 					if err != nil {
 						return nil, err
 					}
@@ -783,7 +772,7 @@ func scanFiles(s *CourseScan, course *models.Course) (*scannedResults, error) {
 					idx := pickBest(bucket.soloFiles)
 					pf := bucket.soloFiles[idx]
 
-					asset, err := pf.toAsset(s.appFs.Fs, module, course.ID)
+					asset, err := pf.toAsset(s.fs, module, course.ID)
 					if err != nil {
 						return nil, err
 					}
@@ -799,7 +788,7 @@ func scanFiles(s *CourseScan, course *models.Course) (*scannedResults, error) {
 						lesson.Attachments = append(lesson.Attachments, other.toAttachment())
 					}
 				} else {
-					asset, err := bucket.soloFiles[0].toAsset(s.appFs.Fs, module, course.ID)
+					asset, err := bucket.soloFiles[0].toAsset(s.fs, module, course.ID)
 					if err != nil {
 						return nil, err
 					}
@@ -881,7 +870,7 @@ func probeVideos(ctx context.Context, s *CourseScan, ops []Op, course *models.Co
 		Msg("Starting video probing and keyframe extraction")
 
 	scanState.UpdateMessage("Extracting video keyframes")
-	mediaProbe := probe.MediaProbe{FFmpeg: s.ffmpeg}
+	mediaProbe := probe.MediaProbe{Tools: s.tools}
 	assetMetadataByPath := make(map[string]*models.AssetMetadata)
 	totalVideos := len(targets)
 
@@ -1017,8 +1006,9 @@ func applyLessonCreateUpdateOps(
 				asset.LessonID = v.New.ID
 			}
 
-			for _, attachments := range v.New.Attachments {
-				attachments.LessonID = v.New.ID
+			for _, att := range v.New.Attachments {
+				att.CourseID = v.New.CourseID
+				att.LessonID = v.New.ID
 			}
 
 		case NoLessonOp:
@@ -1029,8 +1019,9 @@ func applyLessonCreateUpdateOps(
 				asset.LessonID = v.Existing.ID
 			}
 
-			for _, attachments := range v.New.Attachments {
-				attachments.LessonID = v.Existing.ID
+			for _, att := range v.New.Attachments {
+				att.CourseID = v.Existing.CourseID
+				att.LessonID = v.Existing.ID
 			}
 
 		case UpdateLessonOp:
@@ -1046,8 +1037,9 @@ func applyLessonCreateUpdateOps(
 				asset.LessonID = v.New.ID
 			}
 
-			for _, attachments := range v.New.Attachments {
-				attachments.LessonID = v.New.ID
+			for _, att := range v.New.Attachments {
+				att.CourseID = v.New.CourseID
+				att.LessonID = v.New.ID
 			}
 		}
 	}
@@ -1125,7 +1117,7 @@ func applyAssetOps(
 					if len(keyframes) > 0 {
 						assetKeyframes := &models.AssetKeyframes{
 							AssetID:    v.New.ID,
-							Keyframes:  keyframes,
+							Keyframes:  types.Keyframes(keyframes),
 							IsComplete: true,
 						}
 
@@ -1241,7 +1233,7 @@ func applyAssetOps(
 					if len(keyframes) > 0 {
 						assetKeyframes := &models.AssetKeyframes{
 							AssetID:    v.Renamed.ID,
-							Keyframes:  keyframes,
+							Keyframes:  types.Keyframes(keyframes),
 							IsComplete: true,
 						}
 
@@ -1443,21 +1435,6 @@ func categorizeFile(p *parsedFile) FileCategory {
 
 // ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
 
-// isCard returns true when the filename is a card
-func isCard(filename string) bool {
-	ext := strings.ToLower(strings.TrimPrefix(filepath.Ext(filename), "."))
-	cardExt := types.CardExtension(ext)
-
-	if !cardExt.IsValid() {
-		return false
-	}
-
-	name := strings.TrimSuffix(filename, "."+ext)
-	return name == "card"
-}
-
-// ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
-
 // populateHashesIfChanged populates the hashes of the scanned assets if they have changed
 // Uses parallel processing with a worker pool to improve performance
 func populateHashesIfChanged(ctx context.Context, s *CourseScan, scanned []*models.Asset, existing []*models.Asset, course *models.Course, scanState *ScanState) error {
@@ -1530,7 +1507,7 @@ func populateHashesParallel(ctx context.Context, s *CourseScan, assets []*models
 					return
 				}
 
-				hash, err := hashFilePartial(s.appFs.Fs, asset.Path, 1024*1024)
+				hash, err := hashFilePartial(s.fs, asset.Path, 1024*1024)
 				if err != nil {
 					mu.Lock()
 					if firstError == nil {
@@ -1723,7 +1700,7 @@ var filenameRegex = regexp.MustCompile(
 // parseFilename parses a filename into its constituent parts
 func parseFilename(normalizedPath, filename string) *parsedFile {
 	// Quick check for card
-	if isCard(filename) {
+	if utils.IsCard(filename) {
 		return &parsedFile{
 			Title:          "card",
 			Ext:            strings.ToLower(strings.TrimPrefix(filepath.Ext(filename), ".")),

@@ -1,6 +1,5 @@
 package dao
 
-// TODO Tidy to to make this more consistent. Use the builder pattern for all options
 import (
 	"github.com/Masterminds/squirrel"
 	"github.com/geerew/off-course/utils/pagination"
@@ -8,19 +7,21 @@ import (
 
 // ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
 
-// Options defines optional params for a database query
+// Options defines a limited set of database query options
+//
+// This will passed to the internal DAO builder options struct for use in the query
+// building process
 type Options struct {
-	// ORDER BY
+	// OrderBy can be used to order the results
 	//
 	// Example: []string{"id DESC", "title ASC"}
 	OrderBy []string
 
-	// ORDER BY (clause)
-	//
-	// Example: []string{"id DESC", "title ASC"}
+	// OrderByClause can be used to set a custom ORDER BY clause, for example
+	// when using a case expression
 	OrderByClause squirrel.Sqlizer
 
-	// Any valid squirrel WHERE expression
+	// Where is any valid squirrel WHERE expression
 	//
 	// Examples:
 	//
@@ -32,22 +33,23 @@ type Options struct {
 	//   NOT:  squirrel.NotEq{"id": "123"}
 	Where squirrel.Sqlizer
 
-	// IncludeUserProgress indicates whether to include course/asset progress
-	// when performing a query
+	// IncludeUserProgress indicates whether to include user progress when querying courses or
+	// assets
+	//
+	// Valid when querying courses or assets
 	IncludeUserProgress bool
 
-	// IncludeAssetMetadata indicates whether to include asset metadata
-	// when performing a query
+	// IncludeAssetMetadata indicates whether to include asset metadata when querying assets
+	//
+	// Valid when querying assets
 	IncludeAssetMetadata bool
 
-	// IncludeCourse indicates whether to include course table join
-	IncludeCourse bool
-
-	// IncludeLesson indicates whether to include lesson table join
-	IncludeLesson bool
-
-	// Used to paginate the results
+	// Pagination applies OFFSET/LIMIT to list queries. When set, listGeneric runs a COUNT
+	// query and updates the same instance via SetCount before selecting the page.
 	Pagination *pagination.Pagination
+
+	// ApiQuery is the list `q` query string from an HTTP request
+	ApiQuery string
 }
 
 // ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
@@ -57,44 +59,41 @@ func NewOptions() *Options {
 	return &Options{}
 }
 
-// WithOrderBy appends ORDER BY fields
+// ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
+
+// WithOrderBy sets the ORDER BY
+//
+// Calling multiple times will override the previous WithOrderBy call
 func (o *Options) WithOrderBy(fields ...string) *Options {
-	o.OrderBy = append(o.OrderBy, fields...)
+	o.OrderBy = append([]string(nil), fields...)
 	return o
 }
 
-func (o *Options) OverrideOrderBy(fields ...string) *Options {
-	o.OrderBy = fields
-	return o
-}
+// ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
 
 // WithOrderByClause sets a custom ORDER BY clause
 //
-// Use only if you need a complex ORDER BY that cannot be expressed with WithOrderBy
+// Calling multiple times will override the previous WithOrderByClause call
 func (o *Options) WithOrderByClause(clause squirrel.Sqlizer) *Options {
 	o.OrderByClause = clause
 	return o
 }
 
+// ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
+
 // WithWhere sets the WHERE clause using a squirrel.Sqlizer
+//
+// Calling multiple times will override the previous WithWhere call
 func (o *Options) WithWhere(pred squirrel.Sqlizer) *Options {
 	o.Where = pred
 	return o
 }
 
-// WithCourse enables course table join
-func (o *Options) WithCourse() *Options {
-	o.IncludeCourse = true
-	return o
-}
-
-// WithLesson enables lesson table join
-func (o *Options) WithLesson() *Options {
-	o.IncludeLesson = true
-	return o
-}
+// ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
 
 // WithPagination sets the pagination options
+//
+// Calling multiple times will override the previous WithPagination call
 func (o *Options) WithPagination(p *pagination.Pagination) *Options {
 	o.Pagination = p
 	return o
@@ -102,7 +101,23 @@ func (o *Options) WithPagination(p *pagination.Pagination) *Options {
 
 // ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
 
+// WithApiQuery sets the API query for LIST operations, which is typically passed from
+// c.Query("q", ""). An empty string is the same as no query
+//
+// Calling multiple times will override the previous WithApiQuery call
+func (o *Options) WithApiQuery(q string) *Options {
+	o.ApiQuery = q
+	return o
+}
+
+// ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
+
 // WithUserProgress enables progress inclusion in queries
+//
+// Can be used when querying assets and courses
+//
+//   - For assets, it adds an additional db query (asset progress)
+//   - For courses, it adds 2 additional db queries (course progress and course favourite)
 func (o *Options) WithUserProgress() *Options {
 	o.IncludeUserProgress = true
 	return o
@@ -111,6 +126,9 @@ func (o *Options) WithUserProgress() *Options {
 // ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
 
 // WithAssetMetadata enables asset metadata inclusion in queries
+//
+// Can be used when querying assets and will add an additional db query to the asset metadata
+// table
 func (o *Options) WithAssetMetadata() *Options {
 	o.IncludeAssetMetadata = true
 	return o

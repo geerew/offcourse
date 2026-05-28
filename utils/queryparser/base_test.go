@@ -8,234 +8,144 @@ import (
 
 // ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
 
-var allowed = []string{"available", "tag", "progress"}
+var (
+	allowedFilters = []string{"title", "available", "tag", "progress", "favourite"}
+)
 
 // ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
 
 func TestParse_Empty(t *testing.T) {
 	q := ""
-	result, err := Parse(q, allowed)
+	result, err := Parse(q, allowedFilters)
 	require.NoError(t, err)
 	require.Nil(t, result.Expr)
 }
 
 // ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
 
-func TestParse_EdgeCases(t *testing.T) {
-	t.Run("missing value", func(t *testing.T) {
-		q := "course 1 AND progress: OR progress:started"
-		result, err := Parse(q, allowed)
+func TestParse_Success(t *testing.T) {
+	// Test successfully parsing a query with AND / OR / tags
+	t.Run("AND / OR / tags", func(t *testing.T) {
+		q := `available:true AND tag:"go 1" OR progress:completed OR progress:"not started"`
+		result, err := Parse(q, allowedFilters)
 		require.NoError(t, err)
-		require.NotNil(t, result.Expr)
 
-		require.Equal(t, "(course 1 OR progress:started)", result.Expr.String())
-		require.Empty(t, result.Sort)
-		require.Equal(t, []string{"course 1"}, result.FreeText)
-		require.False(t, result.FoundFilters["available"])
-		require.False(t, result.FoundFilters["tag"])
-		require.True(t, result.FoundFilters["progress"])
+		require.Equal(t, "(((available:true AND tag:go 1) OR progress:completed) OR progress:not started)", result.Expr.String())
+		require.True(t, result.FoundFilter("available"))
+		require.True(t, result.FoundFilter("tag"))
+		require.True(t, result.FoundFilter("progress"))
 	})
 
-	t.Run("multiple operators", func(t *testing.T) {
-		q := `AND "" OR "   " AND AND course 1 OR OR course 2`
-		result, err := Parse(q, allowed)
+	// Test successfully parsing a query with parentheses
+	t.Run("parentheses", func(t *testing.T) {
+		q := "(tag:tag1 AND available:true) OR progress:completed"
+		result, err := Parse(q, allowedFilters)
 		require.NoError(t, err)
-		require.NotNil(t, result)
 
-		require.NotNil(t, result.Expr)
-		require.Equal(t, "(course 1 OR course 2)", result.Expr.String())
-		require.Empty(t, result.Sort)
-		require.Equal(t, []string{"course 1", "course 2"}, result.FreeText)
-		require.False(t, result.FoundFilters["available"])
-		require.False(t, result.FoundFilters["tag"])
-		require.False(t, result.FoundFilters["progress"])
+		require.Equal(t, "((tag:tag1 AND available:true) OR progress:completed)", result.Expr.String())
+		require.True(t, result.FoundFilter("tag"))
+		require.True(t, result.FoundFilter("available"))
+		require.True(t, result.FoundFilter("progress"))
+
 	})
 
-	t.Run("case", func(t *testing.T) {
-		q := `course 1 or "course 2" CANDY OR BORE`
-		result, err := Parse(q, allowed)
+	// Test successfully parsing a query with quoted tags
+	t.Run("quoted tags", func(t *testing.T) {
+		q := `tag:'tag 1' AND tag:"tag 2"`
+		result, err := Parse(q, allowedFilters)
 		require.NoError(t, err)
-		require.NotNil(t, result)
 
-		require.Equal(t, "((course 1 or AND course 2 AND CANDY) OR BORE)", result.Expr.String())
-		require.Empty(t, result.Sort)
-		require.Equal(t, []string{"course 1 or", "course 2", "CANDY", "BORE"}, result.FreeText)
-		require.False(t, result.FoundFilters["available"])
-		require.False(t, result.FoundFilters["tag"])
-		require.False(t, result.FoundFilters["progress"])
+		require.Equal(t, "(tag:tag 1 AND tag:tag 2)", result.Expr.String())
+		require.True(t, result.FoundFilter("tag"))
 	})
 
-	t.Run("unbalanced quotes", func(t *testing.T) {
-		q := `"course 1 AND course 2`
-		result, err := Parse(q, allowed)
+	// Test successfully parsing a query with normalized keys
+	t.Run("normalized keys", func(t *testing.T) {
+		q := "Available:true AND Progress:completed"
+		result, err := Parse(q, allowedFilters)
 		require.NoError(t, err)
-		require.NotNil(t, result)
 
-		require.NotNil(t, result.Expr)
-		require.IsType(t, &ValueExpr{}, result.Expr)
-		require.Equal(t, "course 1 AND course 2", result.Expr.String())
-		require.Empty(t, result.Sort)
-		require.Equal(t, []string{"course 1 AND course 2"}, result.FreeText)
-		require.False(t, result.FoundFilters["available"])
-		require.False(t, result.FoundFilters["tag"])
-		require.False(t, result.FoundFilters["progress"])
+		require.Equal(t, "(available:true AND progress:completed)", result.Expr.String())
+		require.True(t, result.FoundFilter("available"))
+		require.True(t, result.FoundFilter("progress"))
 	})
 
-	t.Run("unbalanced brackets", func(t *testing.T) {
-		q := "(course 1 AND course 2"
-		res, err := Parse(q, allowed)
+	// Test successfully parsing a query with escaped quotes in value
+	t.Run("escaped quotes in value", func(t *testing.T) {
+		q := `tag:"say \"hi\"" AND available:true`
+		result, err := Parse(q, allowedFilters)
+		require.NoError(t, err)
+		require.Equal(t, "(tag:say \"hi\" AND available:true)", result.Expr.String())
+	})
+
+	// Test successfully parsing a query with lowercase and/or from lexer
+	t.Run("lowercase and/or from lexer", func(t *testing.T) {
+		q := "available:true or tag:x"
+		result, err := Parse(q, allowedFilters)
+		require.NoError(t, err)
+		require.Equal(t, "(available:true OR tag:x)", result.Expr.String())
+	})
+}
+
+// ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
+
+func TestParse_Errors(t *testing.T) {
+	// Test error due to bare words
+	t.Run("bare words", func(t *testing.T) {
+		q := "course 1 OR available:true"
+		_, err := Parse(q, allowedFilters)
 		require.Error(t, err)
-		require.EqualError(t, err, "expected ')'")
-		require.Nil(t, res)
-	})
-}
-
-// ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
-
-func TestParse_Sort(t *testing.T) {
-	t.Run("simple", func(t *testing.T) {
-		q := `sort:"created_at asc" sort:"id desc" sort:title`
-		result, err := Parse(q, allowed)
-		require.NoError(t, err)
-		require.NotNil(t, result)
-
-		require.Nil(t, result.Expr)
-		require.Equal(t, []string{"created_at asc", "id desc", "title"}, result.Sort)
-		require.Empty(t, result.FreeText)
-		require.False(t, result.FoundFilters["available"])
-		require.False(t, result.FoundFilters["tag"])
-		require.False(t, result.FoundFilters["progress"])
+		require.ErrorIs(t, err, ErrInvalidSyntax)
+		require.ErrorIs(t, err, ErrExpectedKeyValue)
 	})
 
-	t.Run("empty", func(t *testing.T) {
-		q := `sort:"    " sort:"" sort:`
-		result, err := Parse(q, allowed)
-		require.NoError(t, err)
-		require.NotNil(t, result)
-
-		require.Nil(t, result.Expr)
-		require.Empty(t, result.Sort)
-		require.Empty(t, result.FreeText)
-		require.False(t, result.FoundFilters["available"])
-		require.False(t, result.FoundFilters["tag"])
-		require.False(t, result.FoundFilters["progress"])
+	t.Run("trailing tokens", func(t *testing.T) {
+		q := "available:true )"
+		_, err := Parse(q, allowedFilters)
+		require.Error(t, err)
+		require.ErrorIs(t, err, ErrInvalidSyntax)
+		require.ErrorIs(t, err, ErrTrailingInput)
 	})
 
-	t.Run("mixed", func(t *testing.T) {
-		q := `course 1 sort:"created_at asc" tag:test sort:"id desc" sort:title`
-		result, err := Parse(q, allowed)
-		require.NoError(t, err)
-		require.NotNil(t, result)
-
-		require.Equal(t, "(course 1 AND tag:test)", result.Expr.String())
-		require.Equal(t, []string{"created_at asc", "id desc", "title"}, result.Sort)
-		require.Equal(t, []string{"course 1"}, result.FreeText)
-		require.False(t, result.FoundFilters["available"])
-		require.False(t, result.FoundFilters["progress"])
-		require.True(t, result.FoundFilters["tag"])
+	// Test error due to quoted without key
+	t.Run("quoted without key", func(t *testing.T) {
+		q := `"hello" AND available:true`
+		_, err := Parse(q, allowedFilters)
+		require.Error(t, err)
+		require.ErrorIs(t, err, ErrInvalidSyntax)
+		require.ErrorIs(t, err, ErrUnexpectedQuotedToken)
 	})
 
-	t.Run("quoted", func(t *testing.T) {
-		q := `sort:"created_at asc" "sort: test" sort:"title" course 1`
-		result, err := Parse(q, allowed)
-		require.NoError(t, err)
-		require.NotNil(t, result)
-
-		require.Equal(t, "(sort: test AND course 1)", result.Expr.String())
-		require.Equal(t, []string{"created_at asc", "title"}, result.Sort)
-		require.Equal(t, []string{"sort: test", "course 1"}, result.FreeText)
-		require.False(t, result.FoundFilters["available"])
-		require.False(t, result.FoundFilters["tag"])
-		require.False(t, result.FoundFilters["progress"])
-	})
-}
-
-// ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
-
-func TestParse_FreeText(t *testing.T) {
-	t.Run("simple", func(t *testing.T) {
-		q := `course 1 OR course 2 AND "course 3" OR course 4 "course 5"`
-		result, err := Parse(q, allowed)
-		require.NoError(t, err)
-		require.NotNil(t, result)
-
-		require.Equal(t, "((course 1 OR (course 2 AND course 3)) OR (course 4 AND course 5))", result.Expr.String())
-		require.Empty(t, result.Sort)
-		require.Equal(t, []string{"course 1", "course 2", "course 3", "course 4", "course 5"}, result.FreeText)
-		require.False(t, result.FoundFilters["available"])
-		require.False(t, result.FoundFilters["tag"])
-		require.False(t, result.FoundFilters["progress"])
+	// Test error due to unknown filter key
+	t.Run("unknown filter key", func(t *testing.T) {
+		q := `foo:bar`
+		_, err := Parse(q, allowedFilters)
+		require.Error(t, err)
+		require.ErrorIs(t, err, ErrInvalidSyntax)
+		require.ErrorIs(t, err, ErrUnknownFilterKey)
 	})
 
-	t.Run("mixed", func(t *testing.T) {
-		q := `course 1 AND course 2 OR "course 3" OR available:true`
-		result, err := Parse(q, allowed)
-		require.NoError(t, err)
-		require.NotNil(t, result)
-
-		require.Equal(t, "(((course 1 AND course 2) OR course 3) OR available:true)", result.Expr.String())
-		require.Empty(t, result.Sort)
-		require.Equal(t, []string{"course 1", "course 2", "course 3"}, result.FreeText)
-		require.True(t, result.FoundFilters["available"])
-		require.False(t, result.FoundFilters["tag"])
-		require.False(t, result.FoundFilters["progress"])
+	// Test error due to unterminated quote
+	t.Run("unterminated quote", func(t *testing.T) {
+		q := `title:"oops`
+		_, err := Parse(q, allowedFilters)
+		require.Error(t, err)
+		require.ErrorIs(t, err, ErrInvalidSyntax)
+		require.ErrorIs(t, err, ErrUnterminatedQuote)
 	})
 
-	t.Run("pretend filter", func(t *testing.T) {
-		q := `course:1 AND tag:a OR "course: a b"`
-		result, err := Parse(q, allowed)
-		require.NoError(t, err)
-		require.NotNil(t, result)
-
-		require.Equal(t, "((course:1 AND tag:a) OR course: a b)", result.Expr.String())
-		require.Empty(t, result.Sort)
-		require.Equal(t, []string{"course:1", "course: a b"}, result.FreeText)
-		require.False(t, result.FoundFilters["available"])
-		require.True(t, result.FoundFilters["tag"])
-		require.False(t, result.FoundFilters["progress"])
+	// Test error due to sand is not AND keyword
+	t.Run("sand is not AND keyword", func(t *testing.T) {
+		_, err := Parse("sand:x AND available:true", allowedFilters)
+		require.Error(t, err)
+		require.ErrorIs(t, err, ErrUnknownFilterKey)
 	})
 
-	t.Run("empty", func(t *testing.T) {
-		q := `"" AND "   " OR tag:1`
-		result, err := Parse(q, allowed)
-		require.NoError(t, err)
-		require.NotNil(t, result)
-
-		require.Equal(t, "tag:1", result.Expr.String())
-		require.Empty(t, result.Sort)
-		require.Empty(t, result.FreeText)
-		require.True(t, result.FoundFilters["tag"])
-		require.False(t, result.FoundFilters["available"])
-		require.False(t, result.FoundFilters["progress"])
+	// Test error due to android is not AND keyword
+	t.Run("android is not AND keyword", func(t *testing.T) {
+		_, err := Parse("progress:completed android available:true", allowedFilters)
+		require.Error(t, err)
+		require.ErrorIs(t, err, ErrInvalidSyntax)
+		require.ErrorIs(t, err, ErrExpectedKeyValue)
 	})
-}
-
-// ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
-
-func TestParse_Filters(t *testing.T) {
-	q := `available:true AND tag:"go 1" OR progress:completed OR progress:"not started"`
-	result, err := Parse(q, allowed)
-	require.NoError(t, err)
-
-	require.Equal(t, "(((available:true AND tag:go 1) OR progress:completed) OR progress:not started)", result.Expr.String())
-	require.Empty(t, result.Sort)
-	require.Empty(t, result.FreeText)
-	require.True(t, result.FoundFilters["available"])
-	require.True(t, result.FoundFilters["tag"])
-	require.True(t, result.FoundFilters["progress"])
-}
-
-// ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
-
-func TestParse_ComplexParentheses(t *testing.T) {
-	q := "(course 1 AND (progress:started OR progress:completed)) OR (course 2 AND progress:completed)"
-	result, err := Parse(q, allowed)
-	require.NoError(t, err)
-
-	require.Equal(t, "((course 1 AND (progress:started OR progress:completed)) OR (course 2 AND progress:completed))", result.Expr.String())
-	require.Empty(t, result.Sort)
-	require.Equal(t, []string{"course 1", "course 2"}, result.FreeText)
-	require.False(t, result.FoundFilters["available"])
-	require.False(t, result.FoundFilters["tag"])
-	require.True(t, result.FoundFilters["progress"])
 }

@@ -2,8 +2,7 @@ package security
 
 import (
 	cryptoRand "crypto/rand"
-	"math/big"
-	mathRand "math/rand"
+	"math/rand/v2"
 )
 
 // ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
@@ -12,58 +11,88 @@ const defaultRandomAlphabet = "ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvw
 
 // ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
 
-// RandomString generates a cryptographically random string with the specified length. The
-// generated string matches [A-Za-z0-9]+
-//
-// Slower than PseudorandomString, but cryptographically secure
+// RandomString generates a cryptographically random string of the given length from [A-Za-z0-9]
 func RandomString(length int) string {
 	return RandomStringWithAlphabet(length, defaultRandomAlphabet)
 }
 
 // ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
 
-// RandomStringWithAlphabet generates a cryptographically random string with the specified length
-// and characters set
+// RandomStringWithAlphabet generates a cryptographically random string using rejection sampling so
+// each alphabet character has equal probability
 //
-// # It panics if for some reason rand.Int returns a non-nil error
-//
-// Slower than PseudorandomString, but cryptographically secure
+// Panics on crypto/rand failure or empty alphabet
 func RandomStringWithAlphabet(length int, alphabet string) string {
-	b := make([]byte, length)
-	max := big.NewInt(int64(len(alphabet)))
-
-	for i := range b {
-		n, err := cryptoRand.Int(cryptoRand.Reader, max)
-		if err != nil {
-			panic(err)
-		}
-		b[i] = alphabet[n.Int64()]
+	if length <= 0 {
+		return ""
 	}
 
-	return string(b)
+	n := len(alphabet)
+	if n == 0 {
+		panic("security: empty alphabet")
+	}
+
+	// Bytes in [0, maxByte) map uniformly to indices via % n
+	maxByte := 256 - (256 % n)
+
+	out := make([]byte, length)
+	var batch [64]byte
+	bufPos, bufLen := 0, 0
+
+	readBatch := func() {
+		if _, err := cryptoRand.Read(batch[:]); err != nil {
+			panic(err)
+		}
+
+		bufPos, bufLen = 0, len(batch)
+	}
+
+	for i := 0; i < length; {
+		if bufPos >= bufLen {
+			readBatch()
+		}
+
+		rb := batch[bufPos]
+		bufPos++
+
+		if int(rb) >= maxByte {
+			continue
+		}
+
+		out[i] = alphabet[int(rb)%n]
+		i++
+	}
+
+	return string(out)
 }
 
 // ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
 
-// PseudorandomString generates a pseudorandom string with the specified length. The generated
-// string matches [A-Za-z0-9]+
+// PseudorandomString generates a non-cryptographic random string of the given length from [A-Za-z0-9]
 //
-// Faster than RandomString, but not cryptographically secure
+// Use RandomString for secrets (tokens, session IDs, etc.)
 func PseudorandomString(length int) string {
 	return PseudorandomStringWithAlphabet(length, defaultRandomAlphabet)
 }
 
 // ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
 
-// PseudorandomStringWithAlphabet generates a pseudorandom string with the specified length
+// PseudorandomStringWithAlphabet is like PseudorandomString with a custom alphabet
 //
-// Faster than RandomString, but not cryptographically secure
+// Panics if alphabet is empty
 func PseudorandomStringWithAlphabet(length int, alphabet string) string {
-	b := make([]byte, length)
-	max := len(alphabet)
+	if length <= 0 {
+		return ""
+	}
 
+	n := len(alphabet)
+	if n == 0 {
+		panic("security: empty alphabet")
+	}
+
+	b := make([]byte, length)
 	for i := range b {
-		b[i] = alphabet[mathRand.Intn(max)]
+		b[i] = alphabet[rand.IntN(n)]
 	}
 
 	return string(b)

@@ -1,15 +1,15 @@
 package api
 
 import (
+	"errors"
 	"net/url"
-	"slices"
 	"strings"
 
 	"github.com/Masterminds/squirrel"
 	"github.com/geerew/off-course/dao"
 	"github.com/geerew/off-course/models"
+	"github.com/geerew/off-course/utils"
 	"github.com/geerew/off-course/utils/coursemetadata"
-	"github.com/geerew/off-course/utils/queryparser"
 	"github.com/gofiber/fiber/v2"
 )
 
@@ -40,24 +40,22 @@ func (r *Router) initTagRoutes() {
 // ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
 
 func (api *tagsAPI) getTags(c *fiber.Ctx) error {
-	builderOpts := builderOptions{
-		DefaultOrderBy: defaultTagsOrderBy,
-		Paginate:       true,
-		AfterParseHook: tagsAfterParseHook,
-	}
-
-	principal, ctx, err := principalCtx(c)
+	_, ctx, err := principalCtx(c)
 	if err != nil {
 		return errorResponse(c, fiber.StatusUnauthorized, "Missing principal", nil)
 	}
 
-	dbOpts, err := optionsBuilder(c, builderOpts, principal.UserID)
-	if err != nil {
-		return errorResponse(c, fiber.StatusBadRequest, "Error parsing query", err)
-	}
+	dbOpts := dao.NewOptions().
+		WithOrderBy(utils.StringSplit(c.Query("orderBy", ""), ",")...).
+		WithApiQuery(c.Query("q", "")).
+		WithPagination(paginationFromCtx(c))
 
 	tags, err := api.r.appDao.ListTags(ctx, dbOpts)
 	if err != nil {
+		if errors.Is(err, utils.ErrApiQueryParse) {
+			return errorResponse(c, fiber.StatusBadRequest, "Error parsing query", err)
+		}
+
 		return errorResponse(c, fiber.StatusInternalServerError, "Error looking up tags", err)
 	}
 
@@ -72,24 +70,21 @@ func (api *tagsAPI) getTags(c *fiber.Ctx) error {
 // ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
 
 func (api *tagsAPI) getTagNames(c *fiber.Ctx) error {
-	builderOpts := builderOptions{
-		DefaultOrderBy: defaultTagsOrderBy,
-		Paginate:       false,
-		AfterParseHook: tagsAfterParseHook,
-	}
-
-	principal, ctx, err := principalCtx(c)
+	_, ctx, err := principalCtx(c)
 	if err != nil {
 		return errorResponse(c, fiber.StatusUnauthorized, "Missing principal", nil)
 	}
 
-	dbOpts, err := optionsBuilder(c, builderOpts, principal.UserID)
-	if err != nil {
-		return errorResponse(c, fiber.StatusBadRequest, "Error parsing query", err)
-	}
+	dbOpts := dao.NewOptions().
+		WithOrderBy(utils.StringSplit(c.Query("orderBy", ""), ",")...).
+		WithApiQuery(c.Query("q", ""))
 
 	tags, err := api.r.appDao.ListTagNames(ctx, dbOpts)
 	if err != nil {
+		if errors.Is(err, utils.ErrApiQueryParse) {
+			return errorResponse(c, fiber.StatusBadRequest, "Error parsing query", err)
+		}
+
 		return errorResponse(c, fiber.StatusInternalServerError, "Error looking up tags", err)
 	}
 
@@ -269,59 +264,3 @@ func (api *tagsAPI) deleteTag(c *fiber.Ctx) error {
 }
 
 // ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
-
-// tagsAfterParseHook builds the dao.Options.Where based on the query expression
-func tagsAfterParseHook(parsed *queryparser.QueryResult, options *dao.Options, _ string) {
-	if len(parsed.FreeText) == 0 {
-		return
-	}
-
-	if slices.Contains(parsed.Sort, "special") {
-		// During special ordering, filter by the first filter (there should only be one) and
-		// order by a case expression
-		filter := strings.ToLower(parsed.FreeText[0])
-
-		options.Where = squirrel.Like{models.TAG_TABLE_TAG: "%" + filter + "%"}
-
-		caseExpr := squirrel.Case().
-			When(squirrel.Eq{"LOWER(" + models.TAG_TABLE_TAG + ")": filter}, "0").
-			When(squirrel.Like{"LOWER(" + models.TAG_TABLE_TAG + ")": filter + "%"}, "1").
-			When(squirrel.Like{"LOWER(" + models.TAG_TABLE_TAG + ")": "%" + filter + "%"}, "2")
-
-		sql, args, _ := caseExpr.ToSql()
-		options.OrderByClause = squirrel.Expr(sql+", "+defaultTagsOrderBy[0], args...)
-
-		options.OrderBy = []string{}
-	} else {
-		options.Where = tagsWhereBuilder(parsed.Expr)
-	}
-
-}
-
-// ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
-
-// tagsWhereBuilder builds a squirrel.Sqlizer, for use in a WHERE clause
-//
-// TODO Support count filter (ex HAVING COUNT(courses_tags.id) > 1)
-func tagsWhereBuilder(expr queryparser.QueryExpr) squirrel.Sqlizer {
-	switch node := expr.(type) {
-	case *queryparser.ValueExpr:
-		return squirrel.Like{models.TAG_TABLE_TAG: "%" + node.Value + "%"}
-	case *queryparser.AndExpr:
-		var andSlice []squirrel.Sqlizer
-		for _, child := range node.Children {
-			andSlice = append(andSlice, tagsWhereBuilder(child))
-		}
-
-		return squirrel.And(andSlice)
-	case *queryparser.OrExpr:
-		var orSlice []squirrel.Sqlizer
-		for _, child := range node.Children {
-			orSlice = append(orSlice, tagsWhereBuilder(child))
-		}
-
-		return squirrel.Or(orSlice)
-	default:
-		return nil
-	}
-}

@@ -4,47 +4,95 @@ import (
 	"net/http"
 	"time"
 
-	"github.com/geerew/off-course/app"
 	"github.com/geerew/off-course/dao"
+	"github.com/geerew/off-course/database"
+	"github.com/geerew/off-course/utils/filesystem"
+	"github.com/geerew/off-course/utils/cardcache"
+	"github.com/geerew/off-course/utils/logger"
 	"github.com/robfig/cron/v3"
 )
 
 // ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
 
-// Global release checker instance (exported so API can access it)
-var ReleaseChecker *releaseChecker
+// CronConfig holds the configuration needed to create a Cron scheduler
+type CronConfig struct {
+	DbManager *database.DatabaseManager
+	FS        *filesystem.FS
+	CardCache *cardcache.CardCache
+
+	// Loggers are scoped by the app (component tags) before being passed in
+	CourseAvailabilityLogger *logger.Logger
+	CardCacheWarmLogger      *logger.Logger
+	ReleaseCheckerLogger     *logger.Logger
+}
 
 // ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
 
-// StartCron initializes the cron jobs
-func StartCron(app *app.App) {
-	c := cron.New()
+// Cron manages cron jobs
+//
+// When created, call c.Start() to start the scheduler
+type Cron struct {
+	// Services
+	CourseAvailability *courseAvailability
+	CardCacheWarm      *cardCacheWarm
+	ReleaseChecker     *releaseChecker
+
+	// Cron scheduler
+	cron *cron.Cron
+}
+
+// ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
+
+// NewCronScheduler creates a new Cron scheduler
+func NewCronScheduler(config *CronConfig) *Cron {
+	c := &Cron{cron: cron.New()}
 
 	// Course availability
-	ca := &courseAvailability{
-		db:        app.DbManager.DataDb,
-		dao:       dao.New(app.DbManager.DataDb),
-		appFs:     app.AppFs,
-		logger:    app.Logger.WithCron(),
+	c.CourseAvailability = &courseAvailability{
+		db:        config.DbManager.DataDb,
+		dao:       dao.New(config.DbManager.DataDb),
+		fs: config.FS,
+		logger:    config.CourseAvailabilityLogger,
 		batchSize: 200,
 	}
 
-	// When cron is started, run the course availability job immediately
-	go func() { ca.run() }()
+	c.cron.AddFunc("@every 5m", func() { c.CourseAvailability.run() })
 
-	c.AddFunc("@every 5m", func() { ca.run() })
+	// Card cache warm
+	if config.CardCache != nil {
+		c.CardCacheWarm = &cardCacheWarm{
+			db:        config.DbManager.DataDb,
+			dao:       dao.New(config.DbManager.DataDb),
+			cardCache: config.CardCache,
+			logger:    config.CardCacheWarmLogger,
+		}
+	}
 
 	// Release checker
-	ReleaseChecker = &releaseChecker{
-		logger:     app.Logger.WithCron(),
+	c.ReleaseChecker = &releaseChecker{
+		logger:     config.ReleaseCheckerLogger,
 		httpClient: &http.Client{Timeout: 10 * time.Second},
 	}
 
-	// Run release check immediately on startup
-	go func() { ReleaseChecker.run() }()
+	c.cron.AddFunc("@every 5m", func() { c.ReleaseChecker.run() })
 
-	// Check for new releases every 5 minutes
-	c.AddFunc("@every 5m", func() { ReleaseChecker.run() })
+	return c
+}
 
-	c.Start()
+// ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
+
+// Start starts the cron scheduler
+func (c *Cron) Start() {
+	// Run startup jobs immediately (not on the recurring schedule above)
+	go func() { c.CourseAvailability.run() }()
+	if c.CardCacheWarm != nil {
+		go func() {
+			if err := c.CardCacheWarm.run(); err != nil {
+				c.CardCacheWarm.logger.Error().Err(err).Msg("Failed to warm card serve index")
+			}
+		}()
+	}
+	go func() { c.ReleaseChecker.run() }()
+
+	c.cron.Start()
 }

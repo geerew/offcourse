@@ -1,33 +1,45 @@
 package dao
 
 import (
-	"context"
 	"database/sql"
 	"testing"
 
 	"github.com/Masterminds/squirrel"
-	"github.com/geerew/off-course/database"
 	"github.com/geerew/off-course/models"
-	"github.com/geerew/off-course/utils/appfs"
-	"github.com/geerew/off-course/utils/pagination"
+	"github.com/geerew/off-course/utils"
 	"github.com/geerew/off-course/utils/types"
-	"github.com/spf13/afero"
-	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 )
 
 // ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
 
-func TestDAO_CreateAssetKeyframes(t *testing.T) {
-	dao, cleanup := setupTestDAO(t)
-	defer cleanup()
-
-	ctx := context.Background()
-
-	// Create a test asset first
-	asset := createTestAsset(t, ctx, dao, "test-asset-1")
-
+func Test_CreateAssetKeyframes(t *testing.T) {
+	// Test successfully inserting an asset keyframes record
 	t.Run("success", func(t *testing.T) {
+		dao, ctx := setup(t)
+
+		course := &models.Course{Title: "Course 1", Path: "/course-1"}
+		require.NoError(t, dao.CreateCourse(ctx, course))
+
+		lesson := &models.Lesson{
+			CourseID: course.ID,
+			Title:    "Asset Group 1",
+			Prefix:   sql.NullInt16{Int16: 1, Valid: true},
+			Module:   "Module 1",
+		}
+		require.NoError(t, dao.CreateLesson(ctx, lesson))
+
+		asset := &models.Asset{
+			CourseID: course.ID,
+			LessonID: lesson.ID,
+			Title:    "Asset 1",
+			Prefix:   sql.NullInt16{Int16: 1, Valid: true},
+			Module:   "Module 1",
+			Type:     types.MustAsset("mp4"),
+			Path:     "/course-1/01 asset.mp4",
+		}
+		require.NoError(t, dao.CreateAsset(ctx, asset))
+
 		keyframes := &models.AssetKeyframes{
 			AssetID:    asset.ID,
 			Keyframes:  []float64{0.0, 2.5, 5.0, 7.5, 10.0},
@@ -36,597 +48,199 @@ func TestDAO_CreateAssetKeyframes(t *testing.T) {
 
 		err := dao.CreateAssetKeyframes(ctx, keyframes)
 		require.NoError(t, err)
-		assert.NotEmpty(t, keyframes.ID)
-		assert.NotEmpty(t, keyframes.CreatedAt)
-		assert.NotEmpty(t, keyframes.UpdatedAt)
+		require.NotEmpty(t, keyframes.ID)
+		require.NotEmpty(t, keyframes.CreatedAt)
+		require.NotEmpty(t, keyframes.UpdatedAt)
 	})
 
+	// Test error due to nil keyframes pointer
 	t.Run("nil keyframes", func(t *testing.T) {
-		err := dao.CreateAssetKeyframes(ctx, nil)
-		require.Error(t, err)
-		assert.Contains(t, err.Error(), "nil pointer")
+		dao, ctx := setup(t)
+
+		require.ErrorIs(t, dao.CreateAssetKeyframes(ctx, nil), utils.ErrNilPtr)
 	})
 
+	// Test error due to empty asset ID
 	t.Run("empty asset ID", func(t *testing.T) {
+		dao, ctx := setup(t)
+
 		keyframes := &models.AssetKeyframes{
 			AssetID: "",
 		}
 
 		err := dao.CreateAssetKeyframes(ctx, keyframes)
 		require.Error(t, err)
-		assert.Contains(t, err.Error(), "asset id cannot be empty")
+		require.ErrorIs(t, err, utils.ErrAssetId)
 	})
 
+	// Test error due to out-of-order keyframes
 	t.Run("invalid keyframes", func(t *testing.T) {
+		dao, ctx := setup(t)
+
 		keyframes := &models.AssetKeyframes{
-			AssetID:   "test-asset-2",
-			Keyframes: []float64{5.0, 2.5, 10.0}, // Not ascending
+			AssetID:   "any-asset-id",
+			Keyframes: []float64{5.0, 2.5, 10.0},
 		}
 
 		err := dao.CreateAssetKeyframes(ctx, keyframes)
 		require.Error(t, err)
-		assert.Contains(t, err.Error(), "not in ascending order")
+		require.Contains(t, err.Error(), "not in ascending order")
 	})
 
+	// Test error due to duplicate asset ID
 	t.Run("duplicate asset ID", func(t *testing.T) {
-		// Create a test asset first
-		asset := createTestAsset(t, ctx, dao, "test-asset-3")
+		dao, ctx := setup(t)
 
-		// First create
+		course := &models.Course{Title: "Course 1", Path: "/course-1"}
+		require.NoError(t, dao.CreateCourse(ctx, course))
+
+		lesson := &models.Lesson{
+			CourseID: course.ID,
+			Title:    "Asset Group 1",
+			Prefix:   sql.NullInt16{Int16: 1, Valid: true},
+			Module:   "Module 1",
+		}
+		require.NoError(t, dao.CreateLesson(ctx, lesson))
+
+		asset := &models.Asset{
+			CourseID: course.ID,
+			LessonID: lesson.ID,
+			Title:    "Asset 1",
+			Prefix:   sql.NullInt16{Int16: 1, Valid: true},
+			Module:   "Module 1",
+			Type:     types.MustAsset("mp4"),
+			Path:     "/course-1/01 asset.mp4",
+		}
+		require.NoError(t, dao.CreateAsset(ctx, asset))
+
 		keyframes1 := &models.AssetKeyframes{
 			AssetID:    asset.ID,
 			Keyframes:  []float64{0.0, 2.5},
 			IsComplete: false,
 		}
+		require.NoError(t, dao.CreateAssetKeyframes(ctx, keyframes1))
 
-		err := dao.CreateAssetKeyframes(ctx, keyframes1)
-		require.NoError(t, err)
-
-		// Try to create duplicate
 		keyframes2 := &models.AssetKeyframes{
 			AssetID:    asset.ID,
 			Keyframes:  []float64{0.0, 2.5, 5.0},
 			IsComplete: true,
 		}
-
-		err = dao.CreateAssetKeyframes(ctx, keyframes2)
+		err := dao.CreateAssetKeyframes(ctx, keyframes2)
 		require.Error(t, err)
-		assert.Contains(t, err.Error(), "UNIQUE constraint failed")
+		require.Contains(t, err.Error(), "UNIQUE constraint failed")
 	})
 }
 
 // ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
 
-func TestDAO_GetAssetKeyframes(t *testing.T) {
-	dao, cleanup := setupTestDAO(t)
-	defer cleanup()
-
-	ctx := context.Background()
-
-	// Create a test asset first
-	asset := createTestAsset(t, ctx, dao, "test-asset-4")
-
-	// Setup test data
-	keyframes := &models.AssetKeyframes{
-		AssetID:    asset.ID,
-		Keyframes:  []float64{0.0, 2.5, 5.0, 7.5, 10.0},
-		IsComplete: true,
-	}
-
-	err := dao.CreateAssetKeyframes(ctx, keyframes)
-	require.NoError(t, err)
-
+func Test_GetAssetKeyframes(t *testing.T) {
+	// Test successfully retrieving an asset keyframes record
 	t.Run("success", func(t *testing.T) {
+		dao, ctx := setup(t)
+
+		course := &models.Course{Title: "Course 1", Path: "/course-1"}
+		require.NoError(t, dao.CreateCourse(ctx, course))
+
+		lesson := &models.Lesson{
+			CourseID: course.ID,
+			Title:    "Asset Group 1",
+			Prefix:   sql.NullInt16{Int16: 1, Valid: true},
+			Module:   "Module 1",
+		}
+		require.NoError(t, dao.CreateLesson(ctx, lesson))
+
+		asset := &models.Asset{
+			CourseID: course.ID,
+			LessonID: lesson.ID,
+			Title:    "Asset 1",
+			Prefix:   sql.NullInt16{Int16: 1, Valid: true},
+			Module:   "Module 1",
+			Type:     types.MustAsset("mp4"),
+			Path:     "/course-1/01 asset.mp4",
+		}
+		require.NoError(t, dao.CreateAsset(ctx, asset))
+
+		keyframes := &models.AssetKeyframes{
+			AssetID:    asset.ID,
+			Keyframes:  []float64{0.0, 2.5, 5.0, 7.5, 10.0},
+			IsComplete: true,
+		}
+		require.NoError(t, dao.CreateAssetKeyframes(ctx, keyframes))
+
 		retrieved, err := dao.GetAssetKeyframes(ctx, asset.ID)
 		require.NoError(t, err)
 		require.NotNil(t, retrieved)
-
-		assert.Equal(t, keyframes.ID, retrieved.ID)
-		assert.Equal(t, asset.ID, retrieved.AssetID)
-		assert.Equal(t, []float64{0.0, 2.5, 5.0, 7.5, 10.0}, retrieved.Keyframes)
-		assert.True(t, retrieved.IsComplete)
-		assert.NotEmpty(t, retrieved.CreatedAt)
-		assert.NotEmpty(t, retrieved.UpdatedAt)
+		require.Equal(t, keyframes.ID, retrieved.ID)
+		require.Equal(t, asset.ID, retrieved.AssetID)
+		require.Equal(t, types.Keyframes{0.0, 2.5, 5.0, 7.5, 10.0}, retrieved.Keyframes)
+		require.True(t, retrieved.IsComplete)
+		require.NotEmpty(t, retrieved.CreatedAt)
+		require.NotEmpty(t, retrieved.UpdatedAt)
 	})
 
+	// Test querying a non-existent asset keyframes record
 	t.Run("not found", func(t *testing.T) {
+		dao, ctx := setup(t)
+
 		retrieved, err := dao.GetAssetKeyframes(ctx, "non-existent-asset")
-		require.Error(t, err)
-		assert.Nil(t, retrieved)
+		require.NoError(t, err)
+		require.Nil(t, retrieved)
 	})
 
+	// Test error due to empty asset ID
 	t.Run("empty asset ID", func(t *testing.T) {
+		dao, ctx := setup(t)
+
 		retrieved, err := dao.GetAssetKeyframes(ctx, "")
 		require.Error(t, err)
-		assert.Contains(t, err.Error(), "asset id cannot be empty")
-		assert.Nil(t, retrieved)
+		require.ErrorIs(t, err, utils.ErrAssetId)
+		require.Nil(t, retrieved)
 	})
 }
 
 // ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
 
-func TestDAO_UpdateAssetKeyframes(t *testing.T) {
-	dao, cleanup := setupTestDAO(t)
-	defer cleanup()
+func Test_DeleteAssetKeyframes(t *testing.T) {
+	// Test cascading delete of asset keyframes records
+	t.Run("cascade", func(t *testing.T) {
+		dao, ctx := setup(t)
 
-	ctx := context.Background()
+		course := &models.Course{Title: "Course 1", Path: "/course-1"}
+		require.NoError(t, dao.CreateCourse(ctx, course))
 
-	// Create a test asset first
-	asset := createTestAsset(t, ctx, dao, "test-asset-5")
-
-	// Setup test data
-	keyframes := &models.AssetKeyframes{
-		AssetID:    asset.ID,
-		Keyframes:  []float64{0.0, 2.5},
-		IsComplete: false,
-	}
-
-	err := dao.CreateAssetKeyframes(ctx, keyframes)
-	require.NoError(t, err)
-
-	t.Run("success", func(t *testing.T) {
-		keyframes.Keyframes = []float64{0.0, 2.5, 5.0, 7.5, 10.0}
-		keyframes.IsComplete = true
-
-		err := dao.UpdateAssetKeyframes(ctx, keyframes)
-		require.NoError(t, err)
-
-		// Verify update
-		retrieved, err := dao.GetAssetKeyframes(ctx, asset.ID)
-		require.NoError(t, err)
-		assert.Equal(t, []float64{0.0, 2.5, 5.0, 7.5, 10.0}, retrieved.Keyframes)
-		assert.True(t, retrieved.IsComplete)
-	})
-
-	t.Run("nil keyframes", func(t *testing.T) {
-		err := dao.UpdateAssetKeyframes(ctx, nil)
-		require.Error(t, err)
-		assert.Contains(t, err.Error(), "nil pointer")
-	})
-
-	t.Run("empty ID", func(t *testing.T) {
-		keyframes := &models.AssetKeyframes{
-			AssetID: "test-asset-6",
+		lesson := &models.Lesson{
+			CourseID: course.ID,
+			Title:    "Asset Group 1",
+			Prefix:   sql.NullInt16{Int16: 1, Valid: true},
+			Module:   "Module 1",
 		}
+		require.NoError(t, dao.CreateLesson(ctx, lesson))
 
-		err := dao.UpdateAssetKeyframes(ctx, keyframes)
-		require.Error(t, err)
-		assert.Contains(t, err.Error(), "id cannot be empty")
-	})
-
-	t.Run("invalid keyframes", func(t *testing.T) {
-		keyframes := &models.AssetKeyframes{
-			AssetID:   "test-asset-7",
-			Keyframes: []float64{5.0, 2.5, 10.0}, // Not ascending
+		asset := &models.Asset{
+			CourseID: course.ID,
+			LessonID: lesson.ID,
+			Title:    "Asset 1",
+			Prefix:   sql.NullInt16{Int16: 1, Valid: true},
+			Module:   "Module 1",
+			Type:     types.MustAsset("mp4"),
+			Path:     "/course-1/01 asset.mp4",
 		}
-		keyframes.RefreshId()
-
-		err := dao.UpdateAssetKeyframes(ctx, keyframes)
-		require.Error(t, err)
-		assert.Contains(t, err.Error(), "not in ascending order")
-	})
-}
-
-// ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
-
-func TestDAO_DeleteAssetKeyframes(t *testing.T) {
-	dao, cleanup := setupTestDAO(t)
-	defer cleanup()
-
-	ctx := context.Background()
-
-	// Create a test asset first
-	asset := createTestAsset(t, ctx, dao, "test-asset-8")
-
-	// Setup test data
-	keyframes := &models.AssetKeyframes{
-		AssetID:    asset.ID,
-		Keyframes:  []float64{0.0, 2.5, 5.0},
-		IsComplete: true,
-	}
-
-	err := dao.CreateAssetKeyframes(ctx, keyframes)
-	require.NoError(t, err)
-
-	t.Run("success", func(t *testing.T) {
-		err := dao.DeleteAssetKeyframes(ctx, asset.ID)
-		require.NoError(t, err)
-
-		// Verify deletion
-		retrieved, err := dao.GetAssetKeyframes(ctx, asset.ID)
-		require.Error(t, err)
-		assert.Nil(t, retrieved)
-	})
-
-	t.Run("empty asset ID", func(t *testing.T) {
-		err := dao.DeleteAssetKeyframes(ctx, "")
-		require.Error(t, err)
-		assert.Contains(t, err.Error(), "asset id cannot be empty")
-	})
-
-	t.Run("not found", func(t *testing.T) {
-		err := dao.DeleteAssetKeyframes(ctx, "non-existent-asset")
-		require.NoError(t, err) // Delete should not error if not found
-	})
-}
-
-// ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
-
-func TestDAO_DeleteAssetKeyframesById(t *testing.T) {
-	dao, cleanup := setupTestDAO(t)
-	defer cleanup()
-
-	ctx := context.Background()
-
-	// Create a test asset first
-	asset := createTestAsset(t, ctx, dao, "test-asset-9")
-
-	// Setup test data
-	keyframes := &models.AssetKeyframes{
-		AssetID:    asset.ID,
-		Keyframes:  []float64{0.0, 2.5, 5.0},
-		IsComplete: true,
-	}
-
-	err := dao.CreateAssetKeyframes(ctx, keyframes)
-	require.NoError(t, err)
-
-	t.Run("success", func(t *testing.T) {
-		err := dao.DeleteAssetKeyframesById(ctx, keyframes.ID)
-		require.NoError(t, err)
-
-		// Verify deletion
-		retrieved, err := dao.GetAssetKeyframes(ctx, asset.ID)
-		require.Error(t, err)
-		assert.Nil(t, retrieved)
-	})
-
-	t.Run("empty ID", func(t *testing.T) {
-		err := dao.DeleteAssetKeyframesById(ctx, "")
-		require.Error(t, err)
-		assert.Contains(t, err.Error(), "id cannot be empty")
-	})
-}
-
-// ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
-
-func TestDAO_ListAssetKeyframes(t *testing.T) {
-	dao, cleanup := setupTestDAO(t)
-	defer cleanup()
-
-	ctx := context.Background()
-
-	// Create test assets first
-	asset1 := createTestAsset(t, ctx, dao, "test-asset-10")
-	asset2 := createTestAsset(t, ctx, dao, "test-asset-11")
-
-	// Setup test data
-	keyframes1 := &models.AssetKeyframes{
-		AssetID:    asset1.ID,
-		Keyframes:  []float64{0.0, 2.5},
-		IsComplete: false,
-	}
-
-	keyframes2 := &models.AssetKeyframes{
-		AssetID:    asset2.ID,
-		Keyframes:  []float64{0.0, 2.5, 5.0, 7.5},
-		IsComplete: true,
-	}
-
-	err := dao.CreateAssetKeyframes(ctx, keyframes1)
-	require.NoError(t, err)
-
-	err = dao.CreateAssetKeyframes(ctx, keyframes2)
-	require.NoError(t, err)
-
-	t.Run("list all", func(t *testing.T) {
-		list, err := dao.ListAssetKeyframes(ctx, nil)
-		require.NoError(t, err)
-		assert.Len(t, list, 2)
-	})
-
-	t.Run("with where clause", func(t *testing.T) {
-		opts := &Options{
-			Where: squirrel.Eq{models.KEYFRAMES_IS_COMPLETE: true},
-		}
-
-		list, err := dao.ListAssetKeyframes(ctx, opts)
-		require.NoError(t, err)
-		assert.Len(t, list, 1)
-		assert.Equal(t, asset2.ID, list[0].AssetID)
-	})
-
-	t.Run("with limit", func(t *testing.T) {
-		p := pagination.New(1, 1)
-		opts := &Options{
-			Pagination: p,
-		}
-
-		list, err := dao.ListAssetKeyframes(ctx, opts)
-		require.NoError(t, err)
-		assert.Len(t, list, 1)
-	})
-}
-
-// ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
-
-func TestDAO_ExistsAssetKeyframes(t *testing.T) {
-	dao, cleanup := setupTestDAO(t)
-	defer cleanup()
-
-	ctx := context.Background()
-
-	// Create a test asset first
-	asset := createTestAsset(t, ctx, dao, "test-asset-12")
-
-	// Setup test data
-	keyframes := &models.AssetKeyframes{
-		AssetID:    asset.ID,
-		Keyframes:  []float64{0.0, 2.5, 5.0},
-		IsComplete: true,
-	}
-
-	err := dao.CreateAssetKeyframes(ctx, keyframes)
-	require.NoError(t, err)
-
-	t.Run("exists", func(t *testing.T) {
-		exists, err := dao.ExistsAssetKeyframes(ctx, asset.ID)
-		require.NoError(t, err)
-		assert.True(t, exists)
-	})
-
-	t.Run("not exists", func(t *testing.T) {
-		exists, err := dao.ExistsAssetKeyframes(ctx, "non-existent-asset")
-		require.NoError(t, err)
-		assert.False(t, exists)
-	})
-
-	t.Run("empty asset ID", func(t *testing.T) {
-		exists, err := dao.ExistsAssetKeyframes(ctx, "")
-		require.Error(t, err)
-		assert.Contains(t, err.Error(), "asset id cannot be empty")
-		assert.False(t, exists)
-	})
-}
-
-// ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
-
-func TestDAO_GetAssetKeyframesCount(t *testing.T) {
-	dao, cleanup := setupTestDAO(t)
-	defer cleanup()
-
-	ctx := context.Background()
-
-	t.Run("empty database", func(t *testing.T) {
-		count, err := dao.GetAssetKeyframesCount(ctx, nil)
-		require.NoError(t, err)
-		assert.Equal(t, 0, count)
-	})
-
-	// Create test assets first
-	asset1 := createTestAsset(t, ctx, dao, "test-asset-13")
-	asset2 := createTestAsset(t, ctx, dao, "test-asset-14")
-
-	// Setup test data
-	keyframes1 := &models.AssetKeyframes{
-		AssetID:    asset1.ID,
-		Keyframes:  []float64{0.0, 2.5},
-		IsComplete: false,
-	}
-
-	keyframes2 := &models.AssetKeyframes{
-		AssetID:    asset2.ID,
-		Keyframes:  []float64{0.0, 2.5, 5.0},
-		IsComplete: true,
-	}
-
-	err := dao.CreateAssetKeyframes(ctx, keyframes1)
-	require.NoError(t, err)
-
-	err = dao.CreateAssetKeyframes(ctx, keyframes2)
-	require.NoError(t, err)
-
-	t.Run("total count", func(t *testing.T) {
-		count, err := dao.GetAssetKeyframesCount(ctx, nil)
-		require.NoError(t, err)
-		assert.Equal(t, 2, count)
-	})
-
-	t.Run("filtered count", func(t *testing.T) {
-		opts := &Options{
-			Where: squirrel.Eq{models.KEYFRAMES_IS_COMPLETE: true},
-		}
-
-		count, err := dao.GetAssetKeyframesCount(ctx, opts)
-		require.NoError(t, err)
-		assert.Equal(t, 1, count)
-	})
-}
-
-// ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
-
-func TestDAO_UpsertAssetKeyframes(t *testing.T) {
-	dao, cleanup := setupTestDAO(t)
-	defer cleanup()
-
-	ctx := context.Background()
-
-	t.Run("create new", func(t *testing.T) {
-		// Create a test asset first
-		asset := createTestAsset(t, ctx, dao, "test-asset-15")
+		require.NoError(t, dao.CreateAsset(ctx, asset))
 
 		keyframes := &models.AssetKeyframes{
 			AssetID:    asset.ID,
-			Keyframes:  []float64{0.0, 2.5, 5.0},
+			Keyframes:  []float64{0.0, 2.5, 5.0, 7.5, 10.0},
 			IsComplete: true,
 		}
 
-		err := dao.UpsertAssetKeyframes(ctx, keyframes)
+		require.NoError(t, dao.CreateAssetKeyframes(ctx, keyframes))
+
+		dbOpts := NewOptions().WithWhere(squirrel.Eq{"id": asset.ID})
+		require.NoError(t, dao.DeleteAssets(ctx, dbOpts))
+
+		record, err := dao.GetAssetKeyframes(ctx, asset.ID)
 		require.NoError(t, err)
-		assert.NotEmpty(t, keyframes.ID)
+		require.Nil(t, record)
 
-		// Verify creation
-		retrieved, err := dao.GetAssetKeyframes(ctx, asset.ID)
-		require.NoError(t, err)
-		assert.Equal(t, []float64{0.0, 2.5, 5.0}, retrieved.Keyframes)
-		assert.True(t, retrieved.IsComplete)
 	})
-
-	t.Run("update existing", func(t *testing.T) {
-		// Create a test asset first
-		asset := createTestAsset(t, ctx, dao, "test-asset-16")
-
-		// First create
-		keyframes := &models.AssetKeyframes{
-			AssetID:    asset.ID,
-			Keyframes:  []float64{0.0, 2.5},
-			IsComplete: false,
-		}
-
-		err := dao.UpsertAssetKeyframes(ctx, keyframes)
-		require.NoError(t, err)
-		originalID := keyframes.ID
-
-		// Now update
-		keyframes.Keyframes = []float64{0.0, 2.5, 5.0, 7.5}
-		keyframes.IsComplete = true
-
-		err = dao.UpsertAssetKeyframes(ctx, keyframes)
-		require.NoError(t, err)
-		assert.Equal(t, originalID, keyframes.ID) // ID should be preserved
-
-		// Verify update
-		retrieved, err := dao.GetAssetKeyframes(ctx, asset.ID)
-		require.NoError(t, err)
-		assert.Equal(t, []float64{0.0, 2.5, 5.0, 7.5}, retrieved.Keyframes)
-		assert.True(t, retrieved.IsComplete)
-	})
-
-	t.Run("nil keyframes", func(t *testing.T) {
-		err := dao.UpsertAssetKeyframes(ctx, nil)
-		require.Error(t, err)
-		assert.Contains(t, err.Error(), "nil pointer")
-	})
-
-	t.Run("empty asset ID", func(t *testing.T) {
-		keyframes := &models.AssetKeyframes{
-			AssetID: "",
-		}
-
-		err := dao.UpsertAssetKeyframes(ctx, keyframes)
-		require.Error(t, err)
-		assert.Contains(t, err.Error(), "asset id cannot be empty")
-	})
-}
-
-// ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
-
-// setupTestDAO creates a test DAO with in-memory database
-func setupTestDAO(t *testing.T) (*DAO, func()) {
-	appFs := appfs.New(afero.NewMemMapFs())
-
-	dbManager, err := database.NewSQLiteManager(&database.DatabaseManagerConfig{
-		DataDir: "./oc_data",
-		AppFs:   appFs,
-		Testing: true,
-	})
-	require.NoError(t, err)
-
-	dao := &DAO{
-		db: dbManager.DataDb,
-	}
-
-	// Create required parent records for foreign key constraints
-	ctx := context.Background()
-
-	// Create a course
-	course := &models.Course{
-		Title: "Test Course",
-		Path:  "/test/course",
-	}
-	course.RefreshId()
-	course.RefreshCreatedAt()
-	course.RefreshUpdatedAt()
-
-	_, err = dao.db.ExecContext(ctx, `
-		INSERT INTO courses (id, title, path, available, duration, initial_scan, maintenance, created_at, updated_at) 
-		VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)
-	`, course.ID, course.Title, course.Path, false, 0, false, false, course.CreatedAt, course.UpdatedAt)
-	require.NoError(t, err)
-
-	// Create a lesson
-	lesson := &models.Lesson{
-		CourseID: course.ID,
-		Title:    "Test Lesson",
-		Prefix:   sql.NullInt16{Int16: 1, Valid: true},
-	}
-	lesson.RefreshId()
-	lesson.RefreshCreatedAt()
-	lesson.RefreshUpdatedAt()
-
-	_, err = dao.db.ExecContext(ctx, `
-		INSERT INTO lessons (id, course_id, title, prefix, module, created_at, updated_at) 
-		VALUES (?, ?, ?, ?, ?, ?, ?)
-	`, lesson.ID, lesson.CourseID, lesson.Title, lesson.Prefix, nil, lesson.CreatedAt, lesson.UpdatedAt)
-	require.NoError(t, err)
-
-	// Create a user for foreign key constraints
-	user := &models.User{
-		Username:     "testuser",
-		DisplayName:  "Test User",
-		PasswordHash: "hashedpassword",
-		Role:         "user",
-	}
-	user.RefreshId()
-	user.RefreshCreatedAt()
-	user.RefreshUpdatedAt()
-
-	_, err = dao.db.ExecContext(ctx, `
-		INSERT INTO users (id, username, display_name, password_hash, role, created_at, updated_at) 
-		VALUES (?, ?, ?, ?, ?, ?, ?)
-	`, user.ID, user.Username, user.DisplayName, user.PasswordHash, user.Role, user.CreatedAt, user.UpdatedAt)
-	require.NoError(t, err)
-
-	cleanup := func() {
-		// No explicit cleanup needed for in-memory database
-	}
-
-	return dao, cleanup
-}
-
-// ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
-
-// createTestAsset creates a test asset for foreign key constraints
-func createTestAsset(t *testing.T, ctx context.Context, dao *DAO, title string) *models.Asset {
-	// Get the first course and lesson from the database
-	var courseID, lessonID string
-	err := dao.db.QueryRowContext(ctx, "SELECT id FROM courses LIMIT 1").Scan(&courseID)
-	require.NoError(t, err)
-
-	err = dao.db.QueryRowContext(ctx, "SELECT id FROM lessons LIMIT 1").Scan(&lessonID)
-	require.NoError(t, err)
-
-	assetType := types.AssetVideo
-
-	asset := &models.Asset{
-		CourseID: courseID,
-		LessonID: lessonID,
-		Title:    title,
-		Path:     "/test/path/" + title,
-		Hash:     "hash-" + title,
-		Weight:   1,
-		Prefix:   sql.NullInt16{Int16: 1, Valid: true},
-		Type:     assetType,
-	}
-	asset.RefreshId()
-	asset.RefreshCreatedAt()
-	asset.RefreshUpdatedAt()
-
-	_, err = dao.db.ExecContext(ctx, `
-		INSERT INTO assets (id, course_id, lesson_id, title, path, hash, weight, prefix, type, created_at, updated_at) 
-		VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
-	`, asset.ID, asset.CourseID, asset.LessonID, asset.Title, asset.Path, asset.Hash, asset.Weight, asset.Prefix, asset.Type, asset.CreatedAt, asset.UpdatedAt)
-	require.NoError(t, err)
-
-	return asset
 }

@@ -2,10 +2,8 @@ package dao
 
 import (
 	"context"
-	"fmt"
 
 	"github.com/Masterminds/squirrel"
-	"github.com/geerew/off-course/database"
 	"github.com/geerew/off-course/models"
 	"github.com/geerew/off-course/utils"
 )
@@ -18,40 +16,39 @@ func (dao *DAO) CreateAssetMetadata(ctx context.Context, metadata *models.AssetM
 		return utils.ErrNilPtr
 	}
 
-	// Nothing to do
 	if metadata.VideoMetadata == nil && metadata.AudioMetadata == nil {
 		return nil
 	}
 
-	return dao.db.RunInTransaction(ctx, func(txCtx context.Context) error {
+	return dao.RunInTransaction(ctx, func(txCtx context.Context) error {
 		// Create video metadata (if present)
 		if metadata.VideoMetadata != nil {
-			vm := metadata.VideoMetadata
+			videoMetadata := metadata.VideoMetadata
 
-			if vm.ID == "" {
-				vm.RefreshId()
+			if videoMetadata.ID == "" {
+				videoMetadata.RefreshId()
 			}
 
-			vm.RefreshCreatedAt()
-			vm.RefreshUpdatedAt()
+			videoMetadata.RefreshCreatedAt()
+			videoMetadata.RefreshUpdatedAt()
 
-			builderOpts := newBuilderOptions(models.MEDIA_VIDEO_TABLE).
+			builderOpts := newBuilderOptions(models.ASSET_METADATA_VIDEO_TABLE).
 				WithData(
 					map[string]interface{}{
-						models.BASE_ID:                 vm.ID,
-						models.META_ASSET_ID:           metadata.AssetID,
-						models.MEDIA_VIDEO_DURATION:    vm.DurationSec,
-						models.MEDIA_VIDEO_CONTAINER:   vm.Container,
-						models.MEDIA_VIDEO_MIME_TYPE:   vm.MIMEType,
-						models.MEDIA_VIDEO_SIZE_BYTES:  vm.SizeBytes,
-						models.MEDIA_VIDEO_OVERALL_BPS: vm.OverallBPS,
-						models.MEDIA_VIDEO_CODEC:       vm.VideoCodec,
-						models.MEDIA_VIDEO_WIDTH:       vm.Width,
-						models.MEDIA_VIDEO_HEIGHT:      vm.Height,
-						models.MEDIA_VIDEO_FPS_NUM:     vm.FPSNum,
-						models.MEDIA_VIDEO_FPS_DEN:     vm.FPSDen,
-						models.BASE_CREATED_AT:         vm.CreatedAt,
-						models.BASE_UPDATED_AT:         vm.UpdatedAt,
+						models.BASE_ID:                          videoMetadata.ID,
+						models.ASSET_METADATA_VIDEO_ASSET_ID:    metadata.AssetID,
+						models.ASSET_METADATA_VIDEO_DURATION:    videoMetadata.DurationSec,
+						models.ASSET_METADATA_VIDEO_CONTAINER:   videoMetadata.Container,
+						models.ASSET_METADATA_VIDEO_MIME_TYPE:   videoMetadata.MIMEType,
+						models.ASSET_METADATA_VIDEO_SIZE_BYTES:  videoMetadata.SizeBytes,
+						models.ASSET_METADATA_VIDEO_OVERALL_BPS: videoMetadata.OverallBPS,
+						models.ASSET_METADATA_VIDEO_CODEC:       videoMetadata.VideoCodec,
+						models.ASSET_METADATA_VIDEO_WIDTH:       videoMetadata.Width,
+						models.ASSET_METADATA_VIDEO_HEIGHT:      videoMetadata.Height,
+						models.ASSET_METADATA_VIDEO_FPS_NUM:     videoMetadata.FPSNum,
+						models.ASSET_METADATA_VIDEO_FPS_DEN:     videoMetadata.FPSDen,
+						models.BASE_CREATED_AT:                  videoMetadata.CreatedAt,
+						models.BASE_UPDATED_AT:                  videoMetadata.UpdatedAt,
 					})
 
 			err := createGeneric(txCtx, dao, *builderOpts)
@@ -62,29 +59,29 @@ func (dao *DAO) CreateAssetMetadata(ctx context.Context, metadata *models.AssetM
 
 		// Create audio metadata (if present)
 		if metadata.AudioMetadata != nil {
-			am := metadata.AudioMetadata
+			audioMetadata := metadata.AudioMetadata
 
-			if am.ID == "" {
-				am.RefreshId()
+			if audioMetadata.ID == "" {
+				audioMetadata.RefreshId()
 			}
 
-			am.RefreshCreatedAt()
-			am.RefreshUpdatedAt()
+			audioMetadata.RefreshCreatedAt()
+			audioMetadata.RefreshUpdatedAt()
 
-			builderOpts := newBuilderOptions(models.MEDIA_AUDIO_TABLE).
+			builderOpts := newBuilderOptions(models.ASSET_METADATA_AUDIO_TABLE).
 				WithData(
 					map[string]interface{}{
-						models.BASE_ID:                    am.ID,
-						models.META_ASSET_ID:              metadata.AssetID,
-						models.MEDIA_AUDIO_LANGUAGE:       am.Language,
-						models.MEDIA_AUDIO_CODEC:          am.Codec,
-						models.MEDIA_AUDIO_PROFILE:        am.Profile,
-						models.MEDIA_AUDIO_CHANNELS:       am.Channels,
-						models.MEDIA_AUDIO_CHANNEL_LAYOUT: am.ChannelLayout,
-						models.MEDIA_AUDIO_SAMPLE_RATE:    am.SampleRate,
-						models.MEDIA_AUDIO_BIT_RATE:       am.BitRate,
-						models.BASE_CREATED_AT:            am.CreatedAt,
-						models.BASE_UPDATED_AT:            am.UpdatedAt,
+						models.BASE_ID:                             audioMetadata.ID,
+						models.ASSET_METADATA_AUDIO_ASSET_ID:       metadata.AssetID,
+						models.ASSET_METADATA_AUDIO_LANGUAGE:       audioMetadata.Language,
+						models.ASSET_METADATA_AUDIO_CODEC:          audioMetadata.Codec,
+						models.ASSET_METADATA_AUDIO_PROFILE:        audioMetadata.Profile,
+						models.ASSET_METADATA_AUDIO_CHANNELS:       audioMetadata.Channels,
+						models.ASSET_METADATA_AUDIO_CHANNEL_LAYOUT: audioMetadata.ChannelLayout,
+						models.ASSET_METADATA_AUDIO_SAMPLE_RATE:    audioMetadata.SampleRate,
+						models.ASSET_METADATA_AUDIO_BIT_RATE:       audioMetadata.BitRate,
+						models.BASE_CREATED_AT:                     audioMetadata.CreatedAt,
+						models.BASE_UPDATED_AT:                     audioMetadata.UpdatedAt,
 					})
 
 			err := createGeneric(txCtx, dao, *builderOpts)
@@ -99,182 +96,135 @@ func (dao *DAO) CreateAssetMetadata(ctx context.Context, metadata *models.AssetM
 
 // ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
 
-// GetAssetMetadata returns a single aggregate metadata record for an asset
+// GetAssetMetadata returns a single asset metadata record
 func (dao *DAO) GetAssetMetadata(ctx context.Context, assetID string) (*models.AssetMetadata, error) {
 	if assetID == "" {
 		return nil, utils.ErrId
 	}
 
-	dbOpts := NewOptions().WithWhere(squirrel.Eq{models.ASSET_TABLE_ID: assetID})
-
-	builderOpts := newBuilderOptions(models.ASSET_TABLE).
-		WithColumns(models.AssetMetadataRowColumns()...).
-		WithLeftJoin(models.MEDIA_VIDEO_TABLE, fmt.Sprintf("%s = %s", models.ASSET_TABLE_ID, models.MEDIA_VIDEO_TABLE_ASSET_ID)).
-		WithLeftJoin(models.MEDIA_AUDIO_TABLE, fmt.Sprintf("%s = %s", models.ASSET_TABLE_ID, models.MEDIA_AUDIO_TABLE_ASSET_ID)).
-		SetDbOpts(dbOpts).
-		WithLimit(1)
-
-	row, err := getGeneric[models.AssetMetadataRow](ctx, dao, *builderOpts)
+	videoMap, err := listVideoMetadataByAssetIDs(ctx, dao, []string{assetID})
 	if err != nil {
 		return nil, err
 	}
-	if row == nil {
-		return nil, nil // asset not found
+
+	audioMap, err := listAudioMetadataByAssetIDs(ctx, dao, []string{assetID})
+	if err != nil {
+		return nil, err
 	}
 
-	// If neither joined, treat as “no metadata”
-	if !row.VideoID.Valid && !row.AudioID.Valid {
+	videoMetadata := videoMap[assetID]
+	audioMetadata := audioMap[assetID]
+	if videoMetadata == nil && audioMetadata == nil {
 		return nil, nil
 	}
 
-	return row.ToDomain(), nil
+	out := &models.AssetMetadata{AssetID: assetID}
+	if videoMetadata != nil {
+		out.VideoMetadata = videoMetadata
+	}
+
+	if audioMetadata != nil {
+		audioMetadata.FixChannelsFromLayout()
+		out.AudioMetadata = audioMetadata
+	}
+
+	return out, nil
 }
 
 // ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
 
-// ListAssetMetadata gets all records asset metadata based upon the where clause and pagination
-// in the options
-func (dao *DAO) ListAssetMetadata(ctx context.Context, dbOpts *Options) ([]*models.AssetMetadata, error) {
-	builderOpts := newBuilderOptions(models.ASSET_TABLE).
-		WithColumns(models.AssetMetadataRowColumns()...).
-		WithLeftJoin(models.MEDIA_VIDEO_TABLE, fmt.Sprintf("%s = %s", models.ASSET_TABLE_ID, models.MEDIA_VIDEO_TABLE_ASSET_ID)).
-		WithLeftJoin(models.MEDIA_AUDIO_TABLE, fmt.Sprintf("%s = %s", models.ASSET_TABLE_ID, models.MEDIA_AUDIO_TABLE_ASSET_ID)).
-		SetDbOpts(dbOpts)
+// ListAssetMetadataByAssetIDs returns asset metadata records for the given IDs
+func (dao *DAO) ListAssetMetadataByAssetIDs(ctx context.Context, assetIDs []string) (map[string]*models.AssetMetadata, error) {
+	if len(assetIDs) == 0 {
+		return nil, nil
+	}
 
-	rows, err := listGeneric[models.AssetMetadataRow](ctx, dao, *builderOpts)
+	videoMap, err := listVideoMetadataByAssetIDs(ctx, dao, assetIDs)
 	if err != nil {
 		return nil, err
 	}
 
-	if len(rows) == 0 {
-		return nil, nil
+	audioMap, err := listAudioMetadataByAssetIDs(ctx, dao, assetIDs)
+	if err != nil {
+		return nil, err
 	}
 
-	records := make([]*models.AssetMetadata, 0, len(rows))
-	for i := range rows {
-		r := rows[i]
-
-		if !r.VideoID.Valid && !r.AudioID.Valid {
+	out := make(map[string]*models.AssetMetadata, len(assetIDs))
+	for _, id := range assetIDs {
+		videoMetadata := videoMap[id]
+		audioMetadata := audioMap[id]
+		if videoMetadata == nil && audioMetadata == nil {
 			continue
 		}
-		records = append(records, r.ToDomain())
+
+		m := &models.AssetMetadata{AssetID: id}
+		if videoMetadata != nil {
+			m.VideoMetadata = videoMetadata
+		}
+
+		if audioMetadata != nil {
+			audioMetadata.FixChannelsFromLayout()
+			m.AudioMetadata = audioMetadata
+		}
+
+		out[id] = m
 	}
 
-	if len(records) == 0 {
+	return out, nil
+}
+
+// ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
+
+// listVideoMetadataByAssetIDs lists the video metadata for the given asset IDs
+func listVideoMetadataByAssetIDs(ctx context.Context, dao *DAO, assetIDs []string) (map[string]*models.VideoMetadata, error) {
+	if len(assetIDs) == 0 {
 		return nil, nil
 	}
 
-	return records, nil
+	dbOpts := NewOptions().WithWhere(squirrel.Eq{models.ASSET_METADATA_VIDEO_TABLE_ASSET_ID: assetIDs})
+	builderOpts := newBuilderOptions(models.ASSET_METADATA_VIDEO_TABLE).
+		WithColumns(models.VideoMetadataColumns()...).
+		SetDbOpts(dbOpts)
+
+	rows, err := listGeneric[models.VideoMetadata](ctx, dao, *builderOpts)
+	if err != nil {
+		return nil, err
+	}
+
+	out := make(map[string]*models.VideoMetadata, len(rows))
+	for _, r := range rows {
+		if r != nil {
+			out[r.AssetID] = r
+		}
+	}
+
+	return out, nil
 }
 
 // ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
 
-// UpdateAssetMetadata updates video/audio metadata record for an asset
-// - If metadata.VideoMetadata == nil, video row is untouched
-// - If metadata.AudioMetadata == nil, audio row is untouched
-func (dao *DAO) UpdateAssetMetadata(ctx context.Context, metadata *models.AssetMetadata) error {
-	if metadata == nil {
-		return utils.ErrNilPtr
+// listAudioMetadataByAssetIDs lists the audio metadata for the given asset IDs
+func listAudioMetadataByAssetIDs(ctx context.Context, dao *DAO, assetIDs []string) (map[string]*models.AudioMetadata, error) {
+	if len(assetIDs) == 0 {
+		return nil, nil
 	}
 
-	if metadata.AssetID == "" {
-		return utils.ErrId
+	dbOpts := NewOptions().WithWhere(squirrel.Eq{models.ASSET_METADATA_AUDIO_TABLE_ASSET_ID: assetIDs})
+	builderOpts := newBuilderOptions(models.ASSET_METADATA_AUDIO_TABLE).
+		WithColumns(models.AudioMetadataColumns()...).
+		SetDbOpts(dbOpts)
+
+	rows, err := listGeneric[models.AudioMetadata](ctx, dao, *builderOpts)
+	if err != nil {
+		return nil, err
 	}
 
-	// Nothing to do
-	if metadata.VideoMetadata == nil && metadata.AudioMetadata == nil {
-		return nil
+	out := make(map[string]*models.AudioMetadata, len(rows))
+	for _, r := range rows {
+		if r != nil {
+			out[r.AssetID] = r
+		}
 	}
 
-	return dao.db.RunInTransaction(ctx, func(txCtx context.Context) error {
-		// Video
-		if vm := metadata.VideoMetadata; vm != nil {
-			// bump updated_at for this subrecord
-			vm.RefreshUpdatedAt()
-
-			dbOpts := NewOptions().
-				WithWhere(squirrel.Eq{models.MEDIA_VIDEO_TABLE_ASSET_ID: metadata.AssetID})
-
-			builder := newBuilderOptions(models.MEDIA_VIDEO_TABLE).
-				WithData(map[string]interface{}{
-					models.MEDIA_VIDEO_DURATION:    vm.DurationSec,
-					models.MEDIA_VIDEO_CONTAINER:   vm.Container,
-					models.MEDIA_VIDEO_MIME_TYPE:   vm.MIMEType,
-					models.MEDIA_VIDEO_SIZE_BYTES:  vm.SizeBytes,
-					models.MEDIA_VIDEO_OVERALL_BPS: vm.OverallBPS,
-					models.MEDIA_VIDEO_CODEC:       vm.VideoCodec,
-					models.MEDIA_VIDEO_WIDTH:       vm.Width,
-					models.MEDIA_VIDEO_HEIGHT:      vm.Height,
-					models.MEDIA_VIDEO_FPS_NUM:     vm.FPSNum,
-					models.MEDIA_VIDEO_FPS_DEN:     vm.FPSDen,
-					models.BASE_UPDATED_AT:         vm.UpdatedAt,
-				}).
-				SetDbOpts(dbOpts)
-
-			if _, err := updateGeneric(txCtx, dao, *builder); err != nil {
-				return err
-			}
-		}
-
-		// Audio
-		if am := metadata.AudioMetadata; am != nil {
-			am.RefreshUpdatedAt()
-
-			dbOpts := NewOptions().
-				WithWhere(squirrel.Eq{models.MEDIA_AUDIO_TABLE_ASSET_ID: metadata.AssetID})
-
-			builder := newBuilderOptions(models.MEDIA_AUDIO_TABLE).
-				WithData(map[string]interface{}{
-					models.MEDIA_AUDIO_LANGUAGE:       am.Language,
-					models.MEDIA_AUDIO_CODEC:          am.Codec,
-					models.MEDIA_AUDIO_PROFILE:        am.Profile,
-					models.MEDIA_AUDIO_CHANNELS:       am.Channels,
-					models.MEDIA_AUDIO_CHANNEL_LAYOUT: am.ChannelLayout,
-					models.MEDIA_AUDIO_SAMPLE_RATE:    am.SampleRate,
-					models.MEDIA_AUDIO_BIT_RATE:       am.BitRate,
-					models.BASE_UPDATED_AT:            am.UpdatedAt,
-				}).
-				SetDbOpts(dbOpts)
-
-			if _, err := updateGeneric(txCtx, dao, *builder); err != nil {
-				return err
-			}
-		}
-
-		return nil
-	})
-}
-
-// ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
-
-// DeleteAssetMetadataByAssetIDs deletes records from the video and audio metadata tables
-// for the given asset IDs
-func (dao *DAO) DeleteAssetMetadataByAssetIDs(ctx context.Context, assetIDs ...string) error {
-	ids := sanitizeIDs(assetIDs)
-	if len(ids) == 0 {
-		return nil
-	}
-
-	return dao.db.RunInTransaction(ctx, func(txCtx context.Context) error {
-		q := database.QuerierFromContext(txCtx, dao.db)
-
-		dbOpts := NewOptions().WithWhere(squirrel.Eq{models.META_ASSET_ID: ids})
-
-		// Audio metadata
-		builder := newBuilderOptions(models.MEDIA_AUDIO_TABLE).SetDbOpts(dbOpts)
-		sqlStr, args, _ := deleteBuilder(*builder)
-		if _, err := q.ExecContext(txCtx, sqlStr, args...); err != nil {
-			return err
-		}
-
-		// Video metadata
-
-		builder = newBuilderOptions(models.MEDIA_VIDEO_TABLE).SetDbOpts(dbOpts)
-		sqlStr, args, _ = deleteBuilder(*builder)
-		if _, err := q.ExecContext(txCtx, sqlStr, args...); err != nil {
-			return err
-		}
-
-		return nil
-	})
+	return out, nil
 }

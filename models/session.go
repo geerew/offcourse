@@ -30,6 +30,18 @@ type Session struct {
 
 // ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
 
+// SessionColumns returns the columns for use in a SELECT query
+func SessionColumns() []string {
+	return []string{
+		fmt.Sprintf("%s AS %s", SESSION_TABLE_ID, SESSION_ID),
+		fmt.Sprintf("%s AS %s", SESSION_TABLE_USER_ID, SESSION_USER_ID),
+		fmt.Sprintf("%s AS %s", SESSION_TABLE_DATA, SESSION_DATA),
+		fmt.Sprintf("%s AS %s", SESSION_TABLE_EXPIRES, SESSION_EXPIRES),
+	}
+}
+
+// ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
+
 // Id returns the model ID
 func (s *Session) Id() string {
 	return s.ID
@@ -39,15 +51,3 @@ func (s *Session) Id() string {
 
 // RefreshId noop
 func (s *Session) RefreshId() {}
-
-// ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
-
-// SessionColumns returns the list of columns in the session table
-func SessionColumns() []string {
-	return []string{
-		fmt.Sprintf("%s AS id", SESSION_TABLE_ID),
-		fmt.Sprintf("%s AS user_id", SESSION_TABLE_USER_ID),
-		fmt.Sprintf("%s AS data", SESSION_TABLE_DATA),
-		fmt.Sprintf("%s AS expires", SESSION_TABLE_EXPIRES),
-	}
-}

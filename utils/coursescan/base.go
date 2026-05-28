@@ -11,8 +11,9 @@ import (
 	"github.com/geerew/off-course/database"
 	"github.com/geerew/off-course/models"
 	"github.com/geerew/off-course/utils"
-	"github.com/geerew/off-course/utils/appfs"
+	"github.com/geerew/off-course/utils/filesystem"
 	"github.com/geerew/off-course/utils/cardcache"
+	"github.com/geerew/off-course/utils/concurrency"
 	"github.com/geerew/off-course/utils/logger"
 	"github.com/geerew/off-course/utils/media"
 	"github.com/geerew/off-course/utils/types"
@@ -27,15 +28,15 @@ type CourseScanProcessorFn func(context.Context, *CourseScan, *ScanState) error
 
 // CourseScan scans a course and finds assets and attachments
 type CourseScan struct {
-	appFs     *appfs.AppFs
+	fs        *filesystem.FS
 	db        database.Database
 	dao       *dao.DAO
 	logger    *logger.Logger
-	ffmpeg    *media.FFmpeg
-	cardCache cardcache.CardCacher
+	tools     *media.Tools
+	cardCache *cardcache.CardCache
 
 	// In-memory scan state storage
-	scans utils.CMap[string, *ScanState]
+	scans concurrency.Map[string, *ScanState]
 
 	// addMutex protects the Add operation to prevent race conditions
 	addMutex sync.Mutex
@@ -53,10 +54,10 @@ const (
 // CourseScanConfig is the config for a CourseScan
 type CourseScanConfig struct {
 	Db        database.Database
-	AppFs     *appfs.AppFs
+	FS        *filesystem.FS
 	Logger    *logger.Logger
-	FFmpeg    *media.FFmpeg
-	CardCache cardcache.CardCacher
+	Tools     *media.Tools
+	CardCache *cardcache.CardCache
 }
 
 // ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
@@ -64,13 +65,13 @@ type CourseScanConfig struct {
 // New creates a new CourseScan
 func New(config *CourseScanConfig) *CourseScan {
 	return &CourseScan{
-		appFs:     config.AppFs,
+		fs: config.FS,
 		db:        config.Db,
 		dao:       dao.New(config.Db),
 		logger:    config.Logger,
-		ffmpeg:    config.FFmpeg,
+		tools:     config.Tools,
 		cardCache: config.CardCache,
-		scans:     utils.NewCMap[string, *ScanState](),
+		scans:     concurrency.NewMap[string, *ScanState](),
 	}
 }
 
@@ -257,7 +258,6 @@ func (s *CourseScan) Worker(ctx context.Context, processorFn CourseScanProcessor
 				}
 
 				scanCtx, cancel := context.WithCancel(ctx)
-				defer cancel()
 				existingScan.SetCancel(cancel)
 
 				if finalCheck, stillExists := s.scans.Get(scanState.ID); !stillExists {
@@ -288,6 +288,8 @@ func (s *CourseScan) Worker(ctx context.Context, processorFn CourseScanProcessor
 					Msg("Processing scan job")
 
 				err := processorFn(scanCtx, s, existingScan)
+				cancel()
+
 				if err != nil {
 					if err == context.Canceled || err == context.DeadlineExceeded {
 						s.logger.Info().

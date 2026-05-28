@@ -6,6 +6,7 @@ import (
 	"os"
 	"strings"
 
+	"github.com/geerew/off-course/app"
 	"github.com/geerew/off-course/ui"
 	"github.com/gofiber/fiber/v2"
 	"github.com/gofiber/fiber/v2/middleware/filesystem"
@@ -15,7 +16,7 @@ import (
 // ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
 
 func (r *Router) bindUi() {
-	if !r.app.Config.IsDev {
+	if r.app.Config.AppMode != app.AppModeDev {
 		// Only apply filesystem middleware to non-API routes
 		fsMiddleware := filesystem.New(filesystem.Config{
 			Root: http.FS(ui.Assets()),

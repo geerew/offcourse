@@ -13,11 +13,10 @@ import (
 // ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
 
 func TestExtractKeyframes(t *testing.T) {
-	// Create a test MediaProbe with FFmpeg
-	ffmpeg, err := media.NewFFmpeg()
+	tools, err := media.NewTools()
 	require.NoError(t, err)
 
-	mp := MediaProbe{FFmpeg: ffmpeg}
+	mp := MediaProbe{Tools: tools}
 
 	t.Run("success with sample video", func(t *testing.T) {
 		// Use the existing test video
@@ -57,8 +56,8 @@ func TestExtractKeyframes(t *testing.T) {
 		assert.Contains(t, err.Error(), "failed to probe video")
 	})
 
-	t.Run("nil ffmpeg", func(t *testing.T) {
-		mp := MediaProbe{FFmpeg: nil}
+	t.Run("nil tools", func(t *testing.T) {
+		mp := MediaProbe{Tools: nil}
 
 		keyframes, err := mp.ExtractKeyframesForVideo(context.Background(), "testdata/sample.mp4")
 		require.Error(t, err)

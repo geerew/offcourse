@@ -1,200 +1,107 @@
 package queryparser
 
 import (
+	"errors"
 	"fmt"
 	"strings"
 )
 
 // ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
 
-// astParser parses a slice of Tokens into an AST
-type astParser struct {
-	tokens         []token
-	pos            int
-	allowedFilters map[string]bool
-	FreeText       []string
-	FoundFilters   map[string]bool
+// parser represents a parsed query
+type parser struct {
+	tokens       []token
+	pos          int
+	allowedKeys  map[string]struct{}
+	foundFilters map[string]bool
 }
 
 // ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
 
-// newASTParser creates a new astParser from a slice of tokens
-func newASTParser(tokens []token, allowedFilters []string) *astParser {
-	allowed := make(map[string]bool)
+// newParser creates a new parser with the given tokens and allowed keys
+func newParser(tokens []token, allowedKeys []string) *parser {
+	allowed := make(map[string]struct{})
 	found := make(map[string]bool)
 
-	for _, f := range allowedFilters {
-		allowed[f] = true
-		found[f] = false
+	for _, key := range allowedKeys {
+		if key == "" {
+			continue
+		}
+
+		normalizedKey := strings.ToLower(strings.TrimSpace(key))
+		allowed[normalizedKey] = struct{}{}
+		found[normalizedKey] = false
 	}
 
-	return &astParser{
-		tokens:         tokens,
-		pos:            0,
-		allowedFilters: allowed,
-		FreeText:       []string{},
-		FoundFilters:   found,
+	return &parser{
+		tokens:       tokens,
+		pos:          0,
+		allowedKeys:  allowed,
+		foundFilters: found,
 	}
 }
 
 // ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
 
-// current returns the current token
-func (ap *astParser) current() token {
-	if ap.pos < len(ap.tokens) {
-		return ap.tokens[ap.pos]
+// parseOr parses an OR expression
+func (p *parser) parseOr() (QueryExpr, error) {
+	expr, err := p.parseAnd()
+	if err != nil {
+		return nil, err
 	}
 
-	return token{Text: "", Quoted: false}
-}
+	for p.pos < len(p.tokens) {
+		if p.current().kind != tokOr {
+			break
+		}
 
-// ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
+		p.consume()
 
-// consume returns the current token and advances the position
-func (ap *astParser) consume() token {
-	tok := ap.current()
-	ap.pos++
-	return tok
-}
-
-// ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
-
-// peek returns the next token without consuming it
-func (ap *astParser) peek() token {
-	if ap.pos < len(ap.tokens) {
-		return ap.tokens[ap.pos]
-	}
-
-	return token{Text: "", Quoted: false}
-}
-
-// ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
-
-// parseOperand parses a single operand from the token slice
-//
-//   - If a token is "(" then parse a parenthesized expression
-//   - If a token is "AND" or "OR", swallow it (return nil)
-//   - If a token contains ":" and its key is allowed, it becomes a FilterExpr
-//   - If a token is quoted, trim it; if after trimming it is empty, return nil; otherwise, it
-//     stands alone as a ValueExpr
-//   - For unquoted tokens, combine adjacent unquoted tokens until an operator, a parenthesis,
-//     or a token that is either quoted or a filter token is encountered
-func (ap *astParser) parseOperand() (QueryExpr, error) {
-	if ap.pos >= len(ap.tokens) {
-		return nil, nil
-	}
-
-	if ap.current().Text == "AND" || ap.current().Text == "OR" {
-		ap.consume()
-		return nil, nil
-	}
-	if ap.current().Text == "(" {
-		ap.consume()
-
-		expr, err := ap.parseOr()
+		right, err := p.parseAnd()
 		if err != nil {
 			return nil, err
 		}
 
-		if ap.pos >= len(ap.tokens) || ap.current().Text != ")" {
-			return nil, fmt.Errorf("expected ')'")
-		}
-
-		ap.consume()
-		return expr, nil
-	}
-
-	cur := ap.current()
-
-	if strings.Contains(cur.Text, ":") {
-		parts := strings.SplitN(cur.Text, ":", 2)
-		key := parts[0]
-
-		if ap.allowedFilters[key] {
-			ap.FoundFilters[key] = true
-			ap.consume()
-			val := strings.TrimSpace(parts[1])
-
-			if val == "" {
-				// Check if next token exists and is quoted, then use its value.
-				if ap.pos < len(ap.tokens) && ap.current().Quoted {
-					val = strings.TrimSpace(ap.consume().Text)
-				}
-			}
-
-			if val == "" {
-				return nil, nil
-			}
-
-			return &FilterExpr{Key: key, Value: val}, nil
-		}
-
-		ap.consume()
-		ap.FreeText = append(ap.FreeText, cur.Text)
-		return &ValueExpr{Value: cur.Text}, nil
-	}
-
-	if cur.Quoted {
-		tok := strings.TrimSpace(ap.consume().Text)
-		if tok == "" {
-			return nil, nil
-		}
-
-		ap.FreeText = append(ap.FreeText, tok)
-		return &ValueExpr{Value: tok}, nil
-	}
-
-	var parts []string
-	parts = append(parts, ap.consume().Text)
-	for ap.pos < len(ap.tokens) {
-		next := ap.peek()
-
-		if next.Quoted || next.Text == "(" || next.Text == ")" || next.Text == "AND" || next.Text == "OR" {
-			break
-		}
-
-		if strings.Contains(next.Text, ":") {
-			candidate := strings.SplitN(next.Text, ":", 2)[0]
-			if ap.allowedFilters[candidate] {
-				break
+		if right != nil {
+			if expr == nil {
+				expr = right
+			} else {
+				expr = &OrExpr{Children: []QueryExpr{expr, right}}
 			}
 		}
-
-		parts = append(parts, ap.consume().Text)
 	}
 
-	joined := strings.TrimSpace(strings.Join(parts, " "))
-	if joined == "" {
-		return nil, nil
-	}
-
-	ap.FreeText = append(ap.FreeText, joined)
-	return &ValueExpr{Value: joined}, nil
+	return expr, nil
 }
 
 // ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
 
-// parseAnd parses a series of operands with an implicit AND between them
-func (ap *astParser) parseAnd() (QueryExpr, error) {
+// parseAnd parses an AND expression
+func (p *parser) parseAnd() (QueryExpr, error) {
 	var children []QueryExpr
 
 	for {
-		operand, err := ap.parseOperand()
+		operand, err := p.parseOperand()
 		if err != nil {
 			return nil, err
 		}
+
 		if operand != nil {
 			children = append(children, operand)
 		}
-		if ap.pos >= len(ap.tokens) {
+
+		if p.pos >= len(p.tokens) {
 			break
 		}
-		next := ap.peek()
-		if strings.EqualFold(next.Text, "OR") || next.Text == ")" {
+
+		next := p.current()
+
+		if next.kind == tokOr || next.kind == tokRParen {
 			break
 		}
-		if strings.EqualFold(next.Text, "AND") {
-			ap.consume()
+
+		if next.kind == tokAnd {
+			p.consume()
 		}
 	}
 
@@ -211,33 +118,88 @@ func (ap *astParser) parseAnd() (QueryExpr, error) {
 
 // ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
 
-// parseOr parses a series of And expressions separated by explicit OR
-func (ap *astParser) parseOr() (QueryExpr, error) {
-	expr, err := ap.parseAnd()
-	if err != nil {
-		return nil, err
+// current returns the token at pos, or tokInvalid if past the end.
+func (p *parser) current() token {
+	if p.pos < len(p.tokens) {
+		return p.tokens[p.pos]
 	}
 
-	for ap.pos < len(ap.tokens) {
-		if !strings.EqualFold(ap.peek().Text, "OR") {
-			break
-		}
+	return token{kind: tokInvalid}
+}
 
-		ap.consume()
+// ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
 
-		right, err := ap.parseAnd()
+// consume advances pos and returns the token that was at pos before advancing.
+func (p *parser) consume() token {
+	tok := p.current()
+	p.pos++
+	return tok
+}
+
+// ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
+
+// makeFilter creates a new FilterExpr with the given key and value, if the key is allowed
+func (p *parser) makeFilter(key, val string) (*FilterExpr, error) {
+	key = strings.ToLower(strings.TrimSpace(key))
+	if _, ok := p.allowedKeys[key]; !ok {
+		return nil, errors.Join(ErrInvalidSyntax, fmt.Errorf("%w: %q", ErrUnknownFilterKey, key))
+	}
+
+	val = strings.TrimSpace(val)
+	if val == "" {
+		return nil, errors.Join(ErrInvalidSyntax, fmt.Errorf("%w: for filter %q", ErrEmptyFilterValue, key))
+	}
+
+	p.foundFilters[key] = true
+
+	return &FilterExpr{Key: key, Value: val}, nil
+}
+
+// ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
+
+// parseOperand parses an operand (filter or parentheses)
+func (p *parser) parseOperand() (QueryExpr, error) {
+	if p.pos >= len(p.tokens) {
+		return nil, nil
+	}
+
+	switch p.current().kind {
+	case tokAnd, tokOr:
+		p.consume()
+		return nil, nil
+	case tokLParen:
+		p.consume()
+
+		expr, err := p.parseOr()
 		if err != nil {
 			return nil, err
 		}
 
-		if right != nil {
-			if expr == nil {
-				expr = right
-			} else {
-				expr = &OrExpr{Children: []QueryExpr{expr, right}}
-			}
+		if p.pos >= len(p.tokens) || p.current().kind != tokRParen {
+			return nil, errors.Join(ErrInvalidSyntax, fmt.Errorf("%w", ErrExpectedClosingParen))
 		}
+
+		p.consume()
+		return expr, nil
+	case tokFilter:
+		t := p.consume()
+		return p.makeFilter(t.key, t.value)
+	case tokLiteral:
+		t := p.consume()
+		return nil, errors.Join(ErrInvalidSyntax, fmt.Errorf("%w: got %q", ErrExpectedKeyValue, t.raw))
+	default:
+		t := p.consume()
+		return nil, errors.Join(ErrInvalidSyntax, fmt.Errorf("%w: unexpected token %q", ErrTrailingInput, t.String()))
+	}
+}
+
+// ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
+
+// assertFullyConsumed checks if the parser has consumed all tokens
+func (p *parser) assertFullyConsumed() error {
+	if p.pos >= len(p.tokens) {
+		return nil
 	}
 
-	return expr, nil
+	return errors.Join(ErrInvalidSyntax, fmt.Errorf("%w: unexpected token %q", ErrTrailingInput, p.tokens[p.pos].String()))
 }

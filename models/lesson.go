@@ -43,15 +43,15 @@ type Lesson struct {
 
 // ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
 
-// LessonColumns returns the list of columns to use when populating `Lesson`
+// LessonColumns returns the columns for use in a SELECT query
 func LessonColumns() []string {
 	return []string{
-		fmt.Sprintf("%s AS id", LESSON_TABLE_ID),
-		fmt.Sprintf("%s AS created_at", LESSON_TABLE_CREATED_AT),
-		fmt.Sprintf("%s AS updated_at", LESSON_TABLE_UPDATED_AT),
-		fmt.Sprintf("%s AS course_id", LESSON_TABLE_COURSE_ID),
-		fmt.Sprintf("%s AS title", LESSON_TABLE_TITLE),
-		fmt.Sprintf("%s AS prefix", LESSON_TABLE_PREFIX),
-		fmt.Sprintf("%s AS module", LESSON_TABLE_MODULE),
+		fmt.Sprintf("%s AS %s", LESSON_TABLE_ID, BASE_ID),
+		fmt.Sprintf("%s AS %s", LESSON_TABLE_CREATED_AT, BASE_CREATED_AT),
+		fmt.Sprintf("%s AS %s", LESSON_TABLE_UPDATED_AT, BASE_UPDATED_AT),
+		fmt.Sprintf("%s AS %s", LESSON_TABLE_COURSE_ID, LESSON_COURSE_ID),
+		fmt.Sprintf("%s AS %s", LESSON_TABLE_TITLE, LESSON_TITLE),
+		fmt.Sprintf("%s AS %s", LESSON_TABLE_PREFIX, LESSON_PREFIX),
+		fmt.Sprintf("%s AS %s", LESSON_TABLE_MODULE, LESSON_MODULE),
 	}
 }

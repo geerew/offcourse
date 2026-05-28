@@ -2,11 +2,20 @@ package dao
 
 import (
 	"context"
+	"fmt"
 
 	"github.com/Masterminds/squirrel"
-	"github.com/geerew/off-course/database"
 	"github.com/geerew/off-course/models"
 	"github.com/geerew/off-course/utils"
+	"github.com/geerew/off-course/utils/queryparser"
+)
+
+// ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
+
+var (
+	LogListApiAllowedFilters = []string{"message", "level", "type", "component"}
+
+	defaultLogsListOrderBy = []string{models.LOG_TABLE_CREATED_AT + " desc", "rowid desc"}
 )
 
 // ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
@@ -61,6 +70,12 @@ func (dao *DAO) GetLog(ctx context.Context, dbOpts *Options) (*models.Log, error
 // ListLogs gets all records from the logs table based upon the where clause and pagination
 // in the options
 func (dao *DAO) ListLogs(ctx context.Context, dbOpts *Options) ([]*models.Log, error) {
+	if err := parseLogApiQuery(dbOpts); err != nil {
+		return nil, err
+	}
+
+	applyDefaultOrderBy(dbOpts, defaultLogsListOrderBy)
+
 	builderOpts := newBuilderOptions(models.LOG_TABLE).
 		WithColumns(models.LogColumns()...).
 		SetDbOpts(dbOpts)
@@ -76,7 +91,6 @@ func (dao *DAO) CreateLogsBatch(ctx context.Context, logs []*models.Log) error {
 		return nil
 	}
 
-	// Validate and prepare logs
 	for _, log := range logs {
 		if log == nil {
 			return utils.ErrNilPtr
@@ -124,7 +138,65 @@ func (dao *DAO) CreateLogsBatch(ctx context.Context, logs []*models.Log) error {
 		return err
 	}
 
-	q := database.QuerierFromContext(ctx, dao.db)
-	_, err = q.ExecContext(ctx, sqlStr, args...)
+	_, err = dao.db.ExecContext(ctx, sqlStr, args...)
 	return err
+}
+
+// ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
+
+// parseLogApiQuery parses dbOpts.ApiQuery and sets a WHERE clause
+func parseLogApiQuery(dbOpts *Options) error {
+	if dbOpts == nil || dbOpts.ApiQuery == "" {
+		return nil
+	}
+
+	parsed, err := queryparser.Parse(dbOpts.ApiQuery, LogListApiAllowedFilters)
+	if err != nil {
+		return fmt.Errorf("%w: %w", utils.ErrApiQueryParse, err)
+	}
+
+	if parsed == nil {
+		return nil
+	}
+
+	dbOpts.WithWhere(logWhereBuilder(parsed.Expr))
+
+	return nil
+}
+
+// ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
+
+// logWhereBuilder builds a squirrel WHERE expression from a queryparser.QueryExpr
+func logWhereBuilder(expr queryparser.QueryExpr) squirrel.Sqlizer {
+	switch node := expr.(type) {
+	case *queryparser.FilterExpr:
+		switch node.Key {
+		case "message":
+			return squirrel.Like{models.LOG_TABLE_MESSAGE: "%" + node.Value + "%"}
+		case "level":
+			return squirrel.Eq{models.LOG_TABLE_LEVEL: node.Value}
+		case "type":
+			return squirrel.Eq{"JSON_EXTRACT(" + models.LOG_TABLE_DATA + ", '$.type')": node.Value}
+		case "component":
+			return squirrel.Eq{"JSON_EXTRACT(" + models.LOG_TABLE_DATA + ", '$.component')": node.Value}
+		default:
+			return nil
+		}
+	case *queryparser.AndExpr:
+		var andSlice []squirrel.Sqlizer
+		for _, child := range node.Children {
+			andSlice = append(andSlice, logWhereBuilder(child))
+		}
+
+		return squirrel.And(andSlice)
+	case *queryparser.OrExpr:
+		var orSlice []squirrel.Sqlizer
+		for _, child := range node.Children {
+			orSlice = append(orSlice, logWhereBuilder(child))
+		}
+
+		return squirrel.Or(orSlice)
+	default:
+		return nil
+	}
 }

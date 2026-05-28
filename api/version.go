@@ -1,7 +1,7 @@
 package api
 
 import (
-	"github.com/geerew/off-course/cron"
+	"github.com/geerew/off-course/app"
 	"github.com/geerew/off-course/version"
 	"github.com/gofiber/fiber/v2"
 )
@@ -31,7 +31,7 @@ func (r *Router) initVersionRoutes() {
 func (api *versionAPI) getVersion(c *fiber.Ctx) error {
 	// If running in dev mode, always return "dev" regardless of build version
 	var currentVersion string
-	if api.r.app.Config.IsDev {
+	if api.r.app.Config.AppMode == app.AppModeDev {
 		currentVersion = "dev"
 	} else {
 		currentVersion = version.GetVersion()
@@ -43,8 +43,8 @@ func (api *versionAPI) getVersion(c *fiber.Ctx) error {
 
 	// Add latest release if available and different from current version
 	// Only show latest release if not in dev mode
-	if !api.r.app.Config.IsDev && cron.ReleaseChecker != nil {
-		latestRelease := cron.ReleaseChecker.GetLatestRelease()
+	if api.r.app.Config.AppMode != app.AppModeDev && api.r.app.Cron != nil && api.r.app.Cron.ReleaseChecker != nil {
+		latestRelease := api.r.app.Cron.ReleaseChecker.GetLatestRelease()
 		if latestRelease != "" && latestRelease != currentVersion {
 			response["latestRelease"] = latestRelease
 		}

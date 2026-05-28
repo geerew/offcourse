@@ -3,10 +3,13 @@ package types
 import (
 	"database/sql/driver"
 	"testing"
+
+	"github.com/stretchr/testify/require"
 )
 
 // ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
 
+// Test successfully marshalling a JsonMap to JSON
 func TestJsonMap_MarshalJSON(t *testing.T) {
 	scenarios := []struct {
 		json     JsonMap
@@ -20,18 +23,14 @@ func TestJsonMap_MarshalJSON(t *testing.T) {
 
 	for i, s := range scenarios {
 		result, err := s.json.MarshalJSON()
-		if err != nil {
-			t.Errorf("(%d) %v", i, err)
-			continue
-		}
-		if string(result) != s.expected {
-			t.Errorf("(%d) Expected %s, got %s", i, s.expected, string(result))
-		}
+		require.NoError(t, err)
+		require.Equal(t, s.expected, string(result), "(%d) Expected %s, got %s", i, s.expected, string(result))
 	}
 }
 
 // ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
 
+// Test successfully getting the value of a JsonMap
 func TestJsonMap_Value(t *testing.T) {
 	scenarios := []struct {
 		json     JsonMap
@@ -45,52 +44,51 @@ func TestJsonMap_Value(t *testing.T) {
 
 	for i, s := range scenarios {
 		result, err := s.json.Value()
-		if err != nil {
-			t.Errorf("(%d) %v", i, err)
-			continue
-		}
-		if result != s.expected {
-			t.Errorf("(%d) Expected %s, got %v", i, s.expected, result)
-		}
+		require.NoError(t, err)
+		require.Equal(t, s.expected, result, "(%d) Expected %s, got %s", i, s.expected, result)
 	}
 }
 
 // ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
 
 func TestJsonMap_Scan(t *testing.T) {
-	scenarios := []struct {
-		value       any
-		expectError bool
-		expectJson  string
-	}{
-		{``, false, `{}`},
-		{nil, false, `{}`},
-		{[]byte{}, false, `{}`},
-		{`{}`, false, `{}`},
-		{123, true, `{}`},
-		{`""`, true, `{}`},
-		{`invalid_json`, true, `{}`},
-		{`"test"`, true, `{}`},
-		{`1,2,3`, true, `{}`},
-		{`{"test": 1`, true, `{}`},
-		{`{"test": 1}`, false, `{"test":1}`},
-		{[]byte(`{"test": 1}`), false, `{"test":1}`},
-	}
-
-	for i, s := range scenarios {
-		arr := JsonMap{}
-		scanErr := arr.Scan(s.value)
-
-		hasErr := scanErr != nil
-		if hasErr != s.expectError {
-			t.Errorf("(%d) Expected %v, got %v (%v)", i, s.expectError, hasErr, scanErr)
-			continue
+	t.Run("success", func(t *testing.T) {
+		scenarios := []struct {
+			value    any
+			expected string
+		}{
+			{``, `{}`},
+			{nil, `{}`},
+			{[]byte{}, `{}`},
+			{`{}`, `{}`},
+			{`{"test": 1}`, `{"test":1}`},
+			{[]byte(`{"test": 1}`), `{"test":1}`},
 		}
 
-		result, _ := arr.MarshalJSON()
+		for i, s := range scenarios {
+			jsonMap := JsonMap{}
 
-		if string(result) != s.expectJson {
-			t.Errorf("(%d) Expected %s, got %v", i, s.expectJson, string(result))
+			err := jsonMap.Scan(s.value)
+			require.NoError(t, err, "(%d) Expected no error, got %v", i, err)
+			require.Equal(t, s.expected, jsonMap.String(), "(%d) Expected %s, got %s", i, s.expected, jsonMap.String())
+
 		}
-	}
+	})
+
+	t.Run("error", func(t *testing.T) {
+		scenarios := []any{
+			123,
+			`""`,
+			`invalid_json`,
+			`"test"`,
+			`1,2,3`,
+			`{"test": 1`,
+		}
+
+		for i, s := range scenarios {
+			jsonMap := JsonMap{}
+			err := jsonMap.Scan(s)
+			require.Error(t, err, "(%d) Expected error, got %v", i, err)
+		}
+	})
 }

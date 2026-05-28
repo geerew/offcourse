@@ -14,6 +14,9 @@ import (
 
 // ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
 
+// releaseChecker represents the release checker
+//
+// Once created, call rc.run() to check for the latest release
 type releaseChecker struct {
 	logger        *logger.Logger
 	latestRelease string
@@ -23,7 +26,7 @@ type releaseChecker struct {
 
 // ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
 
-// GitHub API response structure
+// githubRelease represents the GitHub response
 type githubRelease struct {
 	TagName string `json:"tag_name"`
 	Name    string `json:"name"`
@@ -31,7 +34,7 @@ type githubRelease struct {
 
 // ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
 
-// GetLatestRelease returns the latest release version (thread-safe)
+// GetLatestRelease returns the latest release version
 func (rc *releaseChecker) GetLatestRelease() string {
 	rc.mu.RLock()
 	defer rc.mu.RUnlock()
@@ -45,16 +48,12 @@ func (rc *releaseChecker) run() error {
 	ctx, cancel := context.WithTimeout(context.Background(), 10*time.Second)
 	defer cancel()
 
-	// GitHub API endpoint for latest release
-	url := "https://api.github.com/repos/geerew/offcourse/releases/latest"
-
-	req, err := http.NewRequestWithContext(ctx, "GET", url, nil)
+	req, err := http.NewRequestWithContext(ctx, "GET", "https://api.github.com/repos/geerew/offcourse/releases/latest", nil)
 	if err != nil {
 		rc.logger.Error().Err(err).Msg("Failed to create release check request")
 		return err
 	}
 
-	// Set headers for GitHub API
 	req.Header.Set("Accept", "application/vnd.github.v3+json")
 	req.Header.Set("User-Agent", "offcourse-release-checker")
 
@@ -78,7 +77,6 @@ func (rc *releaseChecker) run() error {
 		return err
 	}
 
-	// Update latest release (thread-safe)
 	rc.mu.Lock()
 	oldRelease := rc.latestRelease
 	rc.latestRelease = release.TagName

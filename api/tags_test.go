@@ -11,6 +11,7 @@ import (
 	"testing"
 	"time"
 
+	"github.com/geerew/off-course/dao"
 	"github.com/geerew/off-course/models"
 	"github.com/geerew/off-course/utils/coursemetadata"
 	"github.com/geerew/off-course/utils/pagination"
@@ -75,8 +76,8 @@ func TestTags_GetTags(t *testing.T) {
 		}
 
 		// CREATED_AT ASC
-		q := "sort:\"" + models.TAG_TABLE_CREATED_AT + " asc\""
-		status, body, err := requestHelper(t, router, httptest.NewRequest(http.MethodGet, "/api/tags/?q="+url.QueryEscape(q), nil))
+		sortAsc := models.TAG_TABLE_CREATED_AT + " asc"
+		status, body, err := requestHelper(t, router, httptest.NewRequest(http.MethodGet, "/api/tags/?orderBy="+url.QueryEscape(sortAsc), nil))
 		require.NoError(t, err)
 		require.Equal(t, http.StatusOK, status)
 
@@ -87,8 +88,8 @@ func TestTags_GetTags(t *testing.T) {
 		require.Equal(t, "PHP", tagsResp[4].Tag)
 
 		// CREATED_AT DESC
-		q = "sort:\"" + models.TAG_TABLE_CREATED_AT + " desc\""
-		status, body, err = requestHelper(t, router, httptest.NewRequest(http.MethodGet, "/api/tags/?q="+url.QueryEscape(q), nil))
+		sortDesc := models.TAG_TABLE_CREATED_AT + " desc"
+		status, body, err = requestHelper(t, router, httptest.NewRequest(http.MethodGet, "/api/tags/?orderBy="+url.QueryEscape(sortDesc), nil))
 		require.NoError(t, err)
 		require.Equal(t, http.StatusOK, status)
 
@@ -110,8 +111,8 @@ func TestTags_GetTags(t *testing.T) {
 		}
 
 		// Filter `invalid`
-		q := "invalid sort:special"
-		status, body, err := requestHelper(t, router, httptest.NewRequest(http.MethodGet, "/api/tags/?q="+url.QueryEscape(q), nil))
+		specialFilter := url.Values{"q": {"tag:invalid"}, "orderBy": {"special"}}
+		status, body, err := requestHelper(t, router, httptest.NewRequest(http.MethodGet, "/api/tags/?"+specialFilter.Encode(), nil))
 		require.NoError(t, err)
 		require.Equal(t, http.StatusOK, status)
 
@@ -120,8 +121,8 @@ func TestTags_GetTags(t *testing.T) {
 		require.Zero(t, tagsResp)
 
 		// Filter by `li`
-		q = "li sort:special"
-		status, body, err = requestHelper(t, router, httptest.NewRequest(http.MethodGet, "/api/tags/?q="+url.QueryEscape(q), nil))
+		specialFilter = url.Values{"q": {"tag:li"}, "orderBy": {"special"}}
+		status, body, err = requestHelper(t, router, httptest.NewRequest(http.MethodGet, "/api/tags/?"+specialFilter.Encode(), nil))
 		require.NoError(t, err)
 		require.Equal(t, http.StatusOK, status)
 
@@ -136,8 +137,8 @@ func TestTags_GetTags(t *testing.T) {
 		require.Equal(t, "slightly", tagsResp[5].Tag)
 
 		// Filter by `gh`
-		q = "gh sort:special"
-		status, body, err = requestHelper(t, router, httptest.NewRequest(http.MethodGet, "/api/tags/?q="+url.QueryEscape(q), nil))
+		specialFilter = url.Values{"q": {"tag:gh"}, "orderBy": {"special"}}
+		status, body, err = requestHelper(t, router, httptest.NewRequest(http.MethodGet, "/api/tags/?"+specialFilter.Encode(), nil))
 		require.NoError(t, err)
 		require.Equal(t, http.StatusOK, status)
 
@@ -153,8 +154,8 @@ func TestTags_GetTags(t *testing.T) {
 		require.Equal(t, "slightly", tagsResp[6].Tag)
 
 		// Filter by `slight`
-		q = "slight sort:special"
-		status, body, err = requestHelper(t, router, httptest.NewRequest(http.MethodGet, "/api/tags/?q="+url.QueryEscape(q), nil))
+		specialFilter = url.Values{"q": {"tag:slight"}, "orderBy": {"special"}}
+		status, body, err = requestHelper(t, router, httptest.NewRequest(http.MethodGet, "/api/tags/?"+specialFilter.Encode(), nil))
 		require.NoError(t, err)
 		require.Equal(t, http.StatusOK, status)
 
@@ -167,8 +168,8 @@ func TestTags_GetTags(t *testing.T) {
 		tag := &models.Tag{Tag: "Slight"}
 		require.Nil(t, router.appDao.CreateTag(ctx, tag))
 
-		q = "SLigHt sort:special"
-		status, body, err = requestHelper(t, router, httptest.NewRequest(http.MethodGet, "/api/tags/?q="+url.QueryEscape(q), nil))
+		specialFilter = url.Values{"q": {"tag:SLigHt"}, "orderBy": {"special"}}
+		status, body, err = requestHelper(t, router, httptest.NewRequest(http.MethodGet, "/api/tags/?"+specialFilter.Encode(), nil))
 		require.NoError(t, err)
 		require.Equal(t, http.StatusOK, status)
 
@@ -191,7 +192,7 @@ func TestTags_GetTags(t *testing.T) {
 
 		// Get the first page (10 tags)
 		params := url.Values{
-			"q":                          {"sort:\"" + models.TAG_TABLE_TAG + " asc\""},
+			"orderBy":                    {models.TAG_TABLE_TAG + " asc"},
 			pagination.PageQueryParam:    {"1"},
 			pagination.PerPageQueryParam: {"10"},
 		}
@@ -208,7 +209,7 @@ func TestTags_GetTags(t *testing.T) {
 
 		// Get the second page (7 tags)
 		params = url.Values{
-			"q":                          {"sort:\"" + models.TAG_TABLE_TAG + " asc\""},
+			"orderBy":                    {models.TAG_TABLE_TAG + " asc"},
 			pagination.PageQueryParam:    {"2"},
 			pagination.PerPageQueryParam: {"10"},
 		}
@@ -278,8 +279,8 @@ func TestTags_GetTagNames(t *testing.T) {
 		}
 
 		// CREATED_AT ASC
-		q := "sort:\"" + models.TAG_TABLE_CREATED_AT + " asc\""
-		status, body, err := requestHelper(t, router, httptest.NewRequest(http.MethodGet, "/api/tags/names?q="+url.QueryEscape(q), nil))
+		sortAsc := models.TAG_TABLE_CREATED_AT + " asc"
+		status, body, err := requestHelper(t, router, httptest.NewRequest(http.MethodGet, "/api/tags/names?orderBy="+url.QueryEscape(sortAsc), nil))
 		require.NoError(t, err)
 		require.Equal(t, http.StatusOK, status)
 
@@ -290,8 +291,8 @@ func TestTags_GetTagNames(t *testing.T) {
 		require.Equal(t, "PHP", resp[4])
 
 		// CREATED_AT DESC
-		q = "sort:\"" + models.TAG_TABLE_CREATED_AT + " desc\""
-		status, body, err = requestHelper(t, router, httptest.NewRequest(http.MethodGet, "/api/tags/names?q="+url.QueryEscape(q), nil))
+		sortDesc := models.TAG_TABLE_CREATED_AT + " desc"
+		status, body, err = requestHelper(t, router, httptest.NewRequest(http.MethodGet, "/api/tags/names?orderBy="+url.QueryEscape(sortDesc), nil))
 		require.NoError(t, err)
 		require.Equal(t, http.StatusOK, status)
 
@@ -312,8 +313,8 @@ func TestTags_GetTagNames(t *testing.T) {
 		}
 
 		// Filter `invalid`
-		q := "invalid sort:special"
-		status, body, err := requestHelper(t, router, httptest.NewRequest(http.MethodGet, "/api/tags/names?q="+url.QueryEscape(q), nil))
+		specialFilter := url.Values{"q": {"tag:invalid"}, "orderBy": {"special"}}
+		status, body, err := requestHelper(t, router, httptest.NewRequest(http.MethodGet, "/api/tags/names?"+specialFilter.Encode(), nil))
 		require.NoError(t, err)
 		require.Equal(t, http.StatusOK, status)
 
@@ -322,8 +323,8 @@ func TestTags_GetTagNames(t *testing.T) {
 		require.Empty(t, resp)
 
 		// Filter by `li`
-		q = "li sort:special"
-		status, body, err = requestHelper(t, router, httptest.NewRequest(http.MethodGet, "/api/tags/names?q="+url.QueryEscape(q), nil))
+		specialFilter = url.Values{"q": {"tag:li"}, "orderBy": {"special"}}
+		status, body, err = requestHelper(t, router, httptest.NewRequest(http.MethodGet, "/api/tags/names?"+specialFilter.Encode(), nil))
 		require.NoError(t, err)
 		require.Equal(t, http.StatusOK, status)
 
@@ -337,8 +338,8 @@ func TestTags_GetTagNames(t *testing.T) {
 		require.Equal(t, "slightly", resp[5])
 
 		// Filter by `gh`
-		q = "gh sort:special"
-		status, body, err = requestHelper(t, router, httptest.NewRequest(http.MethodGet, "/api/tags/names?q="+url.QueryEscape(q), nil))
+		specialFilter = url.Values{"q": {"tag:gh"}, "orderBy": {"special"}}
+		status, body, err = requestHelper(t, router, httptest.NewRequest(http.MethodGet, "/api/tags/names?"+specialFilter.Encode(), nil))
 		require.NoError(t, err)
 		require.Equal(t, http.StatusOK, status)
 
@@ -353,8 +354,8 @@ func TestTags_GetTagNames(t *testing.T) {
 		require.Equal(t, "slightly", resp[6])
 
 		// Filter by `slight`
-		q = "slight sort:special"
-		status, body, err = requestHelper(t, router, httptest.NewRequest(http.MethodGet, "/api/tags/names?q="+url.QueryEscape(q), nil))
+		specialFilter = url.Values{"q": {"tag:slight"}, "orderBy": {"special"}}
+		status, body, err = requestHelper(t, router, httptest.NewRequest(http.MethodGet, "/api/tags/names?"+specialFilter.Encode(), nil))
 		require.NoError(t, err)
 		require.Equal(t, http.StatusOK, status)
 
@@ -366,8 +367,8 @@ func TestTags_GetTagNames(t *testing.T) {
 		tag := &models.Tag{Tag: "Slight"}
 		require.Nil(t, router.appDao.CreateTag(ctx, tag))
 
-		q = "SLigHt sort:special"
-		status, body, err = requestHelper(t, router, httptest.NewRequest(http.MethodGet, "/api/tags/names?q="+url.QueryEscape(q), nil))
+		specialFilter = url.Values{"q": {"tag:SLigHt"}, "orderBy": {"special"}}
+		status, body, err = requestHelper(t, router, httptest.NewRequest(http.MethodGet, "/api/tags/names?"+specialFilter.Encode(), nil))
 		require.NoError(t, err)
 		require.Equal(t, http.StatusOK, status)
 
@@ -659,9 +660,10 @@ func TestTags_DeleteTag(t *testing.T) {
 		require.NoError(t, err)
 		require.Equal(t, http.StatusNoContent, status)
 
-		count, err := router.appDao.CountTags(ctx, nil)
+		records, err := router.appDao.ListTags(ctx, nil)
 		require.NoError(t, err)
-		require.Equal(t, 1, count)
+		require.Len(t, records, 1)
+		require.Equal(t, tag2.ID, records[0].ID)
 	})
 
 	t.Run("204 (not found)", func(t *testing.T) {
@@ -689,11 +691,11 @@ func TestTags_DeleteTag(t *testing.T) {
 		// Create courses
 		course1 := &models.Course{Title: "Course 1", Path: "/course-1"}
 		require.NoError(t, router.appDao.CreateCourse(ctx, course1))
-		require.NoError(t, router.app.AppFs.Fs.MkdirAll(course1.Path, 0755))
+		require.NoError(t, router.app.FS.MkdirAll(course1.Path, 0755))
 
 		course2 := &models.Course{Title: "Course 2", Path: "/course-2"}
 		require.NoError(t, router.appDao.CreateCourse(ctx, course2))
-		require.NoError(t, router.app.AppFs.Fs.MkdirAll(course2.Path, 0755))
+		require.NoError(t, router.app.FS.MkdirAll(course2.Path, 0755))
 
 		// Create tags
 		tag1 := &models.Tag{Tag: "Go"}
@@ -728,20 +730,23 @@ func TestTags_DeleteTag(t *testing.T) {
 
 		// Verify oc.json files were updated
 		// Course 1 should only have PHP now
-		metadata1, err := coursemetadata.ReadMetadata(router.app.AppFs.Fs, course1.Path)
+		metadata1, err := coursemetadata.ReadMetadata(router.app.FS, course1.Path)
 		require.NoError(t, err)
 		require.NotNil(t, metadata1)
 		require.Equal(t, []string{"PHP"}, metadata1.Tags)
 
 		// Course 2 should only have Python now
-		metadata2, err := coursemetadata.ReadMetadata(router.app.AppFs.Fs, course2.Path)
+		metadata2, err := coursemetadata.ReadMetadata(router.app.FS, course2.Path)
 		require.NoError(t, err)
 		require.NotNil(t, metadata2)
 		require.Equal(t, []string{"Python"}, metadata2.Tags)
 
 		// Verify tag was deleted from DB
-		count, err := router.appDao.CountTags(ctx, nil)
+		dbOpts := dao.NewOptions().WithOrderBy(models.TAG_TABLE_TAG + " ASC")
+		records, err := router.appDao.ListTags(ctx, dbOpts)
 		require.NoError(t, err)
-		require.Equal(t, 2, count) // Only PHP and Python remain
+		require.Len(t, records, 2) // Only PHP and Python remain
+		require.Equal(t, tag2.ID, records[0].ID)
+		require.Equal(t, tag3.ID, records[1].ID)
 	})
 }

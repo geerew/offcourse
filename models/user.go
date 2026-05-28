@@ -39,15 +39,15 @@ type User struct {
 
 // ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
 
-// UserColumns returns the list of columns to use when populating `User`
+// UserColumns returns the columns for use in a SELECT query
 func UserColumns() []string {
 	return []string{
-		fmt.Sprintf("%s AS id", USER_TABLE_ID),
-		fmt.Sprintf("%s AS created_at", USER_TABLE_CREATED_AT),
-		fmt.Sprintf("%s AS updated_at", USER_TABLE_UPDATED_AT),
-		fmt.Sprintf("%s AS username", USER_TABLE_USERNAME),
-		fmt.Sprintf("%s AS display_name", USER_TABLE_DISPLAY_NAME),
-		fmt.Sprintf("%s AS password_hash", USER_TABLE_PASSWORD_HASH),
-		fmt.Sprintf("%s AS role", USER_TABLE_ROLE),
+		fmt.Sprintf("%s AS %s", USER_TABLE_ID, BASE_ID),
+		fmt.Sprintf("%s AS %s", USER_TABLE_CREATED_AT, BASE_CREATED_AT),
+		fmt.Sprintf("%s AS %s", USER_TABLE_UPDATED_AT, BASE_UPDATED_AT),
+		fmt.Sprintf("%s AS %s", USER_TABLE_USERNAME, USER_USERNAME),
+		fmt.Sprintf("%s AS %s", USER_TABLE_DISPLAY_NAME, USER_DISPLAY_NAME),
+		fmt.Sprintf("%s AS %s", USER_TABLE_PASSWORD_HASH, USER_PASSWORD_HASH),
+		fmt.Sprintf("%s AS %s", USER_TABLE_ROLE, USER_ROLE),
 	}
 }

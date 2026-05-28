@@ -3,11 +3,13 @@ package dao
 import (
 	"context"
 
-	"github.com/Masterminds/squirrel"
-	"github.com/geerew/off-course/database"
 	"github.com/geerew/off-course/models"
 	"github.com/geerew/off-course/utils"
 )
+
+// ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
+
+var defaultAttachmentsListOrderBy = []string{models.ATTACHMENT_TABLE_TITLE + " asc"}
 
 // ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
 
@@ -19,6 +21,14 @@ func (dao *DAO) CreateAttachment(ctx context.Context, attachment *models.Attachm
 
 	if attachment.ID == "" {
 		attachment.RefreshId()
+	}
+
+	if attachment.CourseID == "" {
+		return utils.ErrCourseId
+	}
+
+	if attachment.LessonID == "" {
+		return utils.ErrLessonId
 	}
 
 	if attachment.Title == "" {
@@ -36,6 +46,7 @@ func (dao *DAO) CreateAttachment(ctx context.Context, attachment *models.Attachm
 		WithData(
 			map[string]interface{}{
 				models.BASE_ID:              attachment.ID,
+				models.ATTACHMENT_COURSE_ID: attachment.CourseID,
 				models.ATTACHMENT_LESSON_ID: attachment.LessonID,
 				models.ATTACHMENT_TITLE:     attachment.Title,
 				models.ATTACHMENT_PATH:      attachment.Path,
@@ -57,20 +68,6 @@ func (dao *DAO) GetAttachment(ctx context.Context, dbOpts *Options) (*models.Att
 		SetDbOpts(dbOpts).
 		WithLimit(1)
 
-	// Add lesson and course joins if enabled
-	if dbOpts != nil {
-		if dbOpts.IncludeLesson {
-			builderOpts = builderOpts.
-				WithJoin(models.LESSON_TABLE, models.ATTACHMENT_TABLE_LESSON_ID+" = "+models.LESSON_TABLE_ID)
-
-			// If course is also enabled, join course through lesson
-			if dbOpts.IncludeCourse {
-				builderOpts = builderOpts.
-					WithJoin(models.COURSE_TABLE, models.LESSON_TABLE_COURSE_ID+" = "+models.COURSE_TABLE_ID)
-			}
-		}
-	}
-
 	return getGeneric[models.Attachment](ctx, dao, *builderOpts)
 }
 
@@ -79,63 +76,13 @@ func (dao *DAO) GetAttachment(ctx context.Context, dbOpts *Options) (*models.Att
 // ListAttachments gets all records from the attachments table based upon the where clause and pagination
 // in the options
 func (dao *DAO) ListAttachments(ctx context.Context, dbOpts *Options) ([]*models.Attachment, error) {
+	applyDefaultOrderBy(dbOpts, defaultAttachmentsListOrderBy)
+
 	builderOpts := newBuilderOptions(models.ATTACHMENT_TABLE).
 		WithColumns(models.AttachmentColumns()...).
 		SetDbOpts(dbOpts)
 
-	// Add lesson and course joins if enabled
-	if dbOpts != nil {
-		if dbOpts.IncludeLesson {
-			builderOpts = builderOpts.
-				WithJoin(models.LESSON_TABLE, models.ATTACHMENT_TABLE_LESSON_ID+" = "+models.LESSON_TABLE_ID)
-
-			// If course is also enabled, join course through lesson
-			if dbOpts.IncludeCourse {
-				builderOpts = builderOpts.
-					WithJoin(models.COURSE_TABLE, models.LESSON_TABLE_COURSE_ID+" = "+models.COURSE_TABLE_ID)
-			}
-		}
-	}
-
 	return listGeneric[models.Attachment](ctx, dao, *builderOpts)
-}
-
-// ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
-
-// UpdateAttachment updates an attachment record
-func (dao *DAO) UpdateAttachment(ctx context.Context, attachment *models.Attachment) error {
-	if attachment == nil {
-		return utils.ErrNilPtr
-	}
-
-	if attachment.ID == "" {
-		return utils.ErrId
-	}
-
-	if attachment.Title == "" {
-		return utils.ErrTitle
-	}
-
-	if attachment.Path == "" {
-		return utils.ErrPath
-	}
-
-	attachment.RefreshUpdatedAt()
-
-	dbOpts := NewOptions().WithWhere(squirrel.Eq{models.BASE_ID: attachment.ID})
-
-	builderOpts := newBuilderOptions(models.ATTACHMENT_TABLE).
-		WithData(
-			map[string]interface{}{
-				models.ATTACHMENT_TITLE: attachment.Title,
-				models.ATTACHMENT_PATH:  attachment.Path,
-				models.BASE_UPDATED_AT:  attachment.UpdatedAt,
-			},
-		).
-		SetDbOpts(dbOpts)
-
-	_, err := updateGeneric(ctx, dao, *builderOpts)
-	return err
 }
 
 // ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
@@ -151,7 +98,6 @@ func (dao *DAO) DeleteAttachments(ctx context.Context, dbOpts *Options) error {
 	builderOpts := newBuilderOptions(models.ATTACHMENT_TABLE).SetDbOpts(dbOpts)
 	sqlStr, args, _ := deleteBuilder(*builderOpts)
 
-	q := database.QuerierFromContext(ctx, dao.db)
-	_, err := q.ExecContext(ctx, sqlStr, args...)
+	_, err := dao.db.ExecContext(ctx, sqlStr, args...)
 	return err
 }

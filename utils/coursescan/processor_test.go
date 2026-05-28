@@ -66,7 +66,7 @@ func TestScanner_Processor(t *testing.T) {
 		scanState, err := scanner.Add(ctx, course.ID)
 		require.NoError(t, err)
 
-		scanner.appFs.Fs.Mkdir(course.Path, os.ModePerm)
+		scanner.fs.Mkdir(course.Path, os.ModePerm)
 
 		err = Processor(ctx, scanner, scanState)
 		require.NoError(t, err)
@@ -90,8 +90,8 @@ func TestScanner_Processor(t *testing.T) {
 
 		// Add card at the root
 		{
-			scanner.appFs.Fs.Mkdir(course.Path, os.ModePerm)
-			scanner.appFs.Fs.Create(filepath.Join(course.Path, "card.jpg"))
+			scanner.fs.Mkdir(course.Path, os.ModePerm)
+			scanner.fs.Create(filepath.Join(course.Path, "card.jpg"))
 
 			err := Processor(ctx, scanner, scanState)
 			require.NoError(t, err)
@@ -103,8 +103,8 @@ func TestScanner_Processor(t *testing.T) {
 
 		// Ignore card in chapter
 		{
-			scanner.appFs.Fs.Remove(filepath.Join(course.Path, "card.jpg"))
-			scanner.appFs.Fs.Create(filepath.Join(course.Path, "01 Chapter 1", "card.jpg"))
+			scanner.fs.Remove(filepath.Join(course.Path, "card.jpg"))
+			scanner.fs.Create(filepath.Join(course.Path, "01 Chapter 1", "card.jpg"))
 
 			err := Processor(ctx, scanner, scanState)
 			require.NoError(t, err)
@@ -116,8 +116,8 @@ func TestScanner_Processor(t *testing.T) {
 
 		// Ignore additional cards at the root
 		{
-			scanner.appFs.Fs.Create(filepath.Join(course.Path, "card.jpg"))
-			scanner.appFs.Fs.Create(filepath.Join(course.Path, "card.png"))
+			scanner.fs.Create(filepath.Join(course.Path, "card.jpg"))
+			scanner.fs.Create(filepath.Join(course.Path, "card.png"))
 
 			err := Processor(ctx, scanner, scanState)
 			require.NoError(t, err)
@@ -126,6 +126,35 @@ func TestScanner_Processor(t *testing.T) {
 			require.NoError(t, err)
 			require.Equal(t, filepath.Join(course.Path, "card.jpg"), record.CardPath)
 		}
+	})
+
+	t.Run("re-optimizes card when content changes", func(t *testing.T) {
+		scanner, ctx := setup(t)
+
+		course := &models.Course{Title: "Course 1", Path: "/course-1"}
+		require.NoError(t, scanner.dao.CreateCourse(ctx, course))
+
+		cardPath := filepath.Join(course.Path, "card.jpg")
+		require.NoError(t, scanner.fs.Mkdir(course.Path, os.ModePerm))
+		require.NoError(t, afero.WriteFile(scanner.fs, cardPath, []byte("card-content-v1"), os.ModePerm))
+
+		scanState := NewScanState(course.ID, course.Path, course.Title)
+
+		changed, err := handleCourseCard(ctx, scanner, course, cardPath, course.ID, course.Path, scanState)
+		require.NoError(t, err)
+		require.True(t, changed)
+		initialHash := course.CardHash
+		require.NotEmpty(t, initialHash)
+
+		optimizedPath := filepath.Join("./oc_data", "cards", course.ID+".webp")
+		require.NoError(t, afero.WriteFile(scanner.fs, optimizedPath, []byte("cached-webp"), os.ModePerm))
+
+		require.NoError(t, afero.WriteFile(scanner.fs, cardPath, []byte("card-content-v2-different"), os.ModePerm))
+
+		changed, err = handleCourseCard(ctx, scanner, course, cardPath, course.ID, course.Path, scanState)
+		require.NoError(t, err)
+		require.True(t, changed)
+		require.NotEqual(t, initialHash, course.CardHash)
 	})
 
 	t.Run("ignore files", func(t *testing.T) {
@@ -137,18 +166,18 @@ func TestScanner_Processor(t *testing.T) {
 		scanState, err := scanner.Add(ctx, course.ID)
 		require.NoError(t, err)
 
-		scanner.appFs.Fs.Mkdir(course.Path, os.ModePerm)
-		scanner.appFs.Fs.Create(fmt.Sprintf("%s/file 1", course.Path))
-		scanner.appFs.Fs.Create(fmt.Sprintf("%s/file.file", course.Path))
-		scanner.appFs.Fs.Create(fmt.Sprintf("%s/file.avi", course.Path))
-		scanner.appFs.Fs.Create(fmt.Sprintf("%s/ - file.avi", course.Path))
-		scanner.appFs.Fs.Create(fmt.Sprintf("%s/- - file.avi", course.Path))
-		scanner.appFs.Fs.Create(fmt.Sprintf("%s/.avi", course.Path))
-		scanner.appFs.Fs.Create(fmt.Sprintf("%s/-1 - file.avi", course.Path))
-		scanner.appFs.Fs.Create(fmt.Sprintf("%s/a - file.avi", course.Path))
-		scanner.appFs.Fs.Create(fmt.Sprintf("%s/1.1 - file.avi", course.Path))
-		scanner.appFs.Fs.Create(fmt.Sprintf("%s/2.3-file.avi", course.Path))
-		scanner.appFs.Fs.Create(fmt.Sprintf("%s/1file.avi", course.Path))
+		scanner.fs.Mkdir(course.Path, os.ModePerm)
+		scanner.fs.Create(fmt.Sprintf("%s/file 1", course.Path))
+		scanner.fs.Create(fmt.Sprintf("%s/file.file", course.Path))
+		scanner.fs.Create(fmt.Sprintf("%s/file.avi", course.Path))
+		scanner.fs.Create(fmt.Sprintf("%s/ - file.avi", course.Path))
+		scanner.fs.Create(fmt.Sprintf("%s/- - file.avi", course.Path))
+		scanner.fs.Create(fmt.Sprintf("%s/.avi", course.Path))
+		scanner.fs.Create(fmt.Sprintf("%s/-1 - file.avi", course.Path))
+		scanner.fs.Create(fmt.Sprintf("%s/a - file.avi", course.Path))
+		scanner.fs.Create(fmt.Sprintf("%s/1.1 - file.avi", course.Path))
+		scanner.fs.Create(fmt.Sprintf("%s/2.3-file.avi", course.Path))
+		scanner.fs.Create(fmt.Sprintf("%s/1file.avi", course.Path))
 
 		err = Processor(ctx, scanner, scanState)
 		require.NoError(t, err)
@@ -175,9 +204,9 @@ func TestScanner_Processor(t *testing.T) {
 
 		// Add file 1, file 2 (create op)
 		{
-			scanner.appFs.Fs.Mkdir(course.Path, os.ModePerm)
-			afero.WriteFile(scanner.appFs.Fs, fmt.Sprintf("%s/01 file 1.mkv", course.Path), []byte("hash 1"), os.ModePerm)
-			afero.WriteFile(scanner.appFs.Fs, fmt.Sprintf("%s/02 file 2.pdf", course.Path), []byte("hash 2"), os.ModePerm)
+			scanner.fs.Mkdir(course.Path, os.ModePerm)
+			afero.WriteFile(scanner.fs, fmt.Sprintf("%s/01 file 1.mkv", course.Path), []byte("hash 1"), os.ModePerm)
+			afero.WriteFile(scanner.fs, fmt.Sprintf("%s/02 file 2.pdf", course.Path), []byte("hash 2"), os.ModePerm)
 
 			err := Processor(ctx, scanner, scanState)
 			require.NoError(t, err)
@@ -205,7 +234,7 @@ func TestScanner_Processor(t *testing.T) {
 
 		// Add file 1 under a chapter (create op)
 		{
-			afero.WriteFile(scanner.appFs.Fs, fmt.Sprintf("%s/01 Chapter 1/01 file 1.pdf", course.Path), []byte("hash 3"), os.ModePerm)
+			afero.WriteFile(scanner.fs, fmt.Sprintf("%s/01 Chapter 1/01 file 1.pdf", course.Path), []byte("hash 3"), os.ModePerm)
 
 			err := Processor(ctx, scanner, scanState)
 			require.NoError(t, err)
@@ -224,7 +253,7 @@ func TestScanner_Processor(t *testing.T) {
 
 		// Delete file 1 in chapter (delete op)
 		{
-			scanner.appFs.Fs.Remove(fmt.Sprintf("%s/01 Chapter 1/01 file 1.pdf", course.Path))
+			scanner.fs.Remove(fmt.Sprintf("%s/01 Chapter 1/01 file 1.pdf", course.Path))
 
 			err := Processor(ctx, scanner, scanState)
 			require.NoError(t, err)
@@ -242,7 +271,7 @@ func TestScanner_Processor(t *testing.T) {
 		// Rename file 2 to file 3 (update op)
 		{
 			existingAssetID := lessons[1].Assets[0].ID
-			scanner.appFs.Fs.Rename(fmt.Sprintf("%s/02 file 2.pdf", course.Path), fmt.Sprintf("%s/03 file 3.pdf", course.Path))
+			scanner.fs.Rename(fmt.Sprintf("%s/02 file 2.pdf", course.Path), fmt.Sprintf("%s/03 file 3.pdf", course.Path))
 
 			err := Processor(ctx, scanner, scanState)
 			require.NoError(t, err)
@@ -261,7 +290,7 @@ func TestScanner_Processor(t *testing.T) {
 
 		// Replace file 3 with new content (replace op)
 		{
-			afero.WriteFile(scanner.appFs.Fs, fmt.Sprintf("%s/03 file 3.pdf", course.Path), []byte("new hash 3"), os.ModePerm)
+			afero.WriteFile(scanner.fs, fmt.Sprintf("%s/03 file 3.pdf", course.Path), []byte("new hash 3"), os.ModePerm)
 
 			err := Processor(ctx, scanner, scanState)
 			require.NoError(t, err)
@@ -285,9 +314,9 @@ func TestScanner_Processor(t *testing.T) {
 
 		// Swap file 1 and file 3 (swap op)
 		{
-			scanner.appFs.Fs.Rename(fmt.Sprintf("%s/01 file 1.mkv", course.Path), fmt.Sprintf("%s/03 file 3.pdf.temp", course.Path))
-			scanner.appFs.Fs.Rename(fmt.Sprintf("%s/03 file 3.pdf", course.Path), fmt.Sprintf("%s/01 file 1.mkv", course.Path))
-			scanner.appFs.Fs.Rename(fmt.Sprintf("%s/03 file 3.pdf.temp", course.Path), fmt.Sprintf("%s/03 file 3.pdf", course.Path))
+			scanner.fs.Rename(fmt.Sprintf("%s/01 file 1.mkv", course.Path), fmt.Sprintf("%s/03 file 3.pdf.temp", course.Path))
+			scanner.fs.Rename(fmt.Sprintf("%s/03 file 3.pdf", course.Path), fmt.Sprintf("%s/01 file 1.mkv", course.Path))
+			scanner.fs.Rename(fmt.Sprintf("%s/03 file 3.pdf.temp", course.Path), fmt.Sprintf("%s/03 file 3.pdf", course.Path))
 
 			err := Processor(ctx, scanner, scanState)
 			require.NoError(t, err)
@@ -307,9 +336,9 @@ func TestScanner_Processor(t *testing.T) {
 
 		// Delete file 1 and move file 3 to file 1 (overwrite op)
 		{
-			require.NoError(t, scanner.appFs.Fs.Remove(fmt.Sprintf("%s/01 file 1.mkv", course.Path)))
+			require.NoError(t, scanner.fs.Remove(fmt.Sprintf("%s/01 file 1.mkv", course.Path)))
 
-			require.NoError(t, scanner.appFs.Fs.Rename(
+			require.NoError(t, scanner.fs.Rename(
 				fmt.Sprintf("%s/03 file 3.pdf", course.Path),
 				fmt.Sprintf("%s/01 file 1.mkv", course.Path),
 			))
@@ -330,7 +359,7 @@ func TestScanner_Processor(t *testing.T) {
 		// Delete all files but keep the course directory
 		{
 			// Delete all files but keep the course directory
-			scanner.appFs.Fs.RemoveAll(fmt.Sprintf("%s/01 file 1.mkv", course.Path))
+			scanner.fs.RemoveAll(fmt.Sprintf("%s/01 file 1.mkv", course.Path))
 
 			err := Processor(ctx, scanner, scanState)
 			require.NoError(t, err)
@@ -342,7 +371,7 @@ func TestScanner_Processor(t *testing.T) {
 
 		// Add file 1 with a sub-prefix (create op)
 		{
-			afero.WriteFile(scanner.appFs.Fs, fmt.Sprintf("%s/01 lesson 1 {01 video 1}.mkv", course.Path), []byte("hash 1"), os.ModePerm)
+			afero.WriteFile(scanner.fs, fmt.Sprintf("%s/01 lesson 1 {01 video 1}.mkv", course.Path), []byte("hash 1"), os.ModePerm)
 
 			err := Processor(ctx, scanner, scanState)
 			require.NoError(t, err)
@@ -361,7 +390,7 @@ func TestScanner_Processor(t *testing.T) {
 
 		// Add file 2 with a sub-prefix (no op)
 		{
-			afero.WriteFile(scanner.appFs.Fs, fmt.Sprintf("%s/01 lesson 1 {02 video 2}.mkv", course.Path), []byte("hash 2"), os.ModePerm)
+			afero.WriteFile(scanner.fs, fmt.Sprintf("%s/01 lesson 1 {02 video 2}.mkv", course.Path), []byte("hash 2"), os.ModePerm)
 
 			err := Processor(ctx, scanner, scanState)
 			require.NoError(t, err)
@@ -400,8 +429,8 @@ func TestScanner_Processor(t *testing.T) {
 
 		// Add asset (so the lesson is created)
 		{
-			scanner.appFs.Fs.Mkdir(course.Path, os.ModePerm)
-			afero.WriteFile(scanner.appFs.Fs, fmt.Sprintf("%s/01 file 1.mkv", course.Path), []byte("hash 1"), os.ModePerm)
+			scanner.fs.Mkdir(course.Path, os.ModePerm)
+			afero.WriteFile(scanner.fs, fmt.Sprintf("%s/01 file 1.mkv", course.Path), []byte("hash 1"), os.ModePerm)
 
 			err := Processor(ctx, scanner, scanState)
 			require.NoError(t, err)
@@ -421,7 +450,7 @@ func TestScanner_Processor(t *testing.T) {
 
 		// Add attachment 1
 		{
-			afero.WriteFile(scanner.appFs.Fs, fmt.Sprintf("%s/01 attachment 1.url", course.Path), []byte("attachment 1"), os.ModePerm)
+			afero.WriteFile(scanner.fs, fmt.Sprintf("%s/01 attachment 1.url", course.Path), []byte("attachment 1"), os.ModePerm)
 
 			err := Processor(ctx, scanner, scanState)
 			require.NoError(t, err)
@@ -437,7 +466,7 @@ func TestScanner_Processor(t *testing.T) {
 
 		// Add another attachment
 		{
-			afero.WriteFile(scanner.appFs.Fs, fmt.Sprintf("%s/01 attachment 2.url", course.Path), []byte("attachment 2"), os.ModePerm)
+			afero.WriteFile(scanner.fs, fmt.Sprintf("%s/01 attachment 2.url", course.Path), []byte("attachment 2"), os.ModePerm)
 
 			err := Processor(ctx, scanner, scanState)
 			require.NoError(t, err)
@@ -456,7 +485,7 @@ func TestScanner_Processor(t *testing.T) {
 
 		// Delete attachment
 		{
-			scanner.appFs.Fs.Remove(fmt.Sprintf("%s/01 attachment 1.url", course.Path))
+			scanner.fs.Remove(fmt.Sprintf("%s/01 attachment 1.url", course.Path))
 
 			err := Processor(ctx, scanner, scanState)
 			require.NoError(t, err)
@@ -486,11 +515,11 @@ func TestScanner_Processor(t *testing.T) {
 			WithOrderBy(models.LESSON_TABLE_MODULE+" asc", models.LESSON_TABLE_PREFIX+" asc").
 			WithWhere(squirrel.Eq{models.LESSON_TABLE_COURSE_ID: course.ID})
 
-		scanner.appFs.Fs.Mkdir(course.Path, os.ModePerm)
+		scanner.fs.Mkdir(course.Path, os.ModePerm)
 
 		// Add TEXT asset
 		{
-			afero.WriteFile(scanner.appFs.Fs, fmt.Sprintf("%s/01 text 1.txt", course.Path), []byte("text 1"), os.ModePerm)
+			afero.WriteFile(scanner.fs, fmt.Sprintf("%s/01 text 1.txt", course.Path), []byte("text 1"), os.ModePerm)
 
 			err := Processor(ctx, scanner, scanState)
 			require.NoError(t, err)
@@ -511,7 +540,7 @@ func TestScanner_Processor(t *testing.T) {
 
 		// Add MARKDOWN asset
 		{
-			afero.WriteFile(scanner.appFs.Fs, fmt.Sprintf("%s/01 markdown 1.md", course.Path), []byte("markdown 1"), os.ModePerm)
+			afero.WriteFile(scanner.fs, fmt.Sprintf("%s/01 markdown 1.md", course.Path), []byte("markdown 1"), os.ModePerm)
 
 			err := Processor(ctx, scanner, scanState)
 			require.NoError(t, err)
@@ -534,7 +563,7 @@ func TestScanner_Processor(t *testing.T) {
 
 		// Add PDF asset
 		{
-			afero.WriteFile(scanner.appFs.Fs, fmt.Sprintf("%s/01 pdf 1.pdf", course.Path), []byte("pdf 1"), os.ModePerm)
+			afero.WriteFile(scanner.fs, fmt.Sprintf("%s/01 pdf 1.pdf", course.Path), []byte("pdf 1"), os.ModePerm)
 
 			err := Processor(ctx, scanner, scanState)
 			require.NoError(t, err)
@@ -558,7 +587,7 @@ func TestScanner_Processor(t *testing.T) {
 
 		// Add VIDEO asset
 		{
-			afero.WriteFile(scanner.appFs.Fs, fmt.Sprintf("%s/01 video.mp4", course.Path), []byte("video"), os.ModePerm)
+			afero.WriteFile(scanner.fs, fmt.Sprintf("%s/01 video.mp4", course.Path), []byte("video"), os.ModePerm)
 
 			err := Processor(ctx, scanner, scanState)
 			require.NoError(t, err)
@@ -583,7 +612,7 @@ func TestScanner_Processor(t *testing.T) {
 
 		// Add another PDF asset
 		{
-			afero.WriteFile(scanner.appFs.Fs, fmt.Sprintf("%s/01 pdf 2.pdf", course.Path), []byte("pdf 2"), os.ModePerm)
+			afero.WriteFile(scanner.fs, fmt.Sprintf("%s/01 pdf 2.pdf", course.Path), []byte("pdf 2"), os.ModePerm)
 
 			err := Processor(ctx, scanner, scanState)
 			require.NoError(t, err)
@@ -623,8 +652,8 @@ func TestScanner_Processor(t *testing.T) {
 
 		// Add video 1 asset with sub-prefix of 1 and sub-title "Part 1"
 		{
-			scanner.appFs.Fs.Mkdir(course.Path, os.ModePerm)
-			afero.WriteFile(scanner.appFs.Fs, fmt.Sprintf("%s/01 Group 1 {1 Video 1}.mp4", course.Path), []byte("video 1"), os.ModePerm)
+			scanner.fs.Mkdir(course.Path, os.ModePerm)
+			afero.WriteFile(scanner.fs, fmt.Sprintf("%s/01 Group 1 {1 Video 1}.mp4", course.Path), []byte("video 1"), os.ModePerm)
 
 			err := Processor(ctx, scanner, scanState)
 			require.NoError(t, err)
@@ -648,7 +677,7 @@ func TestScanner_Processor(t *testing.T) {
 
 		// Add video 2 asset with sub-prefix of 2 and sub-title "Part 2"
 		{
-			afero.WriteFile(scanner.appFs.Fs, fmt.Sprintf("%s/01 Group 1 {2 Video 2}.mp4", course.Path), []byte("video 2"), os.ModePerm)
+			afero.WriteFile(scanner.fs, fmt.Sprintf("%s/01 Group 1 {2 Video 2}.mp4", course.Path), []byte("video 2"), os.ModePerm)
 
 			err := Processor(ctx, scanner, scanState)
 			require.NoError(t, err)
@@ -674,7 +703,7 @@ func TestScanner_Processor(t *testing.T) {
 
 		// Add video 3 asset with sub-prefix of 3 and no sub-title
 		{
-			afero.WriteFile(scanner.appFs.Fs, fmt.Sprintf("%s/01 Group 1 {3}.mp4", course.Path), []byte("video 3"), os.ModePerm)
+			afero.WriteFile(scanner.fs, fmt.Sprintf("%s/01 Group 1 {3}.mp4", course.Path), []byte("video 3"), os.ModePerm)
 
 			err := Processor(ctx, scanner, scanState)
 			require.NoError(t, err)
@@ -702,7 +731,7 @@ func TestScanner_Processor(t *testing.T) {
 
 		// Add video 4 with no sub-prefix and no sub-title
 		{
-			afero.WriteFile(scanner.appFs.Fs, fmt.Sprintf("%s/01 Group 1.mp4", course.Path), []byte("video 4"), os.ModePerm)
+			afero.WriteFile(scanner.fs, fmt.Sprintf("%s/01 Group 1.mp4", course.Path), []byte("video 4"), os.ModePerm)
 
 			err := Processor(ctx, scanner, scanState)
 			require.NoError(t, err)
@@ -723,7 +752,7 @@ func TestScanner_Processor(t *testing.T) {
 
 		// Add attachment
 		{
-			afero.WriteFile(scanner.appFs.Fs, fmt.Sprintf("%s/01 attachment 1.txt", course.Path), []byte("attachment 1"), os.ModePerm)
+			afero.WriteFile(scanner.fs, fmt.Sprintf("%s/01 attachment 1.txt", course.Path), []byte("attachment 1"), os.ModePerm)
 
 			err := Processor(ctx, scanner, scanState)
 			require.NoError(t, err)
@@ -758,8 +787,8 @@ func TestScanner_Processor(t *testing.T) {
 
 		// Add video 1 asset
 		{
-			scanner.appFs.Fs.Mkdir(course.Path, os.ModePerm)
-			afero.WriteFile(scanner.appFs.Fs, fmt.Sprintf("%s/01 video 1.mp4", course.Path), []byte("video 1"), os.ModePerm)
+			scanner.fs.Mkdir(course.Path, os.ModePerm)
+			afero.WriteFile(scanner.fs, fmt.Sprintf("%s/01 video 1.mp4", course.Path), []byte("video 1"), os.ModePerm)
 
 			err := Processor(ctx, scanner, scanState)
 			require.NoError(t, err)
@@ -787,7 +816,7 @@ func TestScanner_Processor(t *testing.T) {
 		scanState, err := scanner.Add(ctx, course.ID)
 		require.NoError(t, err)
 
-		scanner.appFs.Fs.Mkdir(course.Path, os.ModePerm)
+		scanner.fs.Mkdir(course.Path, os.ModePerm)
 
 		// Write metadata file with description
 		metadataPath := filepath.Join(course.Path, coursemetadata.MetadataFileName)
@@ -795,7 +824,7 @@ func TestScanner_Processor(t *testing.T) {
   "description": "A test course description",
   "tags": ["test"]
 }`
-		require.NoError(t, afero.WriteFile(scanner.appFs.Fs, metadataPath, []byte(metadataJSON), 0644))
+		require.NoError(t, afero.WriteFile(scanner.fs, metadataPath, []byte(metadataJSON), 0644))
 
 		err = Processor(ctx, scanner, scanState)
 		require.NoError(t, err)
@@ -815,7 +844,7 @@ func TestScanner_Processor(t *testing.T) {
 		scanState, err := scanner.Add(ctx, course.ID)
 		require.NoError(t, err)
 
-		scanner.appFs.Fs.Mkdir(course.Path, os.ModePerm)
+		scanner.fs.Mkdir(course.Path, os.ModePerm)
 
 		// No metadata file
 
@@ -837,7 +866,7 @@ func TestScanner_Processor(t *testing.T) {
 		scanState, err := scanner.Add(ctx, course.ID)
 		require.NoError(t, err)
 
-		scanner.appFs.Fs.Mkdir(course.Path, os.ModePerm)
+		scanner.fs.Mkdir(course.Path, os.ModePerm)
 
 		// Write metadata file with empty description
 		metadataPath := filepath.Join(course.Path, coursemetadata.MetadataFileName)
@@ -845,7 +874,7 @@ func TestScanner_Processor(t *testing.T) {
   "description": "",
   "tags": []
 }`
-		require.NoError(t, afero.WriteFile(scanner.appFs.Fs, metadataPath, []byte(metadataJSON), 0644))
+		require.NoError(t, afero.WriteFile(scanner.fs, metadataPath, []byte(metadataJSON), 0644))
 
 		err = Processor(ctx, scanner, scanState)
 		require.NoError(t, err)
@@ -1025,69 +1054,4 @@ func TestScanner_CategorizeFile(t *testing.T) {
 		category := categorizeFile(parsed)
 		require.Equal(t, tt.expected, category, fmt.Sprintf("error for [%s]", tt.in))
 	}
-}
-
-// ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
-
-func TestScanner_IsCard(t *testing.T) {
-	t.Run("invalid", func(t *testing.T) {
-		var tests = []string{
-			"card",
-			"1234",
-			"1234.jpg",
-			"jpg",
-			"card.test.jpg",
-			"card.txt",
-		}
-
-		for _, tt := range tests {
-			require.False(t, isCard(tt))
-		}
-	})
-
-	t.Run("valid", func(t *testing.T) {
-		var tests = []string{
-			"card.jpg",
-			"card.jpeg",
-			"card.png",
-			"card.webp",
-			"card.tiff",
-		}
-
-		for _, tt := range tests {
-			require.True(t, isCard(tt))
-		}
-	})
-}
-
-// ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
-
-func TestCardExtension_IsValid(t *testing.T) {
-	t.Run("valid extensions", func(t *testing.T) {
-		valid := []types.CardExtension{
-			types.CardExtensionJPG,
-			types.CardExtensionJPEG,
-			types.CardExtensionPNG,
-			types.CardExtensionWebP,
-			types.CardExtensionTIFF,
-		}
-
-		for _, ext := range valid {
-			require.True(t, ext.IsValid(), "extension %s should be valid", ext)
-		}
-	})
-
-	t.Run("invalid extensions", func(t *testing.T) {
-		invalid := []types.CardExtension{
-			types.CardExtension("gif"),
-			types.CardExtension("bmp"),
-			types.CardExtension("svg"),
-			types.CardExtension(""),
-			types.CardExtension("mp4"),
-		}
-
-		for _, ext := range invalid {
-			require.False(t, ext.IsValid(), "extension %s should be invalid", ext)
-		}
-	})
 }

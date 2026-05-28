@@ -3,6 +3,7 @@ package api
 import (
 	"context"
 	"database/sql"
+	"errors"
 	"fmt"
 	"strconv"
 	"strings"
@@ -11,13 +12,12 @@ import (
 	"github.com/geerew/off-course/dao"
 	"github.com/geerew/off-course/models"
 	"github.com/geerew/off-course/utils"
+	"github.com/geerew/off-course/utils/cardcache"
 	"github.com/geerew/off-course/utils/coursemetadata"
-	"github.com/geerew/off-course/utils/queryparser"
 	"github.com/geerew/off-course/utils/types"
 	"github.com/gofiber/fiber/v2"
 	"github.com/gofiber/fiber/v2/middleware/filesystem"
 	"github.com/spf13/afero"
-	"github.com/spf13/cast"
 )
 
 // ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
@@ -46,30 +46,30 @@ func (r *Router) initCourseRoutes() {
 	g.Delete("/:id/progress", coursesAPI.deleteCourseProgress)
 
 	// Card
-	g.Head("/:id/card", coursesAPI.getCard)
-	g.Get("/:id/card", coursesAPI.getCard)
+	g.Head("/:id/card", coursesAPI.getCourseCard)
+	g.Get("/:id/card", coursesAPI.getCourseCard)
 
 	// Lessons
-	g.Get("/:id/lessons", coursesAPI.getLessons)
-	g.Get("/:id/lessons/:lesson", coursesAPI.getLesson)
+	g.Get("/:id/lessons", coursesAPI.getCourseLessons)
+	g.Get("/:id/lessons/:lesson", coursesAPI.getCourseLesson)
 
 	// Modules (chaptered lessons)
-	g.Get("/:id/modules", coursesAPI.getModules)
+	g.Get("/:id/modules", coursesAPI.getCourseModules)
 
 	// lesson attachments
-	g.Get("/:id/lessons/:lesson/attachments", coursesAPI.getAttachments)
-	g.Get("/:id/lessons/:lesson/attachments/:attachment", coursesAPI.getAttachment)
-	g.Get("/:id/lessons/:lesson/attachments/:attachment/serve", coursesAPI.serveAttachment)
+	g.Get("/:id/lessons/:lesson/attachments", coursesAPI.getCourseLessonAttachments)
+	g.Get("/:id/lessons/:lesson/attachments/:attachment", coursesAPI.getCourseLessonAttachment)
+	g.Get("/:id/lessons/:lesson/attachments/:attachment/serve", coursesAPI.serveCourseLessonAttachment)
 
 	// Asset
-	g.Get("/:id/lessons/:lesson/assets/:asset/serve", coursesAPI.serveAsset)
-	g.Put("/:id/lessons/:lesson/assets/:asset/progress", coursesAPI.updateAssetProgress)
-	g.Delete("/:id/lessons/:lesson/assets/:asset/progress", coursesAPI.deleteAssetProgress)
+	g.Get("/:id/lessons/:lesson/assets/:asset/serve", coursesAPI.serveCourseLessonAsset)
+	g.Put("/:id/lessons/:lesson/assets/:asset/progress", coursesAPI.updateCourseLessonAssetProgress)
+	g.Delete("/:id/lessons/:lesson/assets/:asset/progress", coursesAPI.deleteCourseLessonAssetProgress)
 
 	// Tags
-	g.Get("/:id/tags", coursesAPI.getTags)
-	g.Post("/:id/tags", protectedRoute, coursesAPI.createTag)
-	g.Delete("/:id/tags/:tagId", protectedRoute, coursesAPI.deleteTag)
+	g.Get("/:id/tags", coursesAPI.getCourseTags)
+	g.Post("/:id/tags", protectedRoute, coursesAPI.createCourseTag)
+	g.Delete("/:id/tags/:tagId", protectedRoute, coursesAPI.deleteCourseTag)
 
 	// Favourites
 	g.Post("/:id/favourite", protectedRoute, coursesAPI.favouriteCourse)
@@ -85,8 +85,6 @@ func (api coursesAPI) getCourses(c *fiber.Ctx) error {
 		return errorResponse(c, fiber.StatusUnauthorized, "Missing principal", nil)
 	}
 
-	allowedQueryFilters := []string{"available", "tag"}
-
 	withUserProgress := false
 	if raw := c.Query("withUserProgress"); raw != "" {
 		if v, err := strconv.ParseBool(raw); err == nil && v {
@@ -94,21 +92,10 @@ func (api coursesAPI) getCourses(c *fiber.Ctx) error {
 		}
 	}
 
-	if withUserProgress {
-		allowedQueryFilters = append(allowedQueryFilters, "progress", "favourite")
-	}
-
-	builderOpts := builderOptions{
-		DefaultOrderBy: defaultCoursesOrderBy,
-		AllowedFilters: allowedQueryFilters,
-		Paginate:       true,
-		AfterParseHook: coursesAfterParseHook,
-	}
-
-	dbOpts, err := optionsBuilder(c, builderOpts, principal.UserID)
-	if err != nil {
-		return errorResponse(c, fiber.StatusBadRequest, "Error parsing query", err)
-	}
+	dbOpts := dao.NewOptions().
+		WithOrderBy(utils.StringSplit(c.Query("orderBy", ""), ",")...).
+		WithApiQuery(c.Query("q", "")).
+		WithPagination(paginationFromCtx(c))
 
 	if withUserProgress {
 		dbOpts.WithUserProgress()
@@ -116,6 +103,10 @@ func (api coursesAPI) getCourses(c *fiber.Ctx) error {
 
 	courses, err := api.r.appDao.ListCourses(ctx, dbOpts)
 	if err != nil {
+		if errors.Is(err, utils.ErrApiQueryParse) {
+			return errorResponse(c, fiber.StatusBadRequest, "Error parsing query", err)
+		}
+
 		return errorResponse(c, fiber.StatusInternalServerError, "Error looking up courses", err)
 	}
 
@@ -126,8 +117,6 @@ func (api coursesAPI) getCourses(c *fiber.Ctx) error {
 
 	return c.Status(fiber.StatusOK).JSON(pResult)
 }
-
-// ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
 
 // ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
 
@@ -180,7 +169,7 @@ func (api coursesAPI) createCourse(c *fiber.Ctx) error {
 	}
 
 	// Validate the path
-	if exists, err := afero.DirExists(api.r.app.AppFs.Fs, course.Path); err != nil || !exists {
+	if exists, err := afero.DirExists(api.r.app.FS, course.Path); err != nil || !exists {
 		return errorResponse(c, fiber.StatusBadRequest, "Invalid course path", err)
 	}
 
@@ -220,14 +209,10 @@ func (api coursesAPI) deleteCourse(c *fiber.Ctx) error {
 	// Cancel and remove any ongoing scans for this course
 	api.r.app.CourseScan.CancelAndRemoveScansByCourseID(id)
 
-	// Delete optimized card file if it exists
-	cardPath := api.r.app.CardCache.GetCardPath(id)
-	if err := api.r.app.CardCache.DeleteCard(cardPath); err != nil {
-		// Log warning but continue with course deletion
+	if err := api.r.app.CardCache.Delete(id); err != nil {
 		api.r.app.Logger.Warn().
 			Err(err).
 			Str("course_id", id).
-			Str("card_path", cardPath).
 			Msg("Failed to delete optimized card during course deletion")
 	}
 
@@ -249,19 +234,28 @@ func (api coursesAPI) deleteCourseProgress(c *fiber.Ctx) error {
 		return errorResponse(c, fiber.StatusUnauthorized, "Missing principal", nil)
 	}
 
-	err = dao.RunInTransaction(ctx, api.r.appDao, func(txCtx context.Context) error {
+	err = api.r.appDao.RunInTransaction(ctx, func(txCtx context.Context) error {
 		// Delete the course progress for this user
 		dbOpts := dao.NewOptions().WithWhere(squirrel.And{
 			squirrel.Eq{models.COURSE_PROGRESS_COURSE_ID: courseId},
 			squirrel.Eq{models.COURSE_PROGRESS_USER_ID: principal.UserID},
-		},
-		)
+		})
 
 		if err := api.r.appDao.DeleteCourseProgress(txCtx, dbOpts); err != nil {
 			return err
 		}
 
-		if err := api.r.appDao.DeleteAssetProgressForCourse(txCtx, courseId, principal.UserID); err != nil {
+		dbOpts = dao.NewOptions().WithWhere(squirrel.And{
+			squirrel.Eq{models.ASSET_PROGRESS_TABLE_USER_ID: principal.UserID},
+			squirrel.Expr(
+				"EXISTS (SELECT 1 FROM "+models.ASSET_TABLE+
+					" WHERE "+models.ASSET_TABLE_ID+" = "+models.ASSET_PROGRESS_TABLE_ASSET_ID+
+					" AND "+models.ASSET_TABLE_COURSE_ID+" = ?)",
+				courseId,
+			),
+		})
+
+		if err := api.r.appDao.DeleteAssetProgress(txCtx, dbOpts); err != nil {
 			return err
 		}
 
@@ -277,65 +271,59 @@ func (api coursesAPI) deleteCourseProgress(c *fiber.Ctx) error {
 
 // ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
 
-func (api coursesAPI) getCard(c *fiber.Ctx) error {
+func (api coursesAPI) getCourseCard(c *fiber.Ctx) error {
 	id := c.Params("id")
 
-	_, _, err := principalCtx(c)
-	if err != nil {
+	if _, _, err := principalCtx(c); err != nil {
 		return errorResponse(c, fiber.StatusUnauthorized, "Missing principal", nil)
 	}
 
-	// Check if optimized card exists for this course
-	cardPath := api.r.app.CardCache.GetCardPath(id)
-	exists, err := api.r.app.CardCache.CardExists(cardPath)
+	rc, serve, err := api.r.app.CardCache.OpenCard(id)
 	if err != nil {
-		return errorResponse(c, fiber.StatusInternalServerError, "Error checking card", err)
-	}
-
-	// If card doesn't exist, serve fallback
-	if !exists {
-		cardPath = api.r.app.CardCache.GetFallbackPath()
-		exists, err := api.r.app.CardCache.CardExists(cardPath)
-		if err != nil {
-			return errorResponse(c, fiber.StatusInternalServerError, "Error checking fallback card", err)
-		}
-		if !exists {
+		if errors.Is(err, cardcache.ErrFallbackNotFound) {
 			return errorResponse(c, fiber.StatusNotFound, "Fallback card not found", nil)
 		}
+
+		return errorResponse(c, fiber.StatusInternalServerError, "Error resolving card", err)
 	}
 
-	c.Set(fiber.HeaderCacheControl, "public, no-cache")
+	c.Set(fiber.HeaderContentType, serve.ContentType)
+	if serve.Fallback {
+		c.Set(fiber.HeaderCacheControl, "public, max-age=86400")
+	} else if serve.CardHash == "" {
+		c.Set(fiber.HeaderCacheControl, "public, max-age=0, must-revalidate")
+	} else {
+		c.Set(fiber.HeaderETag, cardcache.FormatETag(serve.CardHash))
+		c.Set(fiber.HeaderCacheControl, "public, max-age=31536000, immutable")
+	}
 
-	// The fiber function sendFile(...) does not support using a custom FS. Therefore, use
-	// SendFile() from the filesystem middleware
-	return filesystem.SendFile(c, afero.NewHttpFs(api.r.app.AppFs.Fs), cardPath)
+	if cardcache.MatchIfNoneMatch(c.Get(fiber.HeaderIfNoneMatch), serve.CardHash) {
+		_ = rc.Close()
+		return c.SendStatus(fiber.StatusNotModified)
+	}
+
+	return c.SendStream(rc)
 }
 
 // ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
 
 // TODO support chaptered query param
-func (api coursesAPI) getLessons(c *fiber.Ctx) error {
+func (api coursesAPI) getCourseLessons(c *fiber.Ctx) error {
 	id := c.Params("id")
 
-	builderOpts := builderOptions{
-		DefaultOrderBy: defaultCourseLessonsOrderBy,
-		Paginate:       true,
-	}
-
-	principal, ctx, err := principalCtx(c)
+	_, ctx, err := principalCtx(c)
 	if err != nil {
 		return errorResponse(c, fiber.StatusUnauthorized, "Missing principal", nil)
 	}
 
-	dbOpts, err := optionsBuilder(c, builderOpts, principal.UserID)
-	if err != nil {
-		return errorResponse(c, fiber.StatusBadRequest, "Error parsing query", err)
-	}
+	dbOpts := dao.NewOptions().
+		WithOrderBy(utils.StringSplit(c.Query("orderBy", ""), ",")...).
+		WithAssetMetadata().
+		WithPagination(paginationFromCtx(c)).
+		WithWhere(squirrel.Eq{models.LESSON_TABLE_COURSE_ID: id})
 
-	dbOpts.WithAssetMetadata().WithWhere(squirrel.Eq{models.LESSON_TABLE_COURSE_ID: id})
-
-	if raw := c.Query("withUserProgress"); raw != "" {
-		if v, err := strconv.ParseBool(raw); err == nil && v {
+	if withUserProgress := c.Query("withUserProgress"); withUserProgress != "" {
+		if v, err := strconv.ParseBool(withUserProgress); err == nil && v {
 			dbOpts.WithUserProgress()
 		}
 	}
@@ -355,7 +343,7 @@ func (api coursesAPI) getLessons(c *fiber.Ctx) error {
 
 // ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
 
-func (api coursesAPI) getLesson(c *fiber.Ctx) error {
+func (api coursesAPI) getCourseLesson(c *fiber.Ctx) error {
 	id := c.Params("id")
 	lessonId := c.Params("lesson")
 
@@ -391,28 +379,21 @@ func (api coursesAPI) getLesson(c *fiber.Ctx) error {
 
 // ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
 
-func (api coursesAPI) getModules(c *fiber.Ctx) error {
+func (api coursesAPI) getCourseModules(c *fiber.Ctx) error {
 	id := c.Params("id")
 
-	builderOpts := builderOptions{
-		DefaultOrderBy: defaultCourseLessonsOrderBy,
-		Paginate:       false,
-	}
-
-	principal, ctx, err := principalCtx(c)
+	_, ctx, err := principalCtx(c)
 	if err != nil {
 		return errorResponse(c, fiber.StatusUnauthorized, "Missing principal", nil)
 	}
 
-	dbOpts, err := optionsBuilder(c, builderOpts, principal.UserID)
-	if err != nil {
-		return errorResponse(c, fiber.StatusBadRequest, "Error parsing query", err)
-	}
+	dbOpts := dao.NewOptions().
+		WithOrderBy(utils.StringSplit(c.Query("orderBy", ""), ",")...).
+		WithAssetMetadata().
+		WithWhere(squirrel.Eq{models.LESSON_TABLE_COURSE_ID: id})
 
-	dbOpts.WithAssetMetadata().WithWhere(squirrel.Eq{models.LESSON_TABLE_COURSE_ID: id})
-
-	if raw := c.Query("withUserProgress"); raw != "" {
-		if v, err := strconv.ParseBool(raw); err == nil && v {
+	if withUserProgress := c.Query("withUserProgress"); withUserProgress != "" {
+		if v, err := strconv.ParseBool(withUserProgress); err == nil && v {
 			dbOpts.WithUserProgress()
 		}
 	}
@@ -427,30 +408,21 @@ func (api coursesAPI) getModules(c *fiber.Ctx) error {
 
 // ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
 
-func (api coursesAPI) getAttachments(c *fiber.Ctx) error {
+func (api coursesAPI) getCourseLessonAttachments(c *fiber.Ctx) error {
 	id := c.Params("id")
 	lessonId := c.Params("lesson")
 
-	builderOpts := builderOptions{
-		DefaultOrderBy: defaultCourseLessonAttachmentsOrderBy,
-		Paginate:       true,
-	}
-
-	principal, ctx, err := principalCtx(c)
+	_, ctx, err := principalCtx(c)
 	if err != nil {
 		return errorResponse(c, fiber.StatusUnauthorized, "Missing principal", nil)
 	}
 
-	dbOpts, err := optionsBuilder(c, builderOpts, principal.UserID)
-	if err != nil {
-		return errorResponse(c, fiber.StatusBadRequest, "Error parsing query", err)
-	}
-
-	dbOpts.WithCourse().
-		WithLesson().
+	dbOpts := dao.NewOptions().
+		WithOrderBy(utils.StringSplit(c.Query("orderBy", ""), ",")...).
+		WithPagination(paginationFromCtx(c)).
 		WithWhere(squirrel.And{
-			squirrel.Eq{models.LESSON_TABLE_ID: lessonId},
-			squirrel.Eq{models.COURSE_TABLE_ID: id},
+			squirrel.Eq{models.ATTACHMENT_TABLE_LESSON_ID: lessonId},
+			squirrel.Eq{models.ATTACHMENT_TABLE_COURSE_ID: id},
 		})
 
 	attachments, err := api.r.appDao.ListAttachments(ctx, dbOpts)
@@ -468,7 +440,7 @@ func (api coursesAPI) getAttachments(c *fiber.Ctx) error {
 
 // ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
 
-func (api coursesAPI) getAttachment(c *fiber.Ctx) error {
+func (api coursesAPI) getCourseLessonAttachment(c *fiber.Ctx) error {
 	id := c.Params("id")
 	lessonId := c.Params("lesson")
 	attachmentId := c.Params("attachment")
@@ -479,12 +451,10 @@ func (api coursesAPI) getAttachment(c *fiber.Ctx) error {
 	}
 
 	dbOpts := dao.NewOptions().
-		WithCourse().
-		WithLesson().
 		WithWhere(squirrel.And{
 			squirrel.Eq{models.ATTACHMENT_TABLE_ID: attachmentId},
-			squirrel.Eq{models.LESSON_TABLE_ID: lessonId},
-			squirrel.Eq{models.COURSE_TABLE_ID: id},
+			squirrel.Eq{models.ATTACHMENT_TABLE_LESSON_ID: lessonId},
+			squirrel.Eq{models.ATTACHMENT_TABLE_COURSE_ID: id},
 		})
 
 	attachment, err := api.r.appDao.GetAttachment(ctx, dbOpts)
@@ -501,7 +471,7 @@ func (api coursesAPI) getAttachment(c *fiber.Ctx) error {
 
 // ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
 
-func (api coursesAPI) serveAttachment(c *fiber.Ctx) error {
+func (api coursesAPI) serveCourseLessonAttachment(c *fiber.Ctx) error {
 	id := c.Params("id")
 	lessonId := c.Params("lesson")
 	attachmentId := c.Params("attachment")
@@ -512,12 +482,10 @@ func (api coursesAPI) serveAttachment(c *fiber.Ctx) error {
 	}
 
 	dbOpts := dao.NewOptions().
-		WithCourse().
-		WithLesson().
 		WithWhere(squirrel.And{
 			squirrel.Eq{models.ATTACHMENT_TABLE_ID: attachmentId},
-			squirrel.Eq{models.LESSON_TABLE_ID: lessonId},
-			squirrel.Eq{models.COURSE_TABLE_ID: id},
+			squirrel.Eq{models.ATTACHMENT_TABLE_LESSON_ID: lessonId},
+			squirrel.Eq{models.ATTACHMENT_TABLE_COURSE_ID: id},
 		})
 
 	attachment, err := api.r.appDao.GetAttachment(ctx, dbOpts)
@@ -529,28 +497,26 @@ func (api coursesAPI) serveAttachment(c *fiber.Ctx) error {
 		return errorResponse(c, fiber.StatusNotFound, "Attachment not found", nil)
 	}
 
-	if exists, err := afero.Exists(api.r.app.AppFs.Fs, attachment.Path); err != nil || !exists {
+	if exists, err := afero.Exists(api.r.app.FS, attachment.Path); err != nil || !exists {
 		return errorResponse(c, fiber.StatusBadRequest, "Attachment does not exist", err)
 	}
 
 	c.Set(fiber.HeaderContentDisposition, `attachment; filename="`+attachment.Title+`"`)
-	return filesystem.SendFile(c, afero.NewHttpFs(api.r.app.AppFs.Fs), attachment.Path)
+	return filesystem.SendFile(c, afero.NewHttpFs(api.r.app.FS), attachment.Path)
 }
 
 // ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
 
 // TODO Handle PDF
-func (api coursesAPI) serveAsset(c *fiber.Ctx) error {
+func (api coursesAPI) serveCourseLessonAsset(c *fiber.Ctx) error {
 	id := c.Params("id")
 	lessonId := c.Params("lesson")
 	assetId := c.Params("asset")
 
 	dbOpts := dao.NewOptions().
-		WithCourse().
-		WithLesson().
 		WithWhere(squirrel.And{
-			squirrel.Eq{models.COURSE_TABLE_ID: id},
-			squirrel.Eq{models.LESSON_TABLE_ID: lessonId},
+			squirrel.Eq{models.ASSET_TABLE_COURSE_ID: id},
+			squirrel.Eq{models.ASSET_TABLE_LESSON_ID: lessonId},
 			squirrel.Eq{models.ASSET_TABLE_ID: assetId},
 		})
 
@@ -569,14 +535,14 @@ func (api coursesAPI) serveAsset(c *fiber.Ctx) error {
 	}
 
 	// Check for invalid path
-	if exists, err := afero.Exists(api.r.app.AppFs.Fs, asset.Path); err != nil || !exists {
+	if exists, err := afero.Exists(api.r.app.FS, asset.Path); err != nil || !exists {
 		return errorResponse(c, fiber.StatusBadRequest, "Asset does not exist", nil)
 	}
 
 	if asset.Type.IsVideo() {
-		return handleVideo(c, api.r.app.AppFs, asset)
+		return handleVideo(c, api.r.app.FS, asset)
 	} else if asset.Type.IsText() || asset.Type.IsMarkdown() {
-		return handleText(c, api.r.app.AppFs, asset)
+		return handleText(c, api.r.app.FS, asset)
 	}
 
 	return c.Status(fiber.StatusOK).SendString("done")
@@ -584,7 +550,7 @@ func (api coursesAPI) serveAsset(c *fiber.Ctx) error {
 
 // ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
 
-func (api coursesAPI) updateAssetProgress(c *fiber.Ctx) error {
+func (api coursesAPI) updateCourseLessonAssetProgress(c *fiber.Ctx) error {
 	courseId := c.Params("id")
 	assetId := c.Params("asset")
 
@@ -632,7 +598,7 @@ func (api coursesAPI) updateAssetProgress(c *fiber.Ctx) error {
 // ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
 
 // TODO add tests
-func (api coursesAPI) deleteAssetProgress(c *fiber.Ctx) error {
+func (api coursesAPI) deleteCourseLessonAssetProgress(c *fiber.Ctx) error {
 	courseId := c.Params("id")
 	assetId := c.Params("asset")
 
@@ -671,7 +637,7 @@ func (api coursesAPI) deleteAssetProgress(c *fiber.Ctx) error {
 
 // ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
 
-func (api coursesAPI) getTags(c *fiber.Ctx) error {
+func (api coursesAPI) getCourseTags(c *fiber.Ctx) error {
 	id := c.Params("id")
 
 	_, ctx, err := principalCtx(c)
@@ -680,7 +646,6 @@ func (api coursesAPI) getTags(c *fiber.Ctx) error {
 	}
 
 	dbOpts := dao.NewOptions().
-		WithOrderBy(defaultTagsOrderBy...).
 		WithWhere(squirrel.Eq{models.COURSE_TAG_TABLE_COURSE_ID: id})
 
 	courseTags, err := api.r.appDao.ListCourseTags(ctx, dbOpts)
@@ -693,7 +658,7 @@ func (api coursesAPI) getTags(c *fiber.Ctx) error {
 
 // ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
 
-func (api coursesAPI) createTag(c *fiber.Ctx) error {
+func (api coursesAPI) createCourseTag(c *fiber.Ctx) error {
 	courseId := c.Params("id")
 	tagRequest := &tagRequest{}
 
@@ -726,8 +691,7 @@ func (api coursesAPI) createTag(c *fiber.Ctx) error {
 	}
 
 	// Check if tag already exists (case-insensitive) before creating
-	dbOpts := dao.NewOptions().
-		WithWhere(squirrel.Eq{models.COURSE_TAG_TABLE_COURSE_ID: courseId})
+	dbOpts := dao.NewOptions().WithWhere(squirrel.Eq{models.COURSE_TAG_TABLE_COURSE_ID: courseId})
 	existingCourseTags, err := api.r.appDao.ListCourseTags(ctx, dbOpts)
 	if err != nil {
 		// If reading fails, use empty list - the DB create will handle the error
@@ -792,7 +756,7 @@ func (api coursesAPI) createTag(c *fiber.Ctx) error {
 
 // ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
 
-func (api coursesAPI) deleteTag(c *fiber.Ctx) error {
+func (api coursesAPI) deleteCourseTag(c *fiber.Ctx) error {
 	courseId := c.Params("id")
 	tagId := c.Params("tagId")
 
@@ -927,145 +891,6 @@ func (api coursesAPI) unfavouriteCourse(c *fiber.Ctx) error {
 	}
 
 	return c.Status(fiber.StatusNoContent).Send(nil)
-}
-
-// ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
-
-// coursesAfterParseHook runs after parsing the query expression and is used to build the
-// WHERE/JOIN clauses
-func coursesAfterParseHook(parsed *queryparser.QueryResult, dbOpts *dao.Options, userID string) {
-	dbOpts.WithWhere(coursesWhereBuilder(parsed.Expr))
-
-	// Note: LEFT JOIN for favourites is already added in ListCourses/GetCourse when withUserProgress is true
-	// The favourite filter WHERE clause will work because the JOIN is already present
-}
-
-// ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
-
-// coursesWhereBuilder builds a squirrel.Sqlizer, for use in a WHERE clause
-func coursesWhereBuilder(expr queryparser.QueryExpr) squirrel.Sqlizer {
-	switch node := expr.(type) {
-	case *queryparser.ValueExpr:
-		return squirrel.Like{models.COURSE_TABLE_TITLE: "%" + node.Value + "%"}
-	case *queryparser.FilterExpr:
-		switch node.Key {
-		case "available":
-			value, err := cast.ToBoolE(node.Value)
-			if err != nil {
-				return squirrel.Expr("1=0")
-			}
-			return squirrel.Eq{models.COURSE_TABLE_AVAILABLE: value}
-		case "tag":
-			return courseTagsBuilder([]string{node.Value})
-		case "progress":
-			switch strings.ToLower(node.Value) {
-			case "not started":
-				// For "not started", we need:
-				// 1. Either no progress record exists (IS NULL after LEFT JOIN)
-				// 2. Or the progress record exists but started=false
-				return squirrel.Or{
-					// No progress record exists
-					squirrel.Expr(models.COURSE_PROGRESS_TABLE_ID + " IS NULL"),
-					// Or started is false
-					squirrel.Eq{models.COURSE_PROGRESS_TABLE_STARTED: false},
-				}
-			case "started":
-				return squirrel.And{
-					// Must have a progress record
-					squirrel.Expr(models.COURSE_PROGRESS_TABLE_ID + " IS NOT NULL"),
-					// Started must be true
-					squirrel.Eq{models.COURSE_PROGRESS_TABLE_STARTED: true},
-					// But not 100% complete
-					squirrel.NotEq{models.COURSE_PROGRESS_TABLE_PERCENT: 100},
-				}
-			case "completed":
-				return squirrel.And{
-					// Must have a progress record
-					squirrel.Expr(models.COURSE_PROGRESS_TABLE_ID + " IS NOT NULL"),
-					// And must be 100% complete
-					squirrel.Eq{models.COURSE_PROGRESS_TABLE_PERCENT: 100},
-				}
-			default:
-				return nil
-			}
-		case "favourite":
-			switch strings.ToLower(node.Value) {
-			case "true":
-				// Must have a favourite record (IS NOT NULL after LEFT JOIN)
-				return squirrel.Expr(models.COURSE_FAVOURITE_TABLE_ID + " IS NOT NULL")
-			case "false":
-				// Must not have a favourite record (IS NULL after LEFT JOIN)
-				return squirrel.Expr(models.COURSE_FAVOURITE_TABLE_ID + " IS NULL")
-			default:
-				return nil
-			}
-		default:
-			return nil
-		}
-	case *queryparser.AndExpr:
-		var andSlice []squirrel.Sqlizer
-		var tags []string
-		onlyTags := true
-
-		// Loop through all children and separate tag filters from non-tag conditions
-		for _, child := range node.Children {
-			if queryparser.IsFilterWithKey(child, "tag") {
-				tags = append(tags, child.(*queryparser.FilterExpr).Value)
-			} else {
-				onlyTags = false
-				andSlice = append(andSlice, coursesWhereBuilder(child))
-			}
-		}
-
-		// If we found tags, build the EXISTS subquery
-		var tagCond squirrel.Sqlizer
-		if len(tags) > 0 {
-			tagCond = courseTagsBuilder(tags)
-
-			if onlyTags {
-				return tagCond
-			} else if tagCond != nil {
-				andSlice = append(andSlice, tagCond)
-			}
-		}
-
-		return squirrel.And(andSlice)
-	case *queryparser.OrExpr:
-		var orSlice []squirrel.Sqlizer
-		for _, child := range node.Children {
-			orSlice = append(orSlice, coursesWhereBuilder(child))
-		}
-
-		return squirrel.Or(orSlice)
-	default:
-		return nil
-	}
-}
-
-// ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
-
-// courseTagsBuilder builds an EXISTS squirrel.Sqlizer subquery for a list of tags
-func courseTagsBuilder(tags []string) squirrel.Sqlizer {
-	if len(tags) == 0 {
-		return squirrel.Expr("1=1")
-	}
-
-	baseQuery := squirrel.
-		Select("1").
-		From(models.COURSE_TAG_TABLE).
-		Join(models.TAG_TABLE + " ON " + models.TAG_TABLE_ID + " = " + models.COURSE_TAG_TABLE_TAG_ID).
-		Where(models.COURSE_TAG_TABLE_COURSE_ID + " = " + models.COURSE_TABLE_ID)
-
-	if len(tags) == 1 {
-		baseQuery = baseQuery.Where(squirrel.Eq{models.TAG_TABLE_TAG: tags[0]})
-	} else if len(tags) > 1 {
-		baseQuery = baseQuery.
-			Where(squirrel.Eq{models.TAG_TABLE_TAG: tags}).
-			GroupBy(models.COURSE_TAG_TABLE_COURSE_ID).
-			Having("COUNT(DISTINCT "+models.TAG_TABLE_TAG+") = ?", len(tags))
-	}
-
-	return squirrel.Expr("EXISTS (?)", baseQuery)
 }
 
 // ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~

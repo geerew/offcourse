@@ -1,15 +1,26 @@
 package auth
 
 import (
-	"crypto/rand"
+	"crypto/subtle"
 	"encoding/json"
+	"errors"
 	"fmt"
+	"io/fs"
 	"path/filepath"
 	"time"
 
 	"github.com/geerew/off-course/utils/security"
 	"github.com/spf13/afero"
 )
+
+// Bootstrap runs when the application has no admin user yet (first start).
+//
+// Flow:
+//  1. The app writes a short-lived secret to .bootstrap-token in the data directory and prints a bootstrap URL (token in the path).
+//  2. An operator opens that URL and submits username/password; POST /api/auth/bootstrap/:token validates the token and creates the first admin via the API/DAO.
+//  3. On success the token file is removed and the app is marked bootstrapped; further bootstrap attempts are rejected.
+//
+// The token file is the capability: only someone with access to the data directory (or the printed URL before expiry) can complete setup.
 
 // ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
 
@@ -22,23 +33,16 @@ type BootstrapToken struct {
 
 // ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
 
-// GenerateBootstrapToken creates a bootstrap token file for initial admin setup
+// GenerateBootstrapToken creates a .bootstrap-token file in the data directory
 func GenerateBootstrapToken(dataDir string, appFs afero.Fs) (*BootstrapToken, error) {
-	// Generate secure random token
-	tokenBytes := make([]byte, 32)
-	if _, err := rand.Read(tokenBytes); err != nil {
-		return nil, fmt.Errorf("failed to generate token: %w", err)
-	}
-	token := security.PseudorandomString(32)
+	token := security.RandomString(32)
 
-	// Create bootstrap token
 	bootstrapToken := &BootstrapToken{
 		Token:     token,
 		ExpiresAt: time.Now().Add(5 * time.Minute),
 		CreatedAt: time.Now(),
 	}
 
-	// Write token to file using appFs
 	tokenPath := filepath.Join(dataDir, ".bootstrap-token")
 	tokenData, err := json.Marshal(bootstrapToken)
 	if err != nil {
@@ -54,38 +58,39 @@ func GenerateBootstrapToken(dataDir string, appFs afero.Fs) (*BootstrapToken, er
 
 // ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
 
-// ValidateBootstrapToken validates a bootstrap token and returns the token data
-func ValidateBootstrapToken(token, dataDir string, appFs afero.Fs) (*BootstrapToken, error) {
+// ValidateBootstrapToken checks the bootstrap token against the token in the .bootstrap-token
+//
+// It returns nil when the token is valid
+func ValidateBootstrapToken(token, dataDir string, appFs afero.Fs) error {
 	tokenPath := filepath.Join(dataDir, ".bootstrap-token")
 
-	// Check if token file exists
-	if _, err := appFs.Stat(tokenPath); err != nil {
-		return nil, fmt.Errorf("bootstrap token file not found")
-	}
-
-	// Read token file
 	tokenData, err := afero.ReadFile(appFs, tokenPath)
 	if err != nil {
-		return nil, fmt.Errorf("failed to read token file: %w", err)
+		if errors.Is(err, fs.ErrNotExist) {
+			return fmt.Errorf("bootstrap token file not found")
+		}
+
+		return fmt.Errorf("failed to read token file: %w", err)
 	}
 
-	// Parse token
 	var bootstrapToken BootstrapToken
 	if err := json.Unmarshal(tokenData, &bootstrapToken); err != nil {
-		return nil, fmt.Errorf("failed to parse token: %w", err)
+		return fmt.Errorf("failed to parse token: %w", err)
 	}
 
-	// Validate token
-	if bootstrapToken.Token != token {
-		return nil, fmt.Errorf("invalid token")
+	if len(token) != len(bootstrapToken.Token) {
+		return fmt.Errorf("invalid token")
 	}
 
-	// Check expiration
+	if subtle.ConstantTimeCompare([]byte(token), []byte(bootstrapToken.Token)) != 1 {
+		return fmt.Errorf("invalid token")
+	}
+
 	if time.Now().After(bootstrapToken.ExpiresAt) {
-		return nil, fmt.Errorf("token expired")
+		return fmt.Errorf("token expired")
 	}
 
-	return &bootstrapToken, nil
+	return nil
 }
 
 // ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
@@ -95,11 +100,11 @@ func DeleteBootstrapToken(dataDir string, appFs afero.Fs) error {
 	tokenPath := filepath.Join(dataDir, ".bootstrap-token")
 
 	if err := appFs.Remove(tokenPath); err != nil {
-		// Check if the error is because the file doesn't exist
 		if _, statErr := appFs.Stat(tokenPath); statErr != nil {
-			// File doesn't exist, that's fine
+			// Ignore this error when the file doesn't exist
 			return nil
 		}
+
 		return fmt.Errorf("failed to delete token file: %w", err)
 	}
 

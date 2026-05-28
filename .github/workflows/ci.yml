@@ -36,9 +36,9 @@ jobs:
         with:
           go-version: 1.22.4
           cache: true
-      - name: Install FFmpeg and FFprobe
+      - name: Install native dependencies
         run: |
           sudo apt-get update
-          sudo apt-get install -y ffmpeg
+          sudo apt-get install -y ffmpeg libsqlite3-dev libwebp-dev
       - name: Go Test
         run: go test -tags dev -v ./...

@@ -4,7 +4,6 @@ import (
 	"context"
 	"database/sql"
 	"errors"
-	"strings"
 
 	"github.com/geerew/off-course/database"
 	"github.com/geerew/off-course/utils"
@@ -28,7 +27,7 @@ func New(db database.Database) *DAO {
 // ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
 
 // RunInTransaction is a wrapper for database.RunInTransaction
-func RunInTransaction(ctx context.Context, dao *DAO, fn func(ctx context.Context) error) error {
+func (dao *DAO) RunInTransaction(ctx context.Context, fn func(ctx context.Context) error) error {
 	return dao.db.RunInTransaction(ctx, fn)
 }
 
@@ -41,8 +40,7 @@ func createGeneric(ctx context.Context, dao *DAO, builderOpts builderOptions) er
 		return err
 	}
 
-	q := database.QuerierFromContext(ctx, dao.db)
-	_, err = q.ExecContext(ctx, sqlStr, args...)
+	_, err = dao.db.ExecContext(ctx, sqlStr, args...)
 	return err
 }
 
@@ -50,15 +48,13 @@ func createGeneric(ctx context.Context, dao *DAO, builderOpts builderOptions) er
 
 // Count is a generic function to count the number of rows in a table as determined by the model
 func countGeneric(ctx context.Context, dao *DAO, builderOpts builderOptions) (int, error) {
-	q := database.QuerierFromContext(ctx, dao.db)
-
 	sqlStr, args, err := countBuilder(builderOpts)
 	if err != nil {
 		return -1, err
 	}
 
 	var count int
-	err = q.GetContext(ctx, &count, sqlStr, args...)
+	err = dao.db.GetContext(ctx, &count, sqlStr, args...)
 	if err != nil {
 		if errors.Is(err, sql.ErrNoRows) {
 			count = 0
@@ -79,10 +75,8 @@ func getGeneric[T any](ctx context.Context, dao *DAO, builderOpts builderOptions
 		return nil, err
 	}
 
-	q := database.QuerierFromContext(ctx, dao.db)
-
 	record := new(T)
-	err = q.GetContext(ctx, record, sqlStr, args...)
+	err = dao.db.GetContext(ctx, record, sqlStr, args...)
 	if err != nil {
 		if errors.Is(err, sql.ErrNoRows) {
 			return nil, nil
@@ -98,8 +92,6 @@ func getGeneric[T any](ctx context.Context, dao *DAO, builderOpts builderOptions
 
 // listGeneric is a generic function to get records from the database
 func listGeneric[T any](ctx context.Context, dao *DAO, builderOpts builderOptions) ([]*T, error) {
-	q := database.QuerierFromContext(ctx, dao.db)
-
 	if builderOpts.DbOpts != nil && builderOpts.DbOpts.Pagination != nil {
 		count, err := countGeneric(ctx, dao, builderOpts)
 		if err != nil {
@@ -115,7 +107,7 @@ func listGeneric[T any](ctx context.Context, dao *DAO, builderOpts builderOption
 	}
 
 	records := new([]*T)
-	err = q.SelectContext(ctx, records, sqlStr, args...)
+	err = dao.db.SelectContext(ctx, records, sqlStr, args...)
 	if err != nil {
 		return nil, err
 	}
@@ -132,8 +124,7 @@ func updateGeneric(ctx context.Context, dao *DAO, builderOpts builderOptions) (b
 		return false, err
 	}
 
-	q := database.QuerierFromContext(ctx, dao.db)
-	res, err := q.ExecContext(ctx, sqlStr, args...)
+	res, err := dao.db.ExecContext(ctx, sqlStr, args...)
 	if err != nil {
 		return false, err
 	}
@@ -158,10 +149,8 @@ func pluck[T any](ctx context.Context, dao *DAO, builderOpts builderOptions) ([]
 		return nil, err
 	}
 
-	q := database.QuerierFromContext(ctx, dao.db)
-
 	var out []T
-	if err := q.SelectContext(ctx, &out, sqlStr, args...); err != nil {
+	if err := dao.db.SelectContext(ctx, &out, sqlStr, args...); err != nil {
 		return nil, err
 	}
 
@@ -182,19 +171,11 @@ func principalFromCtx(ctx context.Context) (types.Principal, error) {
 
 // ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
 
-func sanitizeIDs(in []string) []string {
-	out := make([]string, 0, len(in))
-	seen := make(map[string]struct{}, len(in))
-	for _, id := range in {
-		id = strings.TrimSpace(id)
-		if id == "" {
-			continue
-		}
-		if _, ok := seen[id]; ok {
-			continue
-		}
-		seen[id] = struct{}{}
-		out = append(out, id)
+// applyDefaultOrderBy applies the default order by when the current OrderBy or OrderByClause is not set
+func applyDefaultOrderBy(dbOpts *Options, defaultOrder []string) {
+	if dbOpts == nil || dbOpts.OrderByClause != nil || len(dbOpts.OrderBy) > 0 {
+		return
 	}
-	return out
+
+	dbOpts.WithOrderBy(defaultOrder...)
 }

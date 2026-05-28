@@ -28,13 +28,13 @@ type CourseFavourite struct {
 
 // ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
 
-// CourseFavouriteColumns returns the list of columns to use when populating `CourseFavourite`
+// CourseFavouriteColumns returns the columns for use in a SELECT query
 func CourseFavouriteColumns() []string {
 	return []string{
-		fmt.Sprintf("%s AS id", COURSE_FAVOURITE_TABLE_ID),
-		fmt.Sprintf("%s AS created_at", COURSE_FAVOURITE_TABLE_CREATED_AT),
-		fmt.Sprintf("%s AS updated_at", COURSE_FAVOURITE_TABLE_UPDATED_AT),
-		fmt.Sprintf("%s AS course_id", COURSE_FAVOURITE_TABLE_COURSE_ID),
-		fmt.Sprintf("%s AS user_id", COURSE_FAVOURITE_TABLE_USER_ID),
+		fmt.Sprintf("%s AS %s", COURSE_FAVOURITE_TABLE_ID, BASE_ID),
+		fmt.Sprintf("%s AS %s", COURSE_FAVOURITE_TABLE_CREATED_AT, BASE_CREATED_AT),
+		fmt.Sprintf("%s AS %s", COURSE_FAVOURITE_TABLE_UPDATED_AT, BASE_UPDATED_AT),
+		fmt.Sprintf("%s AS %s", COURSE_FAVOURITE_TABLE_COURSE_ID, COURSE_FAVOURITE_COURSE_ID),
+		fmt.Sprintf("%s AS %s", COURSE_FAVOURITE_TABLE_USER_ID, COURSE_FAVOURITE_USER_ID),
 	}
 }

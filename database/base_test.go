@@ -3,7 +3,7 @@ package database
 import (
 	"testing"
 
-	"github.com/geerew/off-course/utils/appfs"
+	"github.com/geerew/off-course/utils/filesystem"
 	"github.com/spf13/afero"
 	"github.com/stretchr/testify/require"
 )
@@ -11,12 +11,13 @@ import (
 // ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
 
 func Test_NewSQLiteManager(t *testing.T) {
+	// Test successfully creating a new SQLiteManager
 	t.Run("success", func(t *testing.T) {
-		appFs := appfs.New(afero.NewMemMapFs())
+		fs := filesystem.New(afero.NewMemMapFs())
 
 		dbManager, err := NewSQLiteManager(&DatabaseManagerConfig{
 			DataDir: "./oc_data",
-			AppFs:   appFs,
+			FS:   fs,
 			Testing: true,
 		})
 
@@ -25,12 +26,13 @@ func Test_NewSQLiteManager(t *testing.T) {
 
 	})
 
+	// Test error due to being unable to create data.db
 	t.Run("error creating data.db", func(t *testing.T) {
-		appFs := appfs.New(afero.NewReadOnlyFs(afero.NewMemMapFs()))
+		fs := filesystem.New(afero.NewReadOnlyFs(afero.NewMemMapFs()))
 
 		dbManager, err := NewSQLiteManager(&DatabaseManagerConfig{
 			DataDir: "./oc_data",
-			AppFs:   appFs,
+			FS:   fs,
 			Testing: true,
 		})
 

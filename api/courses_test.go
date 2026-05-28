@@ -17,6 +17,7 @@ import (
 	"github.com/Masterminds/squirrel"
 	"github.com/geerew/off-course/dao"
 	"github.com/geerew/off-course/models"
+	"github.com/geerew/off-course/utils/cardcache"
 	"github.com/geerew/off-course/utils/pagination"
 	"github.com/geerew/off-course/utils/security"
 	"github.com/geerew/off-course/utils/types"
@@ -76,8 +77,8 @@ func TestCourses_GetCourses(t *testing.T) {
 		}
 
 		// CREATED_AT ASC
-		q := "sort:\"" + models.COURSE_TABLE_CREATED_AT + " asc\""
-		status, body, err := requestHelper(t, router, httptest.NewRequest(http.MethodGet, "/api/courses/?q="+url.QueryEscape(q), nil))
+		sortAsc := models.COURSE_TABLE_CREATED_AT + " asc"
+		status, body, err := requestHelper(t, router, httptest.NewRequest(http.MethodGet, "/api/courses/?orderBy="+url.QueryEscape(sortAsc), nil))
 		require.NoError(t, err)
 		require.Equal(t, http.StatusOK, status)
 
@@ -87,8 +88,8 @@ func TestCourses_GetCourses(t *testing.T) {
 		require.Equal(t, courses[0].ID, coursesResp[0].ID)
 
 		// CREATED_AT DESC
-		q = "sort:\"" + models.COURSE_TABLE_CREATED_AT + " desc\""
-		status, body, err = requestHelper(t, router, httptest.NewRequest(http.MethodGet, "/api/courses/?q="+url.QueryEscape(q), nil))
+		sortDesc := models.COURSE_TABLE_CREATED_AT + " desc"
+		status, body, err = requestHelper(t, router, httptest.NewRequest(http.MethodGet, "/api/courses/?orderBy="+url.QueryEscape(sortDesc), nil))
 		require.NoError(t, err)
 		require.Equal(t, http.StatusOK, status)
 
@@ -115,7 +116,7 @@ func TestCourses_GetCourses(t *testing.T) {
 
 		// Page 1 (10 courses)
 		params := url.Values{
-			"q":                          {"sort:\"" + models.COURSE_TABLE_CREATED_AT + " asc\""},
+			"orderBy":                    {models.COURSE_TABLE_CREATED_AT + " asc"},
 			pagination.PageQueryParam:    {"1"},
 			pagination.PerPageQueryParam: {"10"},
 		}
@@ -132,7 +133,7 @@ func TestCourses_GetCourses(t *testing.T) {
 
 		// Page 2 (7 courses)
 		params = url.Values{
-			"q":                          {"sort:\"" + models.COURSE_TABLE_CREATED_AT + " asc\""},
+			"orderBy":                    {models.COURSE_TABLE_CREATED_AT + " asc"},
 			pagination.PageQueryParam:    {"2"},
 			pagination.PerPageQueryParam: {"10"},
 		}
@@ -150,7 +151,7 @@ func TestCourses_GetCourses(t *testing.T) {
 	t.Run("200 (filter)", func(t *testing.T) {
 		router, ctx := setupAdmin(t)
 
-		defaultSort := " sort:\"" + models.COURSE_TABLE_CREATED_AT + " asc\""
+		defaultSort := models.COURSE_TABLE_CREATED_AT + " asc"
 
 		courses := []*models.Course{}
 		for i := range 6 {
@@ -232,8 +233,8 @@ func TestCourses_GetCourses(t *testing.T) {
 
 		// Title
 		{
-			q := "course AND (1 OR 2) OR course 5" + defaultSort
-			status, body, err := requestHelper(t, router, httptest.NewRequest(http.MethodGet, "/api/courses/?q="+url.QueryEscape(q), nil))
+			qvals := url.Values{"q": {`title:'course 1' OR title:'course 2' OR title:'course 5'`}, "orderBy": {defaultSort}}
+			status, body, err := requestHelper(t, router, httptest.NewRequest(http.MethodGet, "/api/courses/?"+qvals.Encode(), nil))
 			require.NoError(t, err)
 			require.Equal(t, http.StatusOK, status)
 
@@ -247,8 +248,8 @@ func TestCourses_GetCourses(t *testing.T) {
 
 		// Tags
 		{
-			q := "(tag:tag1 AND (tag:tag2 OR tag:tag3)) OR tag:tag4" + defaultSort
-			status, body, err := requestHelper(t, router, httptest.NewRequest(http.MethodGet, "/api/courses/?q="+url.QueryEscape(q), nil))
+			qvals := url.Values{"q": {"(tag:tag1 AND (tag:tag2 OR tag:tag3)) OR tag:tag4"}, "orderBy": {defaultSort}}
+			status, body, err := requestHelper(t, router, httptest.NewRequest(http.MethodGet, "/api/courses/?"+qvals.Encode(), nil))
 			require.NoError(t, err)
 			require.Equal(t, http.StatusOK, status)
 
@@ -262,8 +263,8 @@ func TestCourses_GetCourses(t *testing.T) {
 
 		// Available
 		{
-			q := "available:true" + defaultSort
-			status, body, err := requestHelper(t, router, httptest.NewRequest(http.MethodGet, "/api/courses/?q="+url.QueryEscape(q), nil))
+			qvals := url.Values{"q": {"available:true"}, "orderBy": {defaultSort}}
+			status, body, err := requestHelper(t, router, httptest.NewRequest(http.MethodGet, "/api/courses/?"+qvals.Encode(), nil))
 			require.NoError(t, err)
 			require.Equal(t, http.StatusOK, status)
 
@@ -277,8 +278,9 @@ func TestCourses_GetCourses(t *testing.T) {
 
 		// Progress
 		{
-			q := `progress:started OR progress:completed OR progress:"not started"` + defaultSort
-			status, body, err := requestHelper(t, router, httptest.NewRequest(http.MethodGet, "/api/courses/?withUserProgress=true&q="+url.QueryEscape(q), nil))
+			q := `progress:started OR progress:completed OR progress:"not started"`
+			qvals := url.Values{"q": {q}, "orderBy": {defaultSort}}
+			status, body, err := requestHelper(t, router, httptest.NewRequest(http.MethodGet, "/api/courses/?withUserProgress=true&"+qvals.Encode(), nil))
 			require.NoError(t, err)
 			require.Equal(t, http.StatusOK, status)
 
@@ -289,8 +291,8 @@ func TestCourses_GetCourses(t *testing.T) {
 
 		// Favourite
 		{
-			q := `favourite:true` + defaultSort
-			status, body, err := requestHelper(t, router, httptest.NewRequest(http.MethodGet, "/api/courses/?withUserProgress=true&q="+url.QueryEscape(q), nil))
+			qvals := url.Values{"q": {`favourite:true`}, "orderBy": {defaultSort}}
+			status, body, err := requestHelper(t, router, httptest.NewRequest(http.MethodGet, "/api/courses/?withUserProgress=true&"+qvals.Encode(), nil))
 			require.NoError(t, err)
 			require.Equal(t, http.StatusOK, status)
 
@@ -307,8 +309,8 @@ func TestCourses_GetCourses(t *testing.T) {
 
 		// Unfavourite
 		{
-			q := `favourite:false` + defaultSort
-			status, body, err := requestHelper(t, router, httptest.NewRequest(http.MethodGet, "/api/courses/?withUserProgress=true&q="+url.QueryEscape(q), nil))
+			qvals := url.Values{"q": {`favourite:false`}, "orderBy": {defaultSort}}
+			status, body, err := requestHelper(t, router, httptest.NewRequest(http.MethodGet, "/api/courses/?withUserProgress=true&"+qvals.Encode(), nil))
 			require.NoError(t, err)
 			require.Equal(t, http.StatusOK, status)
 
@@ -325,8 +327,9 @@ func TestCourses_GetCourses(t *testing.T) {
 
 		// Complex filter
 		{
-			q := "(course AND (1 OR 2) OR course 4) AND available:true AND (tag:tag1 OR tag:tag4) OR progress:completed" + defaultSort
-			status, body, err := requestHelper(t, router, httptest.NewRequest(http.MethodGet, "/api/courses/?withUserProgress=true&q="+url.QueryEscape(q), nil))
+			q := `((title:'course 1' OR title:'course 2') AND available:true AND (tag:tag1 OR tag:tag4)) OR progress:completed`
+			qvals := url.Values{"q": {q}, "orderBy": {defaultSort}}
+			status, body, err := requestHelper(t, router, httptest.NewRequest(http.MethodGet, "/api/courses/?withUserProgress=true&"+qvals.Encode(), nil))
 			require.NoError(t, err)
 			require.Equal(t, http.StatusOK, status)
 
@@ -400,7 +403,7 @@ func TestCourses_CreateCourse(t *testing.T) {
 	t.Run("201 (created)", func(t *testing.T) {
 		router, _ := setupAdmin(t)
 
-		router.app.AppFs.Fs.MkdirAll("/course 1", os.ModePerm)
+		router.app.FS.MkdirAll("/course 1", os.ModePerm)
 
 		req := httptest.NewRequest(http.MethodPost, "/api/courses/", strings.NewReader(`{"title": "course 1", "path": "/course 1" }`))
 		req.Header.Set(fiber.HeaderContentType, fiber.MIMEApplicationJSON)
@@ -464,7 +467,7 @@ func TestCourses_CreateCourse(t *testing.T) {
 	t.Run("400 (existing course)", func(t *testing.T) {
 		router, _ := setupAdmin(t)
 
-		router.app.AppFs.Fs.MkdirAll("/course 1", os.ModePerm)
+		router.app.FS.MkdirAll("/course 1", os.ModePerm)
 
 		req := httptest.NewRequest(http.MethodPost, "/api/courses/", strings.NewReader(`{"title": "course 1", "path": "/course 1" }`))
 		req.Header.Set(fiber.HeaderContentType, fiber.MIMEApplicationJSON)
@@ -485,7 +488,7 @@ func TestCourses_CreateCourse(t *testing.T) {
 		_, err := router.app.DbManager.DataDb.ExecContext(context.Background(), "DROP TABLE IF EXISTS "+models.COURSE_TABLE)
 		require.NoError(t, err)
 
-		router.app.AppFs.Fs.MkdirAll("/course 1", os.ModePerm)
+		router.app.FS.MkdirAll("/course 1", os.ModePerm)
 
 		req := httptest.NewRequest(http.MethodPost, "/api/courses/", strings.NewReader(`{"title": "course 1", "path": "/course 1" }`))
 		req.Header.Set(fiber.HeaderContentType, fiber.MIMEApplicationJSON)
@@ -532,12 +535,10 @@ func TestCourses_DeleteCourse(t *testing.T) {
 		}
 		require.NoError(t, router.appDao.CreateCourse(ctx, course))
 
-		// Create optimized card file
-		cardPath := router.app.CardCache.GetCardPath(course.ID)
-		require.NoError(t, afero.WriteFile(router.app.AppFs.Fs, cardPath, []byte("test card"), os.ModePerm))
+		cardPath := filepath.Join(router.app.Config.DataDir, "cards", course.ID+".webp")
+		require.NoError(t, afero.WriteFile(router.app.FS, cardPath, []byte("test card"), os.ModePerm))
 
-		// Verify card exists
-		exists, err := router.app.CardCache.CardExists(cardPath)
+		exists, err := afero.Exists(router.app.FS, cardPath)
 		require.NoError(t, err)
 		require.True(t, exists, "Card should exist before deletion")
 
@@ -552,8 +553,7 @@ func TestCourses_DeleteCourse(t *testing.T) {
 		require.NoError(t, err)
 		require.Nil(t, deletedCourse)
 
-		// Verify card file is deleted
-		exists, err = router.app.CardCache.CardExists(cardPath)
+		exists, err = afero.Exists(router.app.FS, cardPath)
 		require.NoError(t, err)
 		require.False(t, exists, "Card should be deleted when course is deleted")
 	})
@@ -591,9 +591,9 @@ func TestCourses_GetCard(t *testing.T) {
 		}
 		require.NoError(t, router.appDao.CreateCourse(ctx, course))
 
-		// Create optimized card file in cards directory
-		cardPath := router.app.CardCache.GetCardPath(course.ID)
-		require.Nil(t, afero.WriteFile(router.app.AppFs.Fs, cardPath, []byte("test card"), os.ModePerm))
+		require.NoError(t, router.app.FS.MkdirAll(filepath.Dir(course.CardPath), os.ModePerm))
+		require.NoError(t, afero.WriteFile(router.app.FS, course.CardPath, []byte("test card"), os.ModePerm))
+		_ = router.app.CardCache.OptimizeCard(context.Background(), course.ID, course.CardPath, "")
 
 		status, body, err := requestHelper(t, router, httptest.NewRequest(http.MethodGet, "/api/courses/"+course.ID+"/card", nil))
 		require.NoError(t, err)
@@ -625,7 +625,31 @@ func TestCourses_GetCard(t *testing.T) {
 		require.Equal(t, http.StatusOK, status) // Fallback is served, not 404
 	})
 
-	t.Run("200 (card not found serves fallback)", func(t *testing.T) {
+	t.Run("200 (no cache serves original)", func(t *testing.T) {
+		router, ctx := setupAdmin(t)
+
+		course := &models.Course{
+			Title:    "course 1",
+			Path:     "/course 1",
+			CardPath: "/course 1/card.png",
+		}
+		require.NoError(t, router.appDao.CreateCourse(ctx, course))
+		require.NoError(t, router.app.FS.MkdirAll(filepath.Dir(course.CardPath), os.ModePerm))
+		require.NoError(t, afero.WriteFile(router.app.FS, course.CardPath, []byte("original card"), os.ModePerm))
+		_ = router.app.CardCache.OptimizeCard(context.Background(), course.ID, course.CardPath, "")
+
+		serve, err := router.app.CardCache.Get(course.ID)
+		require.NoError(t, err)
+		require.False(t, serve.Fallback)
+		require.Equal(t, course.CardPath, serve.Path)
+
+		status, body, err := requestHelper(t, router, httptest.NewRequest(http.MethodGet, "/api/courses/"+course.ID+"/card", nil))
+		require.NoError(t, err)
+		require.Equal(t, http.StatusOK, status)
+		require.Equal(t, "original card", string(body))
+	})
+
+	t.Run("200 (missing original serves fallback)", func(t *testing.T) {
 		router, ctx := setupAdmin(t)
 
 		course := &models.Course{
@@ -635,18 +659,67 @@ func TestCourses_GetCard(t *testing.T) {
 		}
 		require.NoError(t, router.appDao.CreateCourse(ctx, course))
 
-		// Card path exists in DB but optimized card doesn't exist - should serve fallback
+		_ = router.app.CardCache.OptimizeCard(context.Background(), course.ID, course.CardPath, "")
+
 		status, _, err := requestHelper(t, router, httptest.NewRequest(http.MethodGet, "/api/courses/"+course.ID+"/card", nil))
 		require.NoError(t, err)
-		require.Equal(t, http.StatusOK, status) // Fallback is served, not 404
+		require.Equal(t, http.StatusOK, status)
+	})
+
+	t.Run("304 (etag)", func(t *testing.T) {
+		router, ctx := setupAdmin(t)
+
+		cardHash := "abc123deadbeef"
+		course := &models.Course{
+			Title:    "course etag",
+			Path:     "/course etag",
+			CardPath: "/course etag/card.png",
+			CardHash: cardHash,
+		}
+		require.NoError(t, router.appDao.CreateCourse(ctx, course))
+		require.NoError(t, router.app.FS.MkdirAll(filepath.Dir(course.CardPath), os.ModePerm))
+		require.NoError(t, afero.WriteFile(router.app.FS, course.CardPath, []byte("etag card"), os.ModePerm))
+		router.app.CardCache.Warm([]cardcache.CourseCardRef{{
+			ID: course.ID, CardPath: course.CardPath, CardHash: cardHash,
+		}})
+
+		req := httptest.NewRequest(http.MethodGet, "/api/courses/"+course.ID+"/card", nil)
+		req.Header.Set(fiber.HeaderIfNoneMatch, cardcache.FormatETag(cardHash))
+
+		status, body, err := requestHelper(t, router, req)
+		require.NoError(t, err)
+		require.Equal(t, http.StatusNotModified, status)
+		require.Empty(t, body)
+	})
+
+	t.Run("200 (etag cache headers)", func(t *testing.T) {
+		router, ctx := setupAdmin(t)
+
+		cardHash := "feedfacecafe"
+		course := &models.Course{
+			Title:    "course cache",
+			Path:     "/course cache",
+			CardPath: "/course cache/card.png",
+			CardHash: cardHash,
+		}
+		require.NoError(t, router.appDao.CreateCourse(ctx, course))
+		require.NoError(t, router.app.FS.MkdirAll(filepath.Dir(course.CardPath), os.ModePerm))
+		require.NoError(t, afero.WriteFile(router.app.FS, course.CardPath, []byte("cache card"), os.ModePerm))
+		router.app.CardCache.Warm([]cardcache.CourseCardRef{{
+			ID: course.ID, CardPath: course.CardPath, CardHash: cardHash,
+		}})
+
+		resp, err := router.Test(httptest.NewRequest(http.MethodGet, "/api/courses/"+course.ID+"/card", nil))
+		require.NoError(t, err)
+		require.Equal(t, http.StatusOK, resp.StatusCode)
+		require.Equal(t, cardcache.FormatETag(cardHash), resp.Header.Get(fiber.HeaderETag))
+		require.Contains(t, resp.Header.Get(fiber.HeaderCacheControl), "immutable")
 	})
 
 	t.Run("404 (fallback not found)", func(t *testing.T) {
 		router, _ := setupAdmin(t)
 
-		// Delete fallback card to test error case
-		fallbackPath := router.app.CardCache.GetFallbackPath()
-		router.app.AppFs.Fs.Remove(fallbackPath)
+		require.NoError(t, router.app.FS.Remove(filepath.Join(router.app.Config.DataDir, "cards", "fallback.webp")))
 
 		status, body, err := requestHelper(t, router, httptest.NewRequest(http.MethodGet, "/api/courses/invalid/card", nil))
 		require.NoError(t, err)
@@ -704,6 +777,7 @@ func TestCourses_GetLessons(t *testing.T) {
 				lessons = append(lessons, lesson)
 
 				attachment := &models.Attachment{
+					CourseID: c.ID,
 					LessonID: lesson.ID,
 					Title:    fmt.Sprintf("attachment %d", j+1),
 					Path:     fmt.Sprintf("/%s/attachment %d", security.RandomString(4), j+1),
@@ -790,6 +864,7 @@ func TestCourses_GetLessons(t *testing.T) {
 				lessons = append(lessons, lesson)
 
 				attachment := &models.Attachment{
+					CourseID: c.ID,
 					LessonID: lesson.ID,
 					Title:    fmt.Sprintf("attachment %d", j+1),
 					Path:     fmt.Sprintf("/%s/attachment %d", security.RandomString(4), j+1),
@@ -835,19 +910,19 @@ func TestCourses_GetLessons(t *testing.T) {
 		require.Len(t, lessonsResp[1].Attachments, 1)
 		require.Equal(t, lessonsResp[1].Attachments[0].ID, attachments[3].ID)
 
-		// Asset 1
+		// Asset 1 - no progress records created, so Progress is nil
 		require.Len(t, lessonsResp[0].Assets, 2)
 		require.Equal(t, assets[4].ID, lessonsResp[0].Assets[0].ID)
-		require.NotNil(t, lessonsResp[0].Assets[0].Progress)
+		require.Nil(t, lessonsResp[0].Assets[0].Progress)
 		require.Equal(t, assets[5].ID, lessonsResp[0].Assets[1].ID)
-		require.NotNil(t, lessonsResp[0].Assets[1].Progress)
+		require.Nil(t, lessonsResp[0].Assets[1].Progress)
 
 		// Asset 2
 		require.Len(t, lessonsResp[1].Assets, 2)
 		require.Equal(t, assets[6].ID, lessonsResp[1].Assets[0].ID)
-		require.NotNil(t, lessonsResp[1].Assets[0].Progress)
+		require.Nil(t, lessonsResp[1].Assets[0].Progress)
 		require.Equal(t, assets[7].ID, lessonsResp[1].Assets[1].ID)
-		require.NotNil(t, lessonsResp[1].Assets[1].Progress)
+		require.Nil(t, lessonsResp[1].Assets[1].Progress)
 	})
 
 	t.Run("200 (orderBy)", func(t *testing.T) {
@@ -876,8 +951,8 @@ func TestCourses_GetLessons(t *testing.T) {
 		}
 
 		// CREATED_AT ASC
-		q := "sort:\"" + models.LESSON_TABLE_CREATED_AT + " asc\""
-		status, body, err := requestHelper(t, router, httptest.NewRequest(http.MethodGet, "/api/courses/"+courses[1].ID+"/lessons/?q="+url.QueryEscape(q), nil))
+		sortAsc := models.LESSON_TABLE_CREATED_AT + " asc"
+		status, body, err := requestHelper(t, router, httptest.NewRequest(http.MethodGet, "/api/courses/"+courses[1].ID+"/lessons/?orderBy="+url.QueryEscape(sortAsc), nil))
 		require.NoError(t, err)
 		require.Equal(t, http.StatusOK, status)
 
@@ -888,8 +963,8 @@ func TestCourses_GetLessons(t *testing.T) {
 		require.Equal(t, lessons[3].ID, lessonsResp[1].ID)
 
 		// CREATED_AT DESC
-		q = "sort:\"" + models.LESSON_TABLE_CREATED_AT + " desc\""
-		status, body, err = requestHelper(t, router, httptest.NewRequest(http.MethodGet, "/api/courses/"+courses[1].ID+"/lessons/?q="+url.QueryEscape(q), nil))
+		sortDesc := models.LESSON_TABLE_CREATED_AT + " desc"
+		status, body, err = requestHelper(t, router, httptest.NewRequest(http.MethodGet, "/api/courses/"+courses[1].ID+"/lessons/?orderBy="+url.QueryEscape(sortDesc), nil))
 		require.NoError(t, err)
 		require.Equal(t, http.StatusOK, status)
 
@@ -921,7 +996,7 @@ func TestCourses_GetLessons(t *testing.T) {
 
 		// Get the first page (10 lessons)
 		params := url.Values{
-			"q":                          {"sort:\"" + models.LESSON_TABLE_CREATED_AT + " asc\""},
+			"orderBy":                    {models.LESSON_TABLE_CREATED_AT + " asc"},
 			pagination.PageQueryParam:    {"1"},
 			pagination.PerPageQueryParam: {"10"},
 		}
@@ -939,7 +1014,7 @@ func TestCourses_GetLessons(t *testing.T) {
 
 		// Get the second page (7 lessons)
 		params = url.Values{
-			"q":                          {"sort:\"" + models.LESSON_TABLE_CREATED_AT + " asc\""},
+			"orderBy":                    {models.LESSON_TABLE_CREATED_AT + " asc"},
 			pagination.PageQueryParam:    {"2"},
 			pagination.PerPageQueryParam: {"10"},
 		}
@@ -998,6 +1073,7 @@ func TestCourses_GetLesson(t *testing.T) {
 			// Two assets and attachments per lesson
 			for j := range 2 {
 				attachment := &models.Attachment{
+					CourseID: course.ID,
 					LessonID: ag.ID,
 					Title:    fmt.Sprintf("attachment %d", j+1),
 					Path:     fmt.Sprintf("/%s/attachment %d", security.RandomString(4), j+1),
@@ -1065,6 +1141,7 @@ func TestCourses_GetLesson(t *testing.T) {
 
 			for j := range 2 {
 				attachment := &models.Attachment{
+					CourseID: course.ID,
 					LessonID: ag.ID,
 					Title:    fmt.Sprintf("attachment %d", j+1),
 					Path:     fmt.Sprintf("/%s/attachment %d", security.RandomString(4), j+1),
@@ -1248,6 +1325,7 @@ func TestCourses_GetModules(t *testing.T) {
 				lessons = append(lessons, lesson)
 
 				attachment := &models.Attachment{
+					CourseID: c.ID,
 					LessonID: lesson.ID,
 					Title:    fmt.Sprintf("attachment %d", j+1),
 					Path:     fmt.Sprintf("%s/attachment %d", c.Path, j+1),
@@ -1328,6 +1406,7 @@ func TestCourses_GetModules(t *testing.T) {
 				lessons = append(lessons, lesson)
 
 				attachment := &models.Attachment{
+					CourseID: c.ID,
 					LessonID: lesson.ID,
 					Title:    fmt.Sprintf("attachment %d", j+1),
 					Path:     fmt.Sprintf("%s/attachment %d", c.Path, j+1),
@@ -1363,12 +1442,12 @@ func TestCourses_GetModules(t *testing.T) {
 		require.NoError(t, err)
 		require.Len(t, response.Modules, 2)
 
-		// Module 1
+		// Module 1 - no progress records created, so Progress is nil
 		require.Equal(t, lessons[2].Module, response.Modules[0].Module)
 		require.Len(t, response.Modules[0].Lessons, 1)
 		require.Len(t, response.Modules[0].Lessons[0].Assets, 1)
 		require.Equal(t, assets[2].Title, response.Modules[0].Lessons[0].Assets[0].Title)
-		require.NotNil(t, response.Modules[0].Lessons[0].Assets[0].Progress)
+		require.Nil(t, response.Modules[0].Lessons[0].Assets[0].Progress)
 		require.Len(t, response.Modules[0].Lessons[0].Attachments, 1)
 		require.Equal(t, attachments[2].Title, response.Modules[0].Lessons[0].Attachments[0].Title)
 
@@ -1377,7 +1456,7 @@ func TestCourses_GetModules(t *testing.T) {
 		require.Len(t, response.Modules[1].Lessons, 1)
 		require.Len(t, response.Modules[1].Lessons[0].Assets, 1)
 		require.Equal(t, assets[3].Title, response.Modules[1].Lessons[0].Assets[0].Title)
-		require.NotNil(t, response.Modules[1].Lessons[0].Assets[0].Progress)
+		require.Nil(t, response.Modules[1].Lessons[0].Assets[0].Progress)
 		require.Len(t, response.Modules[1].Lessons[0].Attachments, 1)
 		require.Equal(t, attachments[3].Title, response.Modules[1].Lessons[0].Attachments[0].Title)
 	})
@@ -1441,6 +1520,7 @@ func TestCourses_GetAttachments(t *testing.T) {
 		attachments := []*models.Attachment{}
 		for i := range 2 {
 			attachment := &models.Attachment{
+				CourseID: course.ID,
 				LessonID: lesson.ID,
 				Title:    fmt.Sprintf("attachment %d", i+1),
 				Path:     fmt.Sprintf("/%s/attachment %d", security.RandomString(4), i+1),
@@ -1478,6 +1558,7 @@ func TestCourses_GetAttachments(t *testing.T) {
 		attachments := []*models.Attachment{}
 		for i := range 2 {
 			attachment := &models.Attachment{
+				CourseID: course.ID,
 				LessonID: lesson.ID,
 				Title:    fmt.Sprintf("attachment %d", i+1),
 				Path:     fmt.Sprintf("/%s/attachment %d", security.RandomString(4), i+1),
@@ -1488,8 +1569,8 @@ func TestCourses_GetAttachments(t *testing.T) {
 		}
 
 		// CREATED_AT ASC
-		q := "sort:\"" + models.ATTACHMENT_TABLE_CREATED_AT + " asc\""
-		status, body, err := requestHelper(t, router, httptest.NewRequest(http.MethodGet, "/api/courses/"+course.ID+"/lessons/"+lesson.ID+"/attachments?q="+url.QueryEscape(q), nil))
+		sortAsc := models.ATTACHMENT_TABLE_CREATED_AT + " asc"
+		status, body, err := requestHelper(t, router, httptest.NewRequest(http.MethodGet, "/api/courses/"+course.ID+"/lessons/"+lesson.ID+"/attachments?orderBy="+url.QueryEscape(sortAsc), nil))
 		require.NoError(t, err)
 		require.Equal(t, http.StatusOK, status)
 
@@ -1500,8 +1581,8 @@ func TestCourses_GetAttachments(t *testing.T) {
 		require.Equal(t, attachments[1].ID, attachmentResp[1].ID)
 
 		// CREATED_AT DESC
-		q = "sort:\"" + models.ATTACHMENT_TABLE_CREATED_AT + " desc\""
-		status, body, err = requestHelper(t, router, httptest.NewRequest(http.MethodGet, "/api/courses/"+course.ID+"/lessons/"+lesson.ID+"/attachments?q="+url.QueryEscape(q), nil))
+		sortDesc := models.ATTACHMENT_TABLE_CREATED_AT + " desc"
+		status, body, err = requestHelper(t, router, httptest.NewRequest(http.MethodGet, "/api/courses/"+course.ID+"/lessons/"+lesson.ID+"/attachments?orderBy="+url.QueryEscape(sortDesc), nil))
 		require.NoError(t, err)
 		require.Equal(t, http.StatusOK, status)
 
@@ -1530,6 +1611,7 @@ func TestCourses_GetAttachments(t *testing.T) {
 		attachments := []*models.Attachment{}
 		for i := range 17 {
 			attachment := &models.Attachment{
+				CourseID: course.ID,
 				LessonID: lesson.ID,
 				Title:    fmt.Sprintf("attachment %d", i+1),
 				Path:     fmt.Sprintf("/%s/attachment %d", security.RandomString(4), i+1),
@@ -1541,7 +1623,7 @@ func TestCourses_GetAttachments(t *testing.T) {
 
 		// Get the first page (10 attachments)
 		params := url.Values{
-			"q":                          {"sort:\"" + models.ATTACHMENT_TABLE_CREATED_AT + " asc\""},
+			"orderBy":                    {models.ATTACHMENT_TABLE_CREATED_AT + " asc"},
 			pagination.PageQueryParam:    {"1"},
 			pagination.PerPageQueryParam: {"10"},
 		}
@@ -1559,7 +1641,7 @@ func TestCourses_GetAttachments(t *testing.T) {
 
 		// Get the second page (7 attachments)
 		params = url.Values{
-			"q":                          {"sort:\"" + models.ATTACHMENT_TABLE_CREATED_AT + " asc\""},
+			"orderBy":                    {models.ATTACHMENT_TABLE_CREATED_AT + " asc"},
 			pagination.PageQueryParam:    {"2"},
 			pagination.PerPageQueryParam: {"10"},
 		}
@@ -1638,6 +1720,7 @@ func TestCourses_GetAttachment(t *testing.T) {
 		require.NoError(t, router.appDao.CreateLesson(ctx, lesson))
 
 		attachment := &models.Attachment{
+			CourseID: course.ID,
 			LessonID: lesson.ID,
 			Title:    "attachment 1",
 			Path:     fmt.Sprintf("/%s/attachment 1", security.RandomString(4)),
@@ -1702,6 +1785,7 @@ func TestCourses_GetAttachment(t *testing.T) {
 		require.NoError(t, router.appDao.CreateLesson(ctx, lesson2))
 
 		attachment := &models.Attachment{
+			CourseID: course.ID,
 			LessonID: lesson1.ID,
 			Title:    "attachment 1",
 			Path:     fmt.Sprintf("/%s/attachment 1", security.RandomString(4)),
@@ -1777,14 +1861,15 @@ func TestCourses_ServeAttachment(t *testing.T) {
 		require.NoError(t, router.appDao.CreateLesson(ctx, lesson))
 
 		attachment := &models.Attachment{
+			CourseID: course.ID,
 			LessonID: lesson.ID,
 			Title:    "attachment 1",
 			Path:     fmt.Sprintf("/%s/attachment 1", security.RandomString(4)),
 		}
 		require.NoError(t, router.appDao.CreateAttachment(ctx, attachment))
 
-		require.Nil(t, router.app.AppFs.Fs.MkdirAll(filepath.Dir(attachment.Path), os.ModePerm))
-		require.Nil(t, afero.WriteFile(router.app.AppFs.Fs, attachment.Path, []byte("hello"), os.ModePerm))
+		require.Nil(t, router.app.FS.MkdirAll(filepath.Dir(attachment.Path), os.ModePerm))
+		require.Nil(t, afero.WriteFile(router.app.FS, attachment.Path, []byte("hello"), os.ModePerm))
 
 		req := httptest.NewRequest(http.MethodGet, "/api/courses/"+course.ID+"/lessons/"+lesson.ID+"/attachments/"+attachment.ID+"/serve", nil)
 		status, body, err := requestHelper(t, router, req)
@@ -1808,6 +1893,7 @@ func TestCourses_ServeAttachment(t *testing.T) {
 		require.NoError(t, router.appDao.CreateLesson(ctx, lesson))
 
 		attachment := &models.Attachment{
+			CourseID: course.ID,
 			LessonID: lesson.ID,
 			Title:    "attachment 1",
 			Path:     fmt.Sprintf("/%s/attachment 1", security.RandomString(4)),
@@ -1864,6 +1950,7 @@ func TestCourses_ServeAttachment(t *testing.T) {
 		}
 
 		attachment := &models.Attachment{
+			CourseID: course.ID,
 			LessonID: lessons[0].ID,
 			Title:    "attachment 1",
 			Path:     fmt.Sprintf("/%s/attachment 1", security.RandomString(4)),
@@ -1943,8 +2030,8 @@ func TestCourses_ServeAsset(t *testing.T) {
 		}
 		require.NoError(t, router.appDao.CreateAsset(ctx, asset))
 
-		require.Nil(t, router.app.AppFs.Fs.MkdirAll(filepath.Dir(asset.Path), os.ModePerm))
-		require.Nil(t, afero.WriteFile(router.app.AppFs.Fs, asset.Path, []byte("video"), os.ModePerm))
+		require.Nil(t, router.app.FS.MkdirAll(filepath.Dir(asset.Path), os.ModePerm))
+		require.Nil(t, afero.WriteFile(router.app.FS, asset.Path, []byte("video"), os.ModePerm))
 
 		req := httptest.NewRequest(http.MethodGet, "/api/courses/"+course.ID+"/lessons/"+lesson.ID+"/assets/"+asset.ID+"/serve", nil)
 		status, body, err := requestHelper(t, router, req)
@@ -1981,8 +2068,8 @@ func TestCourses_ServeAsset(t *testing.T) {
 		}
 		require.NoError(t, router.appDao.CreateAsset(ctx, asset))
 
-		require.Nil(t, router.app.AppFs.Fs.MkdirAll(filepath.Dir(asset.Path), os.ModePerm))
-		require.Nil(t, afero.WriteFile(router.app.AppFs.Fs, asset.Path, []byte("video"), os.ModePerm))
+		require.Nil(t, router.app.FS.MkdirAll(filepath.Dir(asset.Path), os.ModePerm))
+		require.Nil(t, afero.WriteFile(router.app.FS, asset.Path, []byte("video"), os.ModePerm))
 
 		req := httptest.NewRequest(http.MethodGet, "/api/courses/"+course.ID+"/lessons/"+lesson.ID+"/assets/"+asset.ID+"/serve", nil)
 		req.Header.Add("Range", "bytes=0-")
@@ -2056,8 +2143,8 @@ func TestCourses_ServeAsset(t *testing.T) {
 		}
 		require.NoError(t, router.appDao.CreateAsset(ctx, asset))
 
-		require.Nil(t, router.app.AppFs.Fs.MkdirAll(filepath.Dir(asset.Path), os.ModePerm))
-		require.Nil(t, afero.WriteFile(router.app.AppFs.Fs, asset.Path, []byte("video"), os.ModePerm))
+		require.Nil(t, router.app.FS.MkdirAll(filepath.Dir(asset.Path), os.ModePerm))
+		require.Nil(t, afero.WriteFile(router.app.FS, asset.Path, []byte("video"), os.ModePerm))
 
 		req := httptest.NewRequest(http.MethodGet, "/api/courses/"+course.ID+"/lessons/"+lesson.ID+"/assets/"+asset.ID+"/serve", nil)
 		req.Header.Add("Range", "bytes=10-1")

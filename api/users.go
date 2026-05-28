@@ -1,13 +1,14 @@
 package api
 
 import (
+	"errors"
 	"strings"
 
 	"github.com/Masterminds/squirrel"
 	"github.com/geerew/off-course/dao"
 	"github.com/geerew/off-course/models"
+	"github.com/geerew/off-course/utils"
 	"github.com/geerew/off-course/utils/auth"
-	"github.com/geerew/off-course/utils/queryparser"
 	"github.com/geerew/off-course/utils/types"
 	"github.com/gofiber/fiber/v2"
 )
@@ -39,25 +40,22 @@ func (r *Router) initUserRoutes() {
 // ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
 
 func (api userAPI) getUsers(c *fiber.Ctx) error {
-	builderOpts := builderOptions{
-		DefaultOrderBy: defaultUsersOrderBy,
-		Paginate:       true,
-		AllowedFilters: []string{"role"},
-		AfterParseHook: usersAfterParseHook,
-	}
-
-	principal, ctx, err := principalCtx(c)
+	_, ctx, err := principalCtx(c)
 	if err != nil {
 		return errorResponse(c, fiber.StatusUnauthorized, "Missing principal", nil)
 	}
 
-	dbOpts, err := optionsBuilder(c, builderOpts, principal.UserID)
-	if err != nil {
-		return errorResponse(c, fiber.StatusBadRequest, "Error parsing query", err)
-	}
+	dbOpts := dao.NewOptions().
+		WithOrderBy(utils.StringSplit(c.Query("orderBy", ""), ",")...).
+		WithApiQuery(c.Query("q", "")).
+		WithPagination(paginationFromCtx(c))
 
 	users, err := api.r.appDao.ListUsers(ctx, dbOpts)
 	if err != nil {
+		if errors.Is(err, utils.ErrApiQueryParse) {
+			return errorResponse(c, fiber.StatusBadRequest, "Error parsing query", err)
+		}
+
 		return errorResponse(c, fiber.StatusInternalServerError, "Error looking up users", err)
 	}
 
@@ -91,10 +89,15 @@ func (api userAPI) createUser(c *fiber.Ctx) error {
 		userReq.Role = types.UserRoleUser.String()
 	}
 
+	passwordHash, err := auth.GeneratePassword(userReq.Password)
+	if err != nil {
+		return errorResponse(c, fiber.StatusInternalServerError, "Error hashing password", err)
+	}
+
 	user := &models.User{
 		Username:     userReq.Username,
 		DisplayName:  userReq.Username,
-		PasswordHash: auth.GeneratePassword(userReq.Password),
+		PasswordHash: passwordHash,
 		Role:         types.NewUserRole(userReq.Role),
 	}
 
@@ -154,7 +157,11 @@ func (api userAPI) updateUser(c *fiber.Ctx) error {
 		if err := validatePassword(userReq.Password); err != nil {
 			return errorResponse(c, fiber.StatusBadRequest, err.Error(), nil)
 		}
-		user.PasswordHash = auth.GeneratePassword(userReq.Password)
+		passwordHash, err := auth.GeneratePassword(userReq.Password)
+		if err != nil {
+			return errorResponse(c, fiber.StatusInternalServerError, "Error hashing password", err)
+		}
+		user.PasswordHash = passwordHash
 	}
 
 	if userReq.Role != "" {
@@ -222,45 +229,3 @@ func (api userAPI) deleteUserSession(c *fiber.Ctx) error {
 }
 
 // ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
-
-// usersAfterParseHook builds the dao.Options.Where based on the query expression
-func usersAfterParseHook(parsed *queryparser.QueryResult, options *dao.Options, _ string) {
-	options.Where = usersWhereBuilder(parsed.Expr)
-}
-
-// ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
-
-// usersWhereBuilder builds a squirrel.Sqlizer, for use in a WHERE clause
-func usersWhereBuilder(expr queryparser.QueryExpr) squirrel.Sqlizer {
-	switch node := expr.(type) {
-	case *queryparser.ValueExpr:
-		return squirrel.Or{
-			squirrel.Like{"LOWER(" + models.USER_TABLE_USERNAME + ")": "%" + node.Value + "%"},
-			squirrel.Like{"LOWER(" + models.USER_TABLE_DISPLAY_NAME + ")": "%" + node.Value + "%"},
-		}
-	case *queryparser.FilterExpr:
-		switch node.Key {
-		case "role":
-			return squirrel.Eq{models.USER_TABLE_ROLE: node.Value}
-
-		default:
-			return nil
-		}
-	case *queryparser.AndExpr:
-		var andSlice []squirrel.Sqlizer
-		for _, child := range node.Children {
-			andSlice = append(andSlice, usersWhereBuilder(child))
-		}
-
-		return squirrel.And(andSlice)
-	case *queryparser.OrExpr:
-		var orSlice []squirrel.Sqlizer
-		for _, child := range node.Children {
-			orSlice = append(orSlice, usersWhereBuilder(child))
-		}
-
-		return squirrel.Or(orSlice)
-	default:
-		return nil
-	}
-}

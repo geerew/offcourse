@@ -13,6 +13,7 @@ import (
 )
 
 func Test_CreateCourseTag(t *testing.T) {
+	// Test successfully creating course tags
 	t.Run("success", func(t *testing.T) {
 		dao, ctx := setup(t)
 
@@ -52,18 +53,21 @@ func Test_CreateCourseTag(t *testing.T) {
 		require.Len(t, tags, 2)
 	})
 
+	// Test error due to nil pointer
 	t.Run("nil pointer", func(t *testing.T) {
 		dao, ctx := setup(t)
 
 		require.ErrorIs(t, dao.CreateCourseTag(ctx, nil), utils.ErrNilPtr)
 	})
 
+	// Test error due to invalid tag ID
 	t.Run("invalid tag ID", func(t *testing.T) {
 		dao, ctx := setup(t)
 
 		require.ErrorIs(t, dao.CreateCourseTag(ctx, &models.CourseTag{CourseID: "1234"}), utils.ErrTag)
 	})
 
+	// Test error due to invalid course ID
 	t.Run("invalid course ID", func(t *testing.T) {
 		dao, ctx := setup(t)
 
@@ -78,6 +82,7 @@ func Test_CreateCourseTag(t *testing.T) {
 // ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
 
 func Test_GetCourseTag(t *testing.T) {
+	// Test successfully retrieving a course tag record
 	t.Run("success", func(t *testing.T) {
 		dao, ctx := setup(t)
 
@@ -94,6 +99,7 @@ func Test_GetCourseTag(t *testing.T) {
 		require.Equal(t, courseTag.Tag, record.Tag)
 	})
 
+	// Test successfully retrieving no course tag records
 	t.Run("not found", func(t *testing.T) {
 		dao, ctx := setup(t)
 
@@ -106,6 +112,7 @@ func Test_GetCourseTag(t *testing.T) {
 // ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
 
 func Test_ListCourseTags(t *testing.T) {
+	// Test successfully retrieving all course tag records
 	t.Run("success", func(t *testing.T) {
 		dao, ctx := setup(t)
 
@@ -131,6 +138,7 @@ func Test_ListCourseTags(t *testing.T) {
 		}
 	})
 
+	// Test successfully retrieving no course tag records
 	t.Run("empty", func(t *testing.T) {
 		dao, ctx := setup(t)
 
@@ -139,6 +147,7 @@ func Test_ListCourseTags(t *testing.T) {
 		require.Empty(t, records)
 	})
 
+	// Test successfully retrieving ordered course tag records
 	t.Run("order by", func(t *testing.T) {
 		dao, ctx := setup(t)
 
@@ -178,6 +187,7 @@ func Test_ListCourseTags(t *testing.T) {
 		}
 	})
 
+	// Test successfully retrieving selected course tag records
 	t.Run("where", func(t *testing.T) {
 		dao, ctx := setup(t)
 
@@ -194,6 +204,7 @@ func Test_ListCourseTags(t *testing.T) {
 		require.Equal(t, courseTag.ID, records[0].ID)
 	})
 
+	// Test successfully retrieving paginated course tag records
 	t.Run("pagination", func(t *testing.T) {
 		dao, ctx := setup(t)
 
@@ -209,7 +220,10 @@ func Test_ListCourseTags(t *testing.T) {
 		}
 
 		// First page with 10 records
-		p := NewOptions().WithPagination(pagination.New(1, 10))
+		p := NewOptions().
+			WithOrderBy(models.COURSE_TAG_TABLE_CREATED_AT + " ASC").
+			WithPagination(pagination.New(1, 10))
+
 		records, err := dao.ListCourseTags(ctx, p)
 		require.Nil(t, err)
 		require.Len(t, records, 10)
@@ -217,7 +231,10 @@ func Test_ListCourseTags(t *testing.T) {
 		require.Equal(t, courseTags[9].ID, records[9].ID)
 
 		// Second page with remaining 7 records
-		p = NewOptions().WithPagination(pagination.New(2, 10))
+		p = NewOptions().
+			WithOrderBy(models.COURSE_TAG_TABLE_CREATED_AT + " ASC").
+			WithPagination(pagination.New(2, 10))
+
 		records, err = dao.ListCourseTags(ctx, p)
 		require.Nil(t, err)
 		require.Len(t, records, 7)
@@ -229,6 +246,7 @@ func Test_ListCourseTags(t *testing.T) {
 // ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
 
 func Test_DeleteCourseTags(t *testing.T) {
+	// Test successfully deleting a course tag record
 	t.Run("success", func(t *testing.T) {
 		dao, ctx := setup(t)
 
@@ -246,6 +264,7 @@ func Test_DeleteCourseTags(t *testing.T) {
 		require.Empty(t, records)
 	})
 
+	// Test successfully deleting a non-existent course tag record
 	t.Run("not found", func(t *testing.T) {
 		dao, ctx := setup(t)
 
@@ -264,6 +283,7 @@ func Test_DeleteCourseTags(t *testing.T) {
 		require.Equal(t, courseTag.ID, records[0].ID)
 	})
 
+	// Test error due to missing where clause
 	t.Run("missing where", func(t *testing.T) {
 		dao, ctx := setup(t)
 
@@ -281,6 +301,7 @@ func Test_DeleteCourseTags(t *testing.T) {
 		require.Equal(t, courseTag.ID, records[0].ID)
 	})
 
+	// Test cascading delete of course tag records when deleting a course
 	t.Run("cascade", func(t *testing.T) {
 		dao, ctx := setup(t)
 

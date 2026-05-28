@@ -6,7 +6,6 @@ import (
 	"encoding/gob"
 
 	"github.com/Masterminds/squirrel"
-	"github.com/geerew/off-course/database"
 	"github.com/geerew/off-course/models"
 	"github.com/geerew/off-course/utils"
 	"github.com/geerew/off-course/utils/types"
@@ -96,6 +95,33 @@ func (dao *DAO) UpdateSession(ctx context.Context, session *models.Session) erro
 
 // ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
 
+// BulkUpdateSessions bulk updates session records
+func (dao *DAO) BulkUpdateSessions(ctx context.Context, sessions []*models.Session) error {
+	if sessions == nil {
+		return utils.ErrNilPtr
+	}
+
+	if len(sessions) == 0 {
+		return nil
+	}
+
+	builderOpts := newBuilderOptions(models.SESSION_TABLE).
+		WithBulkUpdate(models.SESSION_DATA, models.SESSION_EXPIRES)
+
+	for _, s := range sessions {
+		if s == nil || s.ID == "" {
+			return utils.ErrId
+		}
+
+		builderOpts = builderOpts.WithBulkUpdateRow(s.ID, s.Data, s.Expires)
+	}
+
+	_, err := updateGeneric(ctx, dao, *builderOpts)
+	return err
+}
+
+// ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
+
 // UpdateSessionRoleForUser updates the role for all sessions belonging to a user
 func (dao *DAO) UpdateSessionRoleForUser(ctx context.Context, userID string, newRole types.UserRole) error {
 	if userID == "" {
@@ -107,6 +133,10 @@ func (dao *DAO) UpdateSessionRoleForUser(ctx context.Context, userID string, new
 	sessions, err := dao.ListSessions(ctx, opts)
 	if err != nil {
 		return err
+	}
+
+	if len(sessions) == 0 {
+		return nil
 	}
 
 	var updatedSessions []*models.Session
@@ -128,15 +158,7 @@ func (dao *DAO) UpdateSessionRoleForUser(ctx context.Context, userID string, new
 		updatedSessions = append(updatedSessions, session)
 	}
 
-	// TODO make bulk update
-	return dao.db.RunInTransaction(ctx, func(txCtx context.Context) error {
-		for _, session := range updatedSessions {
-			if err := dao.UpdateSession(txCtx, session); err != nil {
-				return err
-			}
-		}
-		return nil
-	})
+	return dao.BulkUpdateSessions(ctx, updatedSessions)
 }
 
 // ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
@@ -152,17 +174,17 @@ func (dao *DAO) DeleteSessions(ctx context.Context, dbOpts *Options) error {
 	builderOpts := newBuilderOptions(models.SESSION_TABLE).SetDbOpts(dbOpts)
 	sqlStr, args, _ := deleteBuilder(*builderOpts)
 
-	q := database.QuerierFromContext(ctx, dao.db)
-	_, err := q.ExecContext(ctx, sqlStr, args...)
+	_, err := dao.db.ExecContext(ctx, sqlStr, args...)
 	return err
 }
+
+// ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
 
 // DeleteAllSessions deletes all records from the sessions table
 func (dao *DAO) DeleteAllSessions(ctx context.Context) error {
 	builderOpts := newBuilderOptions(models.SESSION_TABLE)
 	sqlStr, args, _ := deleteBuilder(*builderOpts)
 
-	q := database.QuerierFromContext(ctx, dao.db)
-	_, err := q.ExecContext(ctx, sqlStr, args...)
+	_, err := dao.db.ExecContext(ctx, sqlStr, args...)
 	return err
 }
