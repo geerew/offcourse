@@ -37,9 +37,9 @@ func setup(t *testing.T) (*CourseScan, context.Context) {
 	require.NoError(t, err)
 	require.NotNil(t, dbManager)
 
-	ffmpeg, err := media.NewFFmpeg()
+	tools, err := media.NewTools()
 	if err != nil {
-		t.Skip("FFmpeg not available; skipping test")
+		t.Skip("ffmpeg/ffprobe not available; skipping test")
 	}
 
 	cardCache, err := cardcache.New(&cardcache.CardCacheConfig{
@@ -53,7 +53,7 @@ func setup(t *testing.T) (*CourseScan, context.Context) {
 		Db:        dbManager.DataDb,
 		FS:   fs,
 		Logger:    testLogger,
-		FFmpeg:    ffmpeg,
+		Tools:     tools,
 		CardCache: cardCache,
 	})
 

@@ -9,6 +9,7 @@ import (
 	"github.com/geerew/off-course/dao"
 	"github.com/geerew/off-course/models"
 	"github.com/geerew/off-course/utils/filesystem"
+	"github.com/geerew/off-course/utils/media"
 	"github.com/geerew/off-course/utils/concurrency"
 	"github.com/geerew/off-course/utils/logger"
 	"github.com/spf13/afero"
@@ -34,6 +35,7 @@ type TranscoderConfig struct {
 	FS        *filesystem.FS
 	Logger    *logger.Logger
 	Dao       *dao.DAO
+	Tools     *media.Tools
 }
 
 // ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~

@@ -32,7 +32,7 @@ type CourseScan struct {
 	db        database.Database
 	dao       *dao.DAO
 	logger    *logger.Logger
-	ffmpeg    *media.FFmpeg
+	tools     *media.Tools
 	cardCache *cardcache.CardCache
 
 	// In-memory scan state storage
@@ -56,7 +56,7 @@ type CourseScanConfig struct {
 	Db        database.Database
 	FS        *filesystem.FS
 	Logger    *logger.Logger
-	FFmpeg    *media.FFmpeg
+	Tools     *media.Tools
 	CardCache *cardcache.CardCache
 }
 
@@ -69,7 +69,7 @@ func New(config *CourseScanConfig) *CourseScan {
 		db:        config.Db,
 		dao:       dao.New(config.Db),
 		logger:    config.Logger,
-		ffmpeg:    config.FFmpeg,
+		tools:     config.Tools,
 		cardCache: config.CardCache,
 		scans:     concurrency.NewMap[string, *ScanState](),
 	}

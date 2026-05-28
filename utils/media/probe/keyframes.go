@@ -25,11 +25,11 @@ const (
 // ExtractKeyframes extracts keyframe timestamps from a video file using ffprobe
 // Uses packet inspection with keyframe flags to build a precise list
 func (mp MediaProbe) ExtractKeyframes(ctx context.Context, videoPath string, videoIdx int) ([]float64, error) {
-	if mp.FFmpeg == nil {
+	if mp.Tools == nil {
 		return nil, utils.ErrFFProbeUnavailable
 	}
 
-	ffprobePath := mp.FFmpeg.GetFFProbePath()
+	ffprobePath := mp.Tools.FFProbe
 
 	// Run ffprobe to get packet information with keyframe flags
 	// Get all packets and filter for keyframes

@@ -63,7 +63,7 @@ type AudioStream struct {
 // ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
 
 type MediaProbe struct {
-	FFmpeg *media.FFmpeg
+	Tools *media.Tools
 }
 
 // ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
@@ -71,11 +71,11 @@ type MediaProbe struct {
 // ProbeVideo uses ffprobe to extract metadata from a video file
 // Returns MediaInfo, video stream index, and error
 func (mp MediaProbe) ProbeVideo(ctx context.Context, path string) (*MediaInfo, int, error) {
-	if mp.FFmpeg == nil {
+	if mp.Tools == nil {
 		return nil, -1, fmt.Errorf("ffprobe unavailable: %w", utils.ErrFFProbeUnavailable)
 	}
 
-	ffprobePath := mp.FFmpeg.GetFFProbePath()
+	ffprobePath := mp.Tools.FFProbe
 
 	entries := []string{
 		// format (container/file)

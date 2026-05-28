@@ -267,8 +267,12 @@ func (s *Stream) run(startSegment int32) error {
 		outPath,
 	)
 
+	if s.streamWrapper.config.Tools == nil || s.streamWrapper.config.Tools.FFmpeg == "" {
+		return fmt.Errorf("ffmpeg unavailable: %w", utils.ErrFFmpegUnavailable)
+	}
+
 	// Run the FFmpeg command
-	cmd := exec.Command("ffmpeg", args...)
+	cmd := exec.Command(s.streamWrapper.config.Tools.FFmpeg, args...)
 	s.streamWrapper.config.Logger.Debug().
 		Str("asset_id", s.streamWrapper.assetID).
 		Str("path", s.streamWrapper.Info.Path).

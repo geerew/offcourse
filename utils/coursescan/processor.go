@@ -870,7 +870,7 @@ func probeVideos(ctx context.Context, s *CourseScan, ops []Op, course *models.Co
 		Msg("Starting video probing and keyframe extraction")
 
 	scanState.UpdateMessage("Extracting video keyframes")
-	mediaProbe := probe.MediaProbe{FFmpeg: s.ffmpeg}
+	mediaProbe := probe.MediaProbe{Tools: s.tools}
 	assetMetadataByPath := make(map[string]*models.AssetMetadata)
 	totalVideos := len(targets)
 

@@ -33,7 +33,7 @@ type App struct {
 	// Core dependencies
 	Logger    *logger.Logger
 	FS        *filesystem.FS
-	FFmpeg    *media.FFmpeg
+	Tools     *media.Tools
 	DbManager *database.DatabaseManager
 
 	// Services
@@ -71,10 +71,10 @@ const (
 // ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
 
 var (
-	// ffmpegOnce caches the FFmpeg lookup
-	ffmpegOnce sync.Once
-	// cachedFFmpeg is the cached FFmpeg lookup result
-	cachedFFmpeg *media.FFmpeg
+	// toolsOnce caches the media tools lookup
+	toolsOnce sync.Once
+	// cachedTools is the cached media tools lookup result
+	cachedTools *media.Tools
 )
 
 // ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
@@ -118,15 +118,15 @@ func NewApp(ctx context.Context, config *Config) (*App, error) {
 		fs = filesystem.New(afero.NewOsFs())
 	}
 
-	// FFmpeg
-	var ffmpeg *media.FFmpeg
+	// FFmpeg / ffprobe paths
+	var tools *media.Tools
 	if config.AppMode == AppModeTest {
-		ffmpeg = getCachedFFmpegOrPanic()
+		tools = getCachedToolsOrPanic()
 	} else {
 		var err error
-		ffmpeg, err = media.NewFFmpeg()
+		tools, err = media.NewTools()
 		if err != nil {
-			return nil, fmt.Errorf("failed to initialize FFmpeg: %w", err)
+			return nil, fmt.Errorf("failed to initialize media tools: %w", err)
 		}
 	}
 
@@ -158,9 +158,10 @@ func NewApp(ctx context.Context, config *Config) (*App, error) {
 	transcoderConfig := &hls.TranscoderConfig{
 		CachePath: config.DataDir,
 		HwAccel:   hls.DetectHardwareAccel(appLogger.WithComponent(string(ComponentHLS))),
-		FS:     fs,
+		FS:        fs,
 		Logger:    appLogger.WithComponent(string(ComponentHLS)),
 		Dao:       dao.New(dbManager.DataDb),
+		Tools:     tools,
 	}
 
 	transcoder, err := hls.NewTranscoder(transcoderConfig)
@@ -185,7 +186,7 @@ func NewApp(ctx context.Context, config *Config) (*App, error) {
 		Db:        dbManager.DataDb,
 		FS:     fs,
 		Logger:    appLogger.WithComponent(string(ComponentCourseScan)),
-		FFmpeg:    ffmpeg,
+		Tools:     tools,
 		CardCache: cardCache,
 	})
 
@@ -205,7 +206,7 @@ func NewApp(ctx context.Context, config *Config) (*App, error) {
 	app := &App{
 		Logger:         appLogger,
 		FS:          fs,
-		FFmpeg:         ffmpeg,
+		Tools:          tools,
 		DbManager:      dbManager,
 		Config:         config,
 		Transcoder:     transcoder,
@@ -320,20 +321,19 @@ func (a *App) bootstrap() error {
 
 // ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
 
-// getCachedFFmpegOrPanic will look call NewFFmpeg once then cache the result. This is
-// useful for test cases where we don't want to look up the FFmpeg executable
-// repeatedly
+// getCachedToolsOrPanic calls NewTools once then caches the result. This is useful for
+// test cases where we don't want to look up ffmpeg and ffprobe repeatedly
 //
-// Panics when NewFFmpeg errors
-func getCachedFFmpegOrPanic() *media.FFmpeg {
-	ffmpegOnce.Do(func() {
-		ff, err := media.NewFFmpeg()
+// Panics when NewTools errors
+func getCachedToolsOrPanic() *media.Tools {
+	toolsOnce.Do(func() {
+		t, err := media.NewTools()
 		if err != nil {
 			panic(err)
 		}
 
-		cachedFFmpeg = ff
+		cachedTools = t
 	})
 
-	return cachedFFmpeg
+	return cachedTools
 }
